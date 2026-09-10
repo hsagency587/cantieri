@@ -2367,10 +2367,27 @@ function creaSopralluogo(c, giorno, ora) {
     sezioni: sezioniVuote(), pezzi: [], chiuso: null, media: [], posizione: null
   });
 }
-// Il sopralluogo di oggi su quel cantiere: quello aperto se c'è, altrimenti uno nuovo.
+/* Il sopralluogo di oggi su quel cantiere. Di una data ce n'è uno solo: se quello di oggi
+   c'è già, anche se è chiuso, si torna su quello e non se ne crea un secondo. */
 function sopralluogoPerDettare(c) {
-  const oggi = sopralluoghiDi(c.codice).filter(function (s) { return s.giorno === oggiISO() && !s.chiuso; })[0];
-  return oggi || creaSopralluogo(c);
+  return sopralluogoDiOggi(c.codice) || creaSopralluogo(c);
+}
+
+/* Il giorno cambia allo scattare della mezzanotte, non alla chiusura della giornata.
+   Quello che era oggi diventa ieri; se era rimasto aperto il lavoro continua, e si apre
+   il giorno di oggi sullo stesso cantiere. Una giornata chiusa non fa nascere niente. */
+let GIORNO_APP = oggiISO();
+function controllaCambioGiorno() {
+  const oggi = oggiISO();
+  if (oggi === GIORNO_APP) return;
+  const prima = GIORNO_APP;
+  GIORNO_APP = oggi;
+  valori(leggiTutto().sopralluoghi).filter(function (s) { return s.giorno === prima && !s.chiuso; })
+    .forEach(function (s) {
+      const c = cantierePerCodice(s.cantiere);
+      if (c && c.stato !== 'chiuso' && !sopralluogoDiOggi(c.codice)) creaSopralluogo(c);
+    });
+  aggiornaVista();
 }
 
 /* ---------------- IL GIORNO ---------------- */
@@ -2480,8 +2497,9 @@ function vistaGiornoChiuso(s, c) {
   mostrate.forEach(function (k) { html += cardSezioneLettura(k, sezioni[k], filaFoto(s, fotoPer[k] || [], { segna: true })); });
   if (!mostrate.length) html += '<div class="vuoto-stato">Verbale senza sezioni piene.</div>';
   html += tendinaGrezzo(s);
-  html += '<div class="barra"><button class="az verde" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta PDF</button>' +
-    (v ? '<button class="az stretta" data-az="vai" data-a="#/verbale/' + h(v.id) + '">Modifica</button>' : '') + '</div>';
+  html += '<div class="barra' + (v ? ' tre' : '') + '"><button class="az verde" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta PDF</button>' +
+    (v ? '<button class="az stretta" data-az="vai" data-a="#/verbale/' + h(v.id) + '">Modifica</button>' : '') +
+    '<button class="az stretta" data-az="riapri-giornata" data-id="' + h(s.id) + '">Riapri</button></div>';
   return html;
 }
 
@@ -2503,17 +2521,38 @@ async function chiudiGiornata(sopId) {
   let testo = 'Si crea il verbale della giornata. Il sopralluogo resta com\'è, il verbale si potrà correggere.';
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
+  const giaFatto = verbaleDiSopralluogo(s.codice);
+  if (giaFatto) testo += ' Il verbale ' + giaFatto.codice + ' si riscrive: le correzioni fatte a mano si perdono.';
   const ok = await chiedi('Chiudere la giornata?', testo, 'Chiudi la giornata');
   chiudiFoglio();
   if (!ok) return;
   const sezioni = {};
   CHIAVI_SEZIONI.forEach(function (k) { sezioni[k] = s.sezioni[k] || ''; });
   if (String(s.sezioni.da_smistare || '').trim()) sezioni.note = aggiungiTesto(sezioni.note, s.sezioni.da_smistare);
-  const v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, sezioni: sezioni });
+  // Una giornata riaperta e richiusa riscrive il suo verbale: non ne nasce un secondo.
+  let v = verbaleDiSopralluogo(s.codice);
+  if (v) { v.sezioni = sezioni; v.giorno = s.giorno; v.ora = s.ora; v = salva('verbale', v); }
+  else v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, sezioni: sezioni });
   s.chiuso = adessoISO();
   s.verbale = v.codice;
   salva('sopralluogo', s);
   avvisa('Verbale ' + v.codice, 'ok');
+  aggiornaVista();
+}
+
+/* Una giornata chiusa si riapre e resta la stessa: di quella data ce n'è una sola.
+   Il verbale non si perde, si riscrive quando la giornata si richiude. */
+async function riapriGiornata(sopId) {
+  const s = sopralluogo(sopId);
+  if (!s || !s.chiuso) return;
+  const v = verbaleDiSopralluogo(s.codice);
+  const ok = await chiedi('Riaprire la giornata?', dataEstesa(s.giorno) + '. Si torna a dettare su questo stesso giorno' +
+    (v ? ': il verbale ' + v.codice + ' resta, e si riscrive quando la richiudi.' : '.'), 'Riapri la giornata');
+  chiudiFoglio();
+  if (!ok) return;
+  s.chiuso = null;
+  salva('sopralluogo', s);
+  avvisa('Giornata riaperta', 'ok');
   aggiornaVista();
 }
 
@@ -3594,33 +3633,72 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
   };
   // Le foto marcate si preparano tutte prima: l'incorporazione è asincrona, il ciclo sotto no.
   const fotoPerVerbale = await preparaFotoPdf(doc, verbali, soloSezione);
-  // Una foto per riga, larga quanto il testo ma mai più alta di mezza pagina; sotto il referto e, in piccolo, i dati.
-  const scalaFoto = function (img) { return Math.min(larghezza / img.width, 340 / img.height, 1); };
-  const altezzaFoto = function (voce) { return voce && voce.img ? voce.img.height * scalaFoto(voce.img) : 0; };
-  const disegnaFoto = function (voce, c) {
+  /* Le foto vanno a due per riga, in due colonne larghe mezza pagina: un verbale con dodici
+     foto occupava dodici pagine, così ne occupa tre. Sotto ogni foto il suo referto e i suoi
+     dati, dentro la sua colonna: si legge come una scheda, non come un elenco. */
+  const VUOTO_COL = 18;
+  const LARG_COL = (larghezza - VUOTO_COL) / 2;
+  const ALT_COL = 210;
+  const datiFoto = function (f, c) { return f.codice + ' - ' + dataEstesa(f.giorno) + ', ' + (f.ora || '') + ' - ' + (c.nome || ''); };
+  const mancaFoto = function (f) { return '[' + (f.file ? 'foto non leggibile' : 'foto archiviata' + (f.archiviato ? ' il ' + dataSenzaAnno(f.archiviato) : '')) + ']'; };
+  /* Quanto è alto il blocco di una foto nella sua colonna. Si misura prima di disegnare:
+     serve per sapere se la riga ci sta nella pagina e per far partire le due colonne dalla
+     stessa altezza. */
+  const misuraFoto = function (voce, c) {
     const f = voce.foto;
-    const dati = f.codice + ' - ' + dataEstesa(f.giorno) + ', ' + (f.ora || '') + ' - ' + (c.nome || '');
+    let alt = 0, lo = 0, la = 0;
     if (voce.img) {
-      const scala = scalaFoto(voce.img);
-      const W = voce.img.width * scala, A = voce.img.height * scala;
-      spazio(A + 40);
-      y -= 4;
-      pagina.drawImage(voce.img, { x: M, y: y - A, width: W, height: A });
-      y -= A + 6;
+      const scala = Math.min(LARG_COL / voce.img.width, ALT_COL / voce.img.height, 1);
+      lo = voce.img.width * scala; la = voce.img.height * scala;
+      alt += la + 6;
     } else {
-      spazio(40);
-      scrivi('[' + (f.file ? 'foto non leggibile' : 'foto archiviata' + (f.archiviato ? ' il ' + dataSenzaAnno(f.archiviato) : '')) + ']', 10, normale, PDF.rgb(0.45, 0.45, 0.45));
+      alt += spezzaRighe(normale, testoPdf(mancaFoto(f)), 9, LARG_COL).length * 9 * 1.35 + 4;
     }
-    if (String(f.referto || '').trim()) scrivi(f.referto, 11, normale);
-    scrivi(dati, 9, normale, PDF.rgb(0.45, 0.45, 0.45));
-    y -= 8;
+    const ref = String(f.referto || '').trim();
+    if (ref) alt += spezzaRighe(normale, testoPdf(ref), 10, LARG_COL).length * 10 * 1.35 + 2;
+    alt += spezzaRighe(normale, testoPdf(datiFoto(f, c)), 8, LARG_COL).length * 8 * 1.35;
+    return { alt: alt, lo: lo, la: la };
+  };
+  const altezzaFoto = function (voce, c) { return voce ? misuraFoto(voce, c).alt : 0; };
+  // Il testo dentro una colonna: stessa spezzatura del resto, ma largo mezza pagina.
+  const scriviCol = function (testo, corpo, colore, x, cima) {
+    spezzaRighe(normale, testoPdf(testo), corpo, LARG_COL).forEach(function (r) {
+      if (r) pagina.drawText(r, { x: x, y: cima - corpo, size: corpo, font: normale, color: colore || PDF.rgb(0, 0, 0) });
+      cima -= corpo * 1.35;
+    });
+    return cima;
+  };
+  const disegnaColonna = function (voce, c, x, cima, m) {
+    const f = voce.foto;
+    if (voce.img) {
+      // Una foto in piedi è più stretta della colonna: si centra, così la pagina resta dritta.
+      pagina.drawImage(voce.img, { x: x + (LARG_COL - m.lo) / 2, y: cima - m.la, width: m.lo, height: m.la });
+      cima -= m.la + 6;
+    } else {
+      cima = scriviCol(mancaFoto(f), 9, PDF.rgb(0.45, 0.45, 0.45), x, cima) - 4;
+    }
+    const ref = String(f.referto || '').trim();
+    if (ref) cima = scriviCol(ref, 10, null, x, cima) - 2;
+    scriviCol(datiFoto(f, c), 8, PDF.rgb(0.45, 0.45, 0.45), x, cima);
+  };
+  const disegnaFotoGriglia = function (lista, c) {
+    for (let i = 0; i < lista.length; i += 2) {
+      const coppia = lista.slice(i, i + 2);
+      const mis = coppia.map(function (v) { return misuraFoto(v, c); });
+      const alt = Math.max.apply(null, mis.map(function (m) { return m.alt; }));
+      // Le due foto della riga partono dalla stessa altezza; la riga finisce sulla più lunga.
+      spazio(Math.min(alt + 12, A - 2 * M));
+      const cima = y - 4;
+      coppia.forEach(function (voce, j) { disegnaColonna(voce, c, M + j * (LARG_COL + VUOTO_COL), cima, mis[j]); });
+      y = cima - alt - 12;
+    }
   };
   // La relazione di fine cantiere ha una forma sua, ma la pagina, il testo e le foto sono questi:
   // le passa come attrezzi e si ferma qui. "giu" e "linea" muovono y e pagina, che vivono solo qui dentro.
   if (info.relazione) {
     disegnaRelazionePdf(info.relazione, {
       PDF: PDF, normale: normale, grassetto: grassetto, scrivi: scrivi, spazio: spazio, nuovaPagina: nuovaPagina,
-      disegnaFoto: disegnaFoto, altezzaFoto: altezzaFoto, fotoPerGiorno: fotoPerVerbale,
+      disegnaFotoGriglia: disegnaFotoGriglia, altezzaFoto: altezzaFoto, fotoPerGiorno: fotoPerVerbale,
       giu: function (n) { y -= n; },
       linea: function () { spazio(14); y -= 6; pagina.drawLine({ start: { x: M, y: y }, end: { x: L - M, y: y }, thickness: 0.8, color: PDF.rgb(0.2, 0.2, 0.2) }); y -= 12; }
     });
@@ -3664,12 +3742,12 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       if (!testo && !foto.length) return;
       const def = SEZIONI.find(function (z) { return z.chiave === k; });
       // Una sezione di sole foto: il titolo deve stare nella stessa pagina della prima foto, non orfano in fondo.
-      spazio(40 + (testo ? 0 : altezzaFoto(foto[0]) + 40));
+      spazio(40 + (testo ? 0 : altezzaFoto(foto[0], c) + 40));
       scrivi(def.nome.toUpperCase(), 11, grassetto);
       if (!testo) { /* sezione con sole foto: il titolo fa da intestazione e basta */ }
       else if (def.elenco) righeElenco(testo).forEach(function (r) { scrivi('• ' + r, 11, normale, null, 6); });
       else scrivi(testo, 11, normale);
-      foto.forEach(function (voce) { disegnaFoto(voce, c); });
+      disegnaFotoGriglia(foto, c);
       y -= 8;
       stampate++;
     });
@@ -3778,11 +3856,15 @@ function disegnaRelazionePdf(rel, a) {
       const per = a.fotoPerGiorno[g.sop];
       const prima = CHIAVI_SEZIONI.map(function (k) { return (per[k] || [])[0]; }).filter(Boolean)[0];
       // Il titolo FOTO e quello del giorno restano sulla stessa pagina della prima foto, non orfani in fondo.
-      a.spazio((i === 0 ? 30 : 0) + 40 + a.altezzaFoto(prima) + 40);
+      a.spazio((i === 0 ? 30 : 0) + 40 + a.altezzaFoto(prima, c) + 40);
       if (i === 0) { a.scrivi('FOTO', 12, a.grassetto); a.giu(4); }
       a.scrivi(dataEstesa(g.giorno).toUpperCase() + ' - ' + (g.verbale || g.sopralluogo), 11, a.grassetto);
+      // Il nome della sezione una volta sola, poi le sue foto a due per riga.
       CHIAVI_SEZIONI.forEach(function (k) {
-        (per[k] || []).forEach(function (voce) { a.scrivi(nomeSezione(k), 9, a.normale, grigio); a.disegnaFoto(voce, c); });
+        const qui = per[k] || [];
+        if (!qui.length) return;
+        a.scrivi(nomeSezione(k), 9, a.normale, grigio);
+        a.disegnaFotoGriglia(qui, c);
       });
     });
   }
@@ -3902,9 +3984,12 @@ const AZIONI = {
   'detta': function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
+    // Non se ne apre una seconda per la stessa data: si riapre questa.
+    if (s.chiuso) { avvisa('Giornata chiusa: riaprila per dettare', 'att'); return; }
     avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
+  'riapri-giornata': function (el) { riapriGiornata(el.dataset.id); },
   'esporta-pdf': function (el) { apriEsportaPdf(el.dataset.id); },
   'pdf-crea': function (el) { creaPdf(el.dataset.id); },
   // --- chiusura del cantiere e relazione ---
@@ -4281,6 +4366,8 @@ const AZIONI = {
 async function dettaSu(c) {
   const s = sopralluogoPerDettare(c);
   vai('#/giorno/' + s.id);
+  // La giornata di oggi è già chiusa: non se ne crea una seconda, si porta lì e si dice.
+  if (s.chiuso) { avvisa('La giornata di oggi è chiusa: riaprila per dettare', 'att'); return; }
   await avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
 }
 
@@ -4463,7 +4550,7 @@ function avvio() {
   window.addEventListener('pagehide', function () { salvaSubitoTutto(); salvagenteGitHub(); });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') { salvaSubitoTutto(); salvagenteGitHub(); }
-    else { ricaricaSeFresco(); aggiornaVista(); elaboraCoda(); controllaPromemoria(); }
+    else { ricaricaSeFresco(); controllaCambioGiorno(); aggiornaVista(); elaboraCoda(); controllaPromemoria(); }
   });
 
   if ('serviceWorker' in navigator) {
@@ -4473,6 +4560,7 @@ function avvio() {
   elaboraCoda();
   setInterval(elaboraCoda, 60000);
   setInterval(controllaPromemoria, 60000);
+  setInterval(controllaCambioGiorno, 60000);
   controllaPromemoria();
   misuraSpazio().then(function () { if (SPAZIO.avviso) aggiornaVista(); });
 
