@@ -32,6 +32,15 @@ const SOGLIA_SPAZIO = 0.70;
 // Attese fra un tentativo e l'altro della coda: tre e poi ci si ferma.
 const ATTESE_TENTATIVI = [2000, 8000, 30000];
 
+// Le foto si riducono prima di salvarle, sempre: a piena risoluzione dieci foto riempiono il telefono.
+const LATO_FOTO = 1600;
+const QUALITA_FOTO = 0.75;
+// Nel PDF non serve la qualità dello schermo: si ricomprime ancora.
+const LATO_FOTO_PDF = 1200;
+const QUALITA_FOTO_PDF = 0.6;
+// La sezione in cui finisce una foto se nessuno ne sceglie una.
+const SEZIONE_FOTO = 'osservazioni';
+
 // Le undici sezioni del sopralluogo, nell'ordine deciso. Non si toccano.
 const SEZIONI = [
   { chiave: 'lavorazioni_eseguite',     nome: 'Lavorazioni eseguite',              elenco: false },
@@ -64,7 +73,7 @@ const PAROLE_SEZIONE = {
 };
 
 // Prefissi dei codici automatici e dove sta ogni tipo di documento nell'archivio.
-const PREFISSI = { cantiere: 'CANT', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS' };
+const PREFISSI = { cantiere: 'CANT', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', foto: 'FOTO' };
 const COLLEZIONI = { cantiere: 'cantieri', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino' };
 
 // Unità di misura: la tabella dei sinonimi si applica in locale, gratis. Claude si chiama solo per quello che manca qui.
@@ -340,6 +349,22 @@ const REGOLE_CERCA_VOCE = `Ricevi la descrizione di una lavorazione dettata in c
 const REGOLE_UM = `Ricevi un'unità di misura scritta o dettata in un cantiere italiano. Rispondi soltanto con la forma normalizzata, scelta fra: m, m², m³, kg, q, t, n, h, corpo, l, cm, mm. Se non è riconoscibile, rispondi con un punto interrogativo. Niente altro testo.`;
 
 const REGOLE_RIASSUNTO = `Ricevi i verbali di sopralluogo di un cantiere in un periodo. Scrivi due righe, in italiano, che dicono come è andata: cosa è stato fatto, cosa manca, se ci sono stati problemi. Usa solo quello che c'è nei verbali: non inventare niente. Niente titoli, niente elenchi, solo le due righe.`;
+
+// Il referto di una foto è corto: un foglio corto e dedicato, non quello del sopralluogo, che costerebbe venti volte tanto.
+const REGOLE_FOTO = `Ricevi la descrizione dettata a voce di una fotografia scattata in cantiere, già trascritta. Scrivi la didascalia di quella foto per il verbale di sopralluogo.
+
+Regole:
+- Una o due frasi, non di più.
+- Togli le esitazioni: ehm, cioè, allora, diciamo, praticamente, insomma, ecco, niente, appunto.
+- Togli le ripetizioni del parlato: "il il solaio" diventa "il solaio".
+- Applica le correzioni dette a voce: "lato nord, no, lato sud" diventa "lato sud".
+- I numeri in cifre e le unità in forma breve: 25 m², 200 kg, 1,80 m, 3 ore, alle 9:30.
+- Non aggiungere niente che non sia stato detto. Non spiegare, non commentare, non inventare.
+- Non scrivere "nella foto si vede" o "si nota che": vai dritto alla cosa.
+- Correggi le parole di cantiere storpiate dalla trascrizione: "cassieri" diventa casseri, "casse forme" diventa casseforme, "ferma piede" diventa fermapiede, "in palcato" diventa impalcato.
+- Se il dettato non si capisce, riporta il testo così com'è senza inventare.
+
+Rispondi soltanto con la didascalia. Niente virgolette, niente titoli, niente altro testo.`;
 
 /* ============================================================
    UTILITÀ
@@ -778,6 +803,17 @@ function totaleContabilita(c) {
 function nomeSezione(chiave) {
   const s = SEZIONI.find(function (x) { return x.chiave === chiave; });
   return s ? s.nome : (chiave === 'da_smistare' ? 'Da smistare' : chiave);
+}
+// Le foto stanno in media, che oggi contiene solo foto ma domani potrebbe contenere altro.
+function fotoDi(sop) {
+  return (sop && Array.isArray(sop.media) ? sop.media : []).filter(function (m) { return m && m.tipo === 'foto'; });
+}
+function trovaFoto(sop, id) {
+  return fotoDi(sop).find(function (f) { return f.id === id; }) || null;
+}
+// Una foto senza sezione, o con una sezione che non esiste più, va in "Altre osservazioni".
+function sezioneFoto(f) {
+  return CHIAVI_SEZIONI.indexOf(f.sezione) !== -1 ? f.sezione : SEZIONE_FOTO;
 }
 
 /* ============================================================
@@ -1311,7 +1347,7 @@ function accoda(lavoro) {
   return lavoro;
 }
 function descriviLavoro(l) {
-  const tipi = { trascrizione: 'Trascrizione', riordino: 'Riordino', contabilita: 'Contabilità', nota: 'Nota' };
+  const tipi = { trascrizione: 'Trascrizione', riordino: 'Riordino', contabilita: 'Contabilità', nota: 'Nota', referto: 'Referto foto' };
   return (tipi[l.tipo] || l.tipo) + (l.etichetta ? ' · ' + l.etichetta : '');
 }
 
@@ -1371,6 +1407,13 @@ async function elaboraCoda() {
 }
 
 function segnaFallito(lavoro) {
+  if (lavoro.foto) {
+    // Il referto di una foto: la foto resta, e il dettato grezzo pure, se c'era già.
+    const sop = sopralluogo(lavoro.sop);
+    const f = sop && trovaFoto(sop, lavoro.foto);
+    if (f) { f.stato = 'errore'; f.errore = lavoro.errore; salva('sopralluogo', sop); }
+    return;
+  }
   if (lavoro.tipo === 'trascrizione' || lavoro.tipo === 'riordino') {
     const sop = sopralluogo(lavoro.sop);
     const pezzo = sop && sop.pezzi.find(function (p) { return p.id === lavoro.pezzo; });
@@ -1383,6 +1426,7 @@ async function eseguiLavoro(l) {
   if (l.tipo === 'riordino') return await lavoroRiordino(l);
   if (l.tipo === 'contabilita') return await lavoroContabilita(l);
   if (l.tipo === 'nota') return await lavoroNota(l);
+  if (l.tipo === 'referto') return await lavoroReferto(l);
   throw new Error('Lavoro sconosciuto');
 }
 
@@ -1427,6 +1471,43 @@ async function lavoroTrascrizione(l) {
     if (l.per === 'nota') accoda({ tipo: 'nota', cantiere: l.cantiere, grezzo: l.grezzo, etichetta: l.etichetta });
     else accoda({ tipo: 'contabilita', cantiere: l.cantiere, grezzo: l.grezzo, ora: l.ora, etichetta: l.etichetta });
   }
+  if (l.per === 'foto') {
+    const sop = sopralluogo(l.sop);
+    const f = sop && trovaFoto(sop, l.foto);
+    if (!f) { await cancellaMedia(l.audio); return; }
+    if (!l.grezzo) {
+      const blob = await leggiMedia(l.audio);
+      if (!blob) throw new Error('Audio non trovato nel telefono');
+      l.grezzo = await trascriviConGroq(blob);
+      salvaLocale();
+      avvisa('Trascritto', 'ok');
+    }
+    // Come per le note: l'audio del referto serve solo a trascrivere. La foto invece resta.
+    await cancellaMedia(l.audio);
+    if (f.audio === l.audio) f.audio = null;
+    f.grezzo = aggiungiTesto(f.grezzo, l.grezzo);
+    f.stato = 'trascritto';
+    salva('sopralluogo', sop);
+    accoda({ tipo: 'referto', sop: sop.id, foto: f.id, grezzo: l.grezzo, etichetta: l.etichetta });
+  }
+}
+
+// Il dettato di una foto diventa una didascalia. Senza chiave resta il testo grezzo: non si perde niente.
+async function lavoroReferto(l) {
+  const sop = sopralluogo(l.sop);
+  const f = sop && trovaFoto(sop, l.foto);
+  if (!f) return;
+  const grezzo = String(l.grezzo || '').trim();
+  let didascalia = grezzo;
+  if (grezzo && chiaveAnthropic()) {
+    didascalia = String(await chiamaClaude(REGOLE_FOTO, 'Dettato: ' + grezzo, 800)).trim().replace(/^["«“]+|["»”]+$/g, '').trim() || grezzo;
+  }
+  // Come per le sezioni: il testo nuovo non sostituisce quello che c'è già, si aggiunge in fondo.
+  f.referto = aggiungiTesto(f.referto, didascalia);
+  f.stato = 'riordinato';
+  f.errore = null;
+  salva('sopralluogo', sop);
+  avvisa(grezzo ? 'Referto pronto' : 'Registrazione vuota', grezzo ? 'ok' : 'att');
 }
 
 async function lavoroRiordino(l) {
@@ -1748,6 +1829,15 @@ async function salvaPezzoRegistrato(blob, durata, ora, destinazione) {
   } else if (destinazione.tipo === 'nota') {
     avvisa('Salvato', 'ok');
     accoda({ tipo: 'trascrizione', per: 'nota', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'nota delle ' + ora });
+  } else if (destinazione.tipo === 'foto') {
+    const sop = sopralluogo(destinazione.sop);
+    const f = sop && trovaFoto(sop, destinazione.foto);
+    if (!f) { await cancellaMedia(rif); return; }
+    // Il riferimento all'audio sta anche sulla foto: così la card Spazio lo conta e la schermata sa che c'è un referto in arrivo.
+    f.audio = rif; f.stato = 'in_coda'; f.errore = null;
+    salva('sopralluogo', sop);
+    avvisa('Salvato', 'ok');
+    accoda({ tipo: 'trascrizione', per: 'foto', sop: sop.id, foto: f.id, audio: rif, etichetta: f.codice });
   }
   aggiornaVista();
 }
@@ -1771,6 +1861,171 @@ async function riascolta(sopId, pezzoId) {
   lettore.onended = function () { pezzoInAscolto = null; aggiornaVista(); };
   try { await lettore.play(); } catch (e) { avvisa('Non si sente', 'err'); pezzoInAscolto = null; }
   aggiornaVista();
+}
+
+/* ============================================================
+   LE FOTOGRAFIE
+   Si scattano dal sopralluogo e restano attaccate a quel giorno, in IndexedDB
+   come l'audio. Si riducono PRIMA di salvarle, sempre: nel telefono non entra
+   mai una foto a piena risoluzione. Sulla foto non si scrive niente: data, ora
+   e cantiere sono dati, e si mostrano accanto. Nel JSON che va su GitHub c'è
+   solo il riferimento e il testo, mai l'immagine.
+   ============================================================ */
+
+// createImageBitmap raddrizza la foto secondo l'orientamento del telefono; se manca si passa da un <img>.
+async function apriImmagine(file) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) { /* si prova l'altra strada */ }
+  }
+  return await new Promise(function (ok, no) {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = function () { URL.revokeObjectURL(url); ok(im); };
+    im.onerror = function () { URL.revokeObjectURL(url); no(new Error('Il telefono non riesce ad aprire questa foto')); };
+    im.src = url;
+  });
+}
+
+// Lato lungo a latoMax, JPEG alla qualità detta. Torna il blob e le misure, che servono al PDF.
+async function riduciFoto(file, latoMax, qualita) {
+  const im = await apriImmagine(file);
+  const w = im.naturalWidth || im.width, a = im.naturalHeight || im.height;
+  if (!w || !a) throw new Error('Foto vuota');
+  const scala = Math.min(1, latoMax / Math.max(w, a));
+  const W = Math.max(1, Math.round(w * scala)), A = Math.max(1, Math.round(a * scala));
+  const tela = document.createElement('canvas');
+  tela.width = W; tela.height = A;
+  tela.getContext('2d').drawImage(im, 0, 0, W, A);
+  if (im.close) im.close();
+  const blob = await new Promise(function (ok, no) {
+    tela.toBlob(function (b) { if (b) ok(b); else no(new Error('Riduzione non riuscita')); }, 'image/jpeg', qualita);
+  });
+  // Safari tiene la memoria della tela finché esiste: la si svuota subito, il telefono ne ha poca.
+  tela.width = 1; tela.height = 1;
+  return { blob: blob, larghezza: W, altezza: A };
+}
+
+/* Dal file scelto (scattato o preso dal rullino) alla voce in media del sopralluogo.
+   Poi si apre la foto grande: la cosa più probabile è che voglia dire subito cos'è. */
+async function aggiungiFoto(file, sopId, origine) {
+  const s = sopralluogo(sopId);
+  if (!s || !file) return;
+  avvisa('Preparo la foto…');
+  let ridotta;
+  try { ridotta = await riduciFoto(file, LATO_FOTO, QUALITA_FOTO); }
+  catch (e) { avvisa(e.message || 'Foto non leggibile', 'err'); return; }
+  const id = nuovoId();
+  let rif;
+  try { rif = await salvaMedia(id, ridotta.blob); }
+  catch (e) { avvisa('Foto non salvata', 'err'); return; }
+  // Dal rullino vale la data del file, se è credibile; uno scatto è adesso.
+  const d = (origine === 'rullino' && file.lastModified && file.lastModified < Date.now() - 60000) ? new Date(file.lastModified) : new Date();
+  if (!Array.isArray(s.media)) s.media = [];
+  const f = {
+    id: id, codice: codiceNuovo('FOTO'), tipo: 'foto', file: rif,
+    quando: d.toISOString(), giorno: dataLocaleISO(d), ora: oraAdesso(d),
+    sezione: SEZIONE_FOTO, referto: '', grezzo: '', nelPdf: false,
+    peso: ridotta.blob.size, larghezza: ridotta.larghezza, altezza: ridotta.altezza,
+    stato: '', audio: null
+  };
+  s.media.push(f);
+  salva('sopralluogo', s);
+  avvisa('Foto salvata', 'ok');
+  vai('#/foto/' + s.id + '/' + f.id);
+}
+
+// Tolta una foto, si tolgono il file, l'audio del referto se è ancora in giro, e i suoi lavori in coda.
+async function eliminaFoto(s, f) {
+  const loc = leggiLocale();
+  loc.coda = loc.coda.filter(function (l) { return l.foto !== f.id; });
+  salvaLocale();
+  if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+  if (f.audio) await cancellaMedia(f.audio);
+  s.media = (s.media || []).filter(function (m) { return m !== f; });
+  salva('sopralluogo', s);
+}
+// Quando si cancella un sopralluogo intero: i file di tutte le sue foto.
+async function cancellaFileFoto(s) {
+  for (const f of fotoDi(s)) {
+    if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+    if (f.audio) await cancellaMedia(f.audio);
+  }
+}
+
+/* Le schermate sono stringhe HTML e IndexedDB è asincrono: le immagini si
+   mettono dopo, leggendo il blob una volta sola e tenendo l'indirizzo in
+   memoria. Le foto non cambiano mai una volta salvate, quindi si può. */
+const URL_FOTO = {};
+function urlFoto(rif) {
+  if (!URL_FOTO[rif]) {
+    URL_FOTO[rif] = leggiMedia(rif).then(function (blob) {
+      if (!blob) { delete URL_FOTO[rif]; return null; }
+      return URL.createObjectURL(blob);
+    });
+  }
+  return URL_FOTO[rif];
+}
+function scordaFoto(rif) {
+  const p = URL_FOTO[rif];
+  if (!p) return;
+  delete URL_FOTO[rif];
+  p.then(function (u) { if (u) URL.revokeObjectURL(u); });
+}
+function caricaImmagini(radice) {
+  radice.querySelectorAll('img[data-foto]').forEach(function (img) {
+    urlFoto(img.dataset.foto).then(function (u) {
+      if (!img.isConnected) return;
+      if (u) img.src = u;
+      else { const q = img.parentElement; if (q) { q.classList.add('persa'); img.remove(); } }
+    });
+  });
+}
+
+// La coda sa più della foto: se un lavoro suo è in corso o è fallito, lo si dice.
+function statoLavoroFoto(f) {
+  const loc = leggiLocale();
+  const l = loc.coda.find(function (x) { return x.foto === f.id; });
+  const copia = Object.assign({}, f);
+  if (l) {
+    if (l.stato === 'in_corso') copia.stato = l.tipo === 'referto' ? 'trascritto' : 'in_corso';
+    else if (l.stato === 'fallito') { copia.stato = 'errore'; copia.errore = l.errore; }
+    else if (l.stato === 'in_attesa') { copia.stato = l.tipo === 'referto' ? 'trascritto' : 'in_coda'; copia.errore = l.errore || null; }
+  } else if (f.stato === 'in_coda' || f.stato === 'in_corso' || f.stato === 'trascritto') {
+    // Un lavoro sparito dalla coda (svuotata a mano) non deve sembrare ancora in corso.
+    copia.stato = 'errore'; copia.errore = 'tolto dalla coda';
+  }
+  return copia;
+}
+function descriviStatoFoto(st) {
+  if (st.stato === 'in_coda') return { testo: 'referto in coda' + (st.errore ? ' · ' + st.errore : ''), classe: 'att' };
+  if (st.stato === 'in_corso') return { testo: 'trascrivendo…', classe: 'att' };
+  if (st.stato === 'trascritto') return { testo: 'trascritto, sistemo il referto…', classe: 'att' };
+  if (st.stato === 'errore') return { testo: 'non riuscito: ' + (st.errore || ''), classe: 'err' };
+  return { testo: '', classe: '' };
+}
+
+// Le miniature in fila. Con opzioni.segna sotto ognuna c'è il tasto per metterla nel PDF o toglierla.
+function filaFoto(s, lista, opzioni) {
+  opzioni = opzioni || {};
+  if (!lista.length) return '';
+  return '<div class="foto-fila">' + lista.map(function (f) {
+    const st = statoLavoroFoto(f);
+    const eti = st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora);
+    return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
+      '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(f.codice) + '">' +
+      (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') +
+      (f.nelPdf ? '<span class="tacca">✓ PDF</span>' : '') + '</button>' +
+      '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
+      (opzioni.segna ? '<button class="foto-segna' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '☑ nel PDF' : '☐ nel PDF') + '</button>' : '') +
+      '</div>';
+  }).join('') + '</div>';
+}
+// Le foto di un sopralluogo divise per sezione: serve alle schermate del giorno e al PDF.
+function fotoPerSezione(s) {
+  const per = {};
+  fotoDi(s).forEach(function (f) { const k = sezioneFoto(f); (per[k] = per[k] || []).push(f); });
+  return per;
 }
 
 /* ---- notifiche ---- */
@@ -1852,6 +2107,7 @@ function disegna() {
       case 'modifica-cantiere': html = vistaCantiereForm(ROTTA.parametri[0]); break;
       case 'giorno': html = vistaGiorno(ROTTA.parametri[0]); break;
       case 'verbale': html = vistaVerbaleModifica(ROTTA.parametri[0]); break;
+      case 'foto': html = vistaFoto(ROTTA.parametri[0], ROTTA.parametri[1]); break;
       case 'contabilita': html = vistaContabilita(ROTTA.parametri[0]); break;
       case 'listino': html = vistaListino(ROTTA.parametri[0], ROTTA.parametri[1]); break;
       case 'note': html = vistaNote(ROTTA.parametri[0]); break;
@@ -1865,6 +2121,8 @@ function disegna() {
   }
   vista.innerHTML = html;
   vista.querySelectorAll('textarea.corpo, textarea.campo.auto').forEach(cresciTextarea);
+  // Le foto arrivano da IndexedDB dopo: la schermata è già disegnata.
+  caricaImmagini(vista);
 }
 function cresciTextarea(t) {
   t.style.height = 'auto';
@@ -1891,10 +2149,11 @@ function testoElenco(testo, elenco) {
   if (!elenco) return h(testo);
   return righeElenco(testo).map(function (r) { return '<div class="voce"><span class="segno">●</span><span>' + h(r) + '</span></div>'; }).join('');
 }
-function cardSezioneLettura(chiave, testo) {
+// "extra" è quello che sta sotto il testo: le foto della sezione. Una sezione con sole foto non ha corpo.
+function cardSezioneLettura(chiave, testo, extra) {
   const s = SEZIONI.find(function (x) { return x.chiave === chiave; });
-  return '<div class="card" id="sez-' + chiave + '"><div class="card-capo">' + h(s.nome) + '</div>' +
-    '<div class="card-corpo">' + testoElenco(testo, s.elenco) + '</div></div>';
+  return '<div class="card" id="sez-' + chiave + '"><div class="card-capo' + (String(testo || '').trim() ? '' : ' spenta') + '">' + h(s.nome) + '</div>' +
+    (String(testo || '').trim() ? '<div class="card-corpo">' + testoElenco(testo, s.elenco) + '</div>' : '') + (extra || '') + '</div>';
 }
 function rigaAudio(sop, pezzo, opzioni) {
   opzioni = opzioni || {};
@@ -1948,7 +2207,7 @@ function vistaDashboard() {
     destra: '<button class="pill ok" data-az="vai" data-a="#/nuovo-cantiere">＋ cantiere</button>' });
   html += '<div class="cerca">🔍 <input type="search" placeholder="Cerca cantiere, committente, codice" value="' + h(filtroCantieri) + '" data-campo="filtro-cantieri" autocomplete="off"></div>';
   html += '<button class="link blocco" data-az="vai" data-a="#/cerca">🔎 Cerca nei documenti</button>';
-  if (SPAZIO.avviso) html += '<div class="avviso">Spazio quasi pieno: scarica gli audio vecchi. <button class="link" data-az="vai" data-a="#/dev" style="min-height:auto">Apri</button></div>';
+  if (SPAZIO.avviso) html += '<div class="avviso">Spazio quasi pieno: scarica audio e foto vecchi. <button class="link" data-az="vai" data-a="#/dev" style="min-height:auto">Apri</button></div>';
   if (!navigator.onLine) html += '<div class="avviso">Manca la rete: si registra e si salva lo stesso, la trascrizione parte quando torna.</div>';
   const lavoriFalliti = loc.coda.filter(function (l) { return l.stato === 'fallito'; }).length;
   if (lavoriFalliti) html += '<div class="avviso rosso">' + lavoriFalliti + (lavoriFalliti === 1 ? ' lavoro non riuscito' : ' lavori non riusciti') + ': guarda la coda nel modo sviluppatore.</div>';
@@ -2075,20 +2334,47 @@ function vistaGiornoInCorso(s, c) {
     html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">tocca per sentire</span></div>' +
       s.pezzi.slice().reverse().map(function (p) { return rigaAudio(s, statoLavoroPezzo(p)); }).join('') + '</div>';
   }
+  html += cardFotoGiorno(s, false);
+  const fotoPer = fotoPerSezione(s);
   const vuote = [];
   SEZIONI.forEach(function (z) {
     const testo = s.sezioni[z.chiave] || '';
     const pezziQui = s.pezzi.filter(function (p) { return (p.sezioni || []).indexOf(z.chiave) !== -1 || p.sezione === z.chiave; });
+    const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      pezziQui.map(function (p) { return rigaAudio(s, statoLavoroPezzo(p), { dentroSezione: true }); }).join('') + '</div>';
-    if (testo.trim()) html += card; else vuote.push(card);
+      pezziQui.map(function (p) { return rigaAudio(s, statoLavoroPezzo(p), { dentroSezione: true }); }).join('') + filaFoto(s, fotoQui) + '</div>';
+    // Una sezione con una foto dentro non è vuota: se finisse nella tendina, la foto sparirebbe.
+    if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
   if (vuote.length) html += tendina('vuote-' + s.id, vuote.length + (vuote.length === 1 ? ' sezione ancora vuota' : ' sezioni ancora vuote'), vuote.join(''));
   html += tendinaGrezzo(s);
   if (!REG.attiva) {
-    html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '">🎙️ ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
+    html += '<div class="barra tre"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '">🎙️ ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
+      '<button class="az verde" data-az="foto-scatta" data-id="' + h(s.id) + '">📷 Foto</button>' +
       '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">Chiudi</button></div>';
+  }
+  return html;
+}
+
+/* La card delle foto del giorno, con i due ingressi nascosti: la fotocamera (capture)
+   e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
+function cardFotoGiorno(s, chiuso) {
+  const foto = fotoDi(s);
+  const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
+  let html = '';
+  if (foto.length) {
+    const tutte = nelPdf === foto.length;
+    html += '<div class="card"><div class="card-capo">' + (chiuso ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
+      (chiuso ? '' : filaFoto(s, foto)) +
+      '<div class="card-piede"><span style="flex:1">' + (chiuso ? (tutte ? 'Vanno tutte nel PDF.' : 'Nel PDF vanno solo le foto marcate.') : 'Tocca una foto per dettare il referto.') + '</span>' +
+      (chiuso || foto.length > 1 ? '<button class="btn medio" style="width:auto;flex:0 0 auto;padding:0 14px" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button>' : '') +
+      '</div></div>';
+  }
+  if (!chiuso) {
+    html += '<input type="file" accept="image/*" capture="environment" id="file-foto-scatta" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="scatto">' +
+      '<input type="file" accept="image/*" id="file-foto-rullino" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="rullino">' +
+      '<button class="link blocco" data-az="foto-rullino">＋ Foto dal rullino</button>';
   }
   return html;
 }
@@ -2107,8 +2393,12 @@ function vistaGiornoChiuso(s, c) {
     html += '<div class="card"><div class="card-capo">Audio della giornata</div>' +
       s.pezzi.map(function (p) { return rigaAudio(s, statoLavoroPezzo(p)); }).join('') + '</div>';
   }
-  piene.forEach(function (k) { html += cardSezioneLettura(k, sezioni[k]); });
-  if (!piene.length) html += '<div class="vuoto-stato">Verbale senza sezioni piene.</div>';
+  html += cardFotoGiorno(s, true);
+  // Le foto stanno sotto il testo della loro sezione, con il tasto per metterle nel PDF. Una sezione con sole foto si mostra lo stesso.
+  const fotoPer = fotoPerSezione(s);
+  const mostrate = CHIAVI_SEZIONI.filter(function (k) { return piene.indexOf(k) !== -1 || fotoPer[k]; });
+  mostrate.forEach(function (k) { html += cardSezioneLettura(k, sezioni[k], filaFoto(s, fotoPer[k] || [], { segna: true })); });
+  if (!mostrate.length) html += '<div class="vuoto-stato">Verbale senza sezioni piene.</div>';
   html += tendinaGrezzo(s);
   html += '<div class="barra"><button class="az verde" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta PDF</button>' +
     (v ? '<button class="az stretta" data-az="vai" data-a="#/verbale/' + h(v.id) + '">Modifica</button>' : '') + '</div>';
@@ -2162,6 +2452,36 @@ function vistaVerbaleModifica(id) {
       '<textarea class="corpo" data-campo="sezione-verbale" data-id="' + h(v.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea></div>';
   });
   html += '<div class="barra"><button class="az verde" data-az="salva-verbale" data-id="' + h(v.id) + '">Salva</button></div>';
+  return html;
+}
+
+/* ---------------- LA FOTO GRANDE ---------------- */
+/* È una schermata e non un foglio: così la striscia di registrazione resta
+   sopra a tutto e il gesto "indietro" riporta al giorno. Sotto la foto i suoi
+   dati, poi il referto (che si corregge a mano come tutto il resto), la sezione
+   e il tasto per il PDF. */
+function vistaFoto(sopId, fotoId) {
+  const s = sopralluogo(sopId);
+  const f = s && trovaFoto(s, fotoId);
+  if (!f) return s ? vistaGiorno(s.id) : vistaDashboard();
+  const c = cantierePerCodice(s.cantiere) || { nome: '?', id: '' };
+  const st = descriviStatoFoto(statoLavoroFoto(f));
+  const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'foto' && REG.destinazione.foto === f.id;
+  const sezione = sezioneFoto(f);
+  let html = testata({ indietro: '#/giorno/' + s.id, titolo: f.codice, sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)) + ' · ' + h(f.ora),
+    destra: registrandoQui ? '<span class="pill reg">● rec</span>' : (f.nelPdf ? '<span class="pill ok">nel PDF</span>' : '<span class="pill grigia">non nel PDF</span>') });
+  html += '<div class="foto-grande' + (f.file ? '' : ' manca') + '">' +
+    (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '<div class="foto-vuota">Foto archiviata' + (f.archiviato ? ' il ' + h(dataSenzaAnno(f.archiviato)) : '') + ': è nei File del telefono.</div>') +
+    '<div class="foto-dati">' + h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(c.nome) + ' · ' + h(s.codice) + '</div></div>';
+  html += '<div class="card"><div class="card-capo' + (String(f.referto || '').trim() ? '' : ' spenta') + '">Referto' + (st.testo ? '<span class="dx ' + st.classe + '">' + h(st.testo) + '</span>' : '') + '</div>' +
+    '<textarea class="corpo" data-campo="referto-foto" data-id="' + h(f.id) + '" data-sop="' + h(s.id) + '" placeholder="Detta o scrivi cosa si vede">' + h(f.referto || '') + '</textarea>' +
+    (f.grezzo ? '<div class="card-piede">« ' + h(f.grezzo) + ' »</div>' : '') + '</div>';
+  html += '<div class="card"><div class="card-capo">Sezione del verbale<span class="dx">' + h(nomeSezione(sezione)) + '</span></div><div class="griglia">' +
+    SEZIONI.map(function (z) { return '<button class="btn' + (z.chiave === sezione ? ' btn-ok' : '') + '" data-az="foto-sezione" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
+    '</div></div>';
+  html += '<div class="modulo"><button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>' +
+    '<button class="btn btn-rosso medio" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" style="margin-top:12px">Elimina la foto</button></div>';
+  if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="foto-detta" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">🎙️ ' + (String(f.referto || '').trim() ? 'Aggiungi al referto' : 'Detta il referto') + '</button></div>';
   return html;
 }
 
@@ -2583,7 +2903,7 @@ function vistaCantiereForm(id) {
    Fuori di qui, niente di tecnico.
    ============================================================ */
 
-const SPAZIO = { usato: 0, quota: 0, audioByte: 0, audioN: 0, mesi: {}, vecchi: 0, avviso: false, orfani: [] };
+const SPAZIO = { usato: 0, quota: 0, audioByte: 0, audioN: 0, fotoByte: 0, fotoN: 0, mesi: {}, vecchi: 0, fotoVecchie: 0, avviso: false, orfani: [] };
 
 async function misuraSpazio() {
   try {
@@ -2596,15 +2916,27 @@ async function misuraSpazio() {
   const perId = {};
   valori(leggiTutto().sopralluoghi).forEach(function (s) {
     s.pezzi.forEach(function (p) { if (p.audio) perId[p.audio.replace(/^idb:/, '')] = { sop: s, pezzo: p }; });
+    // Le foto, e l'audio di un referto non ancora trascritto: non sono orfani, hanno un documento.
+    fotoDi(s).forEach(function (f) {
+      if (f.file) perId[f.file.replace(/^idb:/, '')] = { sop: s, foto: f };
+      if (f.audio) perId[f.audio.replace(/^idb:/, '')] = { sop: s, pezzo: { scaricato: null } };
+    });
   });
   const limite = giorniFa(GIORNI_AUDIO);
-  SPAZIO.audioByte = 0; SPAZIO.audioN = 0; SPAZIO.mesi = {}; SPAZIO.vecchi = 0; SPAZIO.orfani = [];
+  SPAZIO.audioByte = 0; SPAZIO.audioN = 0; SPAZIO.fotoByte = 0; SPAZIO.fotoN = 0; SPAZIO.mesi = {}; SPAZIO.vecchi = 0; SPAZIO.fotoVecchie = 0; SPAZIO.orfani = [];
   elenco.forEach(function (m) {
     const rif = perId[m.id];
     // Un audio senza documento (una nota già trascritta, un pezzo di un sopralluogo cancellato) è solo peso morto.
     if (!rif) { SPAZIO.orfani.push(m.id); return; }
     const mese = rif.sop.giorno.slice(0, 7);
-    const voce = SPAZIO.mesi[mese] || (SPAZIO.mesi[mese] = { byte: 0, n: 0, scaricati: 0 });
+    const voce = SPAZIO.mesi[mese] || (SPAZIO.mesi[mese] = { byte: 0, n: 0, scaricati: 0, foto: { byte: 0, n: 0, scaricati: 0 } });
+    if (rif.foto) {
+      voce.foto.byte += m.peso || 0; voce.foto.n += 1;
+      if (rif.foto.scaricato) voce.foto.scaricati += 1;
+      SPAZIO.fotoByte += m.peso || 0; SPAZIO.fotoN += 1;
+      if (rif.sop.giorno < limite) SPAZIO.fotoVecchie += 1;
+      return;
+    }
     voce.byte += m.peso || 0; voce.n += 1;
     if (rif.pezzo.scaricato) voce.scaricati += 1;
     SPAZIO.audioByte += m.peso || 0; SPAZIO.audioN += 1;
@@ -2654,15 +2986,23 @@ function vistaDev() {
   html += '<div class="card' + (SPAZIO.avviso ? ' attenzione' : '') + '"><div class="card-capo">Spazio</div><div class="card-corpo">' +
     (SPAZIO.quota ? 'Occupato: ' + h(megabyte(SPAZIO.usato)) + ' su ' + h(megabyte(SPAZIO.quota)) + ' (' + percento + '%)' : 'Occupato: il telefono non lo dice') +
     '\nAudio nel telefono: ' + SPAZIO.audioN + ' (' + h(megabyte(SPAZIO.audioByte)) + ')' +
-    (SPAZIO.vecchi ? '\nPiù vecchi di ' + GIORNI_AUDIO + ' giorni: ' + SPAZIO.vecchi + ' — da scaricare' : '') +
-    (SPAZIO.avviso ? '\nSpazio quasi pieno: scarica gli audio vecchi e libera.' : '') + '</div>';
+    '\nFoto nel telefono: ' + SPAZIO.fotoN + ' (' + h(megabyte(SPAZIO.fotoByte)) + ')' +
+    (SPAZIO.vecchi ? '\nAudio più vecchi di ' + GIORNI_AUDIO + ' giorni: ' + SPAZIO.vecchi + ' — da scaricare' : '') +
+    (SPAZIO.fotoVecchie ? '\nFoto più vecchie di ' + GIORNI_AUDIO + ' giorni: ' + SPAZIO.fotoVecchie + ' — da scaricare' : '') +
+    (SPAZIO.avviso ? '\nSpazio quasi pieno: scarica audio e foto vecchi e libera.' : '') + '</div>';
   const mesi = Object.keys(SPAZIO.mesi).sort();
   mesi.forEach(function (m) {
     const v = SPAZIO.mesi[m];
-    const tuttiScaricati = v.scaricati >= v.n;
-    html += '<div class="card-piede" style="flex-wrap:wrap;gap:8px"><span style="flex:1 1 100%">' + h(titoloMese(m + '-01')) + ': ' + v.n + ' audio, ' + h(megabyte(v.byte)) + (tuttiScaricati ? ' · scaricati' : (v.scaricati ? ' · ' + v.scaricati + ' scaricati' : '')) + '</span>' +
-      '<button class="btn medio" style="flex:1" data-az="spazio-scarica" data-mese="' + m + '">Scarica gli audio di ' + h(MESI[parseInt(m.slice(5), 10) - 1]) + '</button>' +
-      '<button class="btn medio btn-rosso" style="flex:1" data-az="spazio-libera" data-mese="' + m + '"' + (tuttiScaricati ? '' : ' disabled') + '>Libera spazio</button></div>';
+    const nomeMese = h(MESI[parseInt(m.slice(5), 10) - 1]);
+    const contoScaricati = function (x) { return x.scaricati >= x.n ? ' · scaricati' : (x.scaricati ? ' · ' + x.scaricati + ' scaricati' : ''); };
+    // Prima si porta fuori tutto, audio e foto, poi si libera: il tasto rosso si accende solo allora.
+    const tuttiScaricati = v.scaricati >= v.n && v.foto.scaricati >= v.foto.n;
+    html += '<div class="card-piede" style="flex-wrap:wrap;gap:8px"><span style="flex:1 1 100%">' + h(titoloMese(m + '-01')) + ': ' +
+      (v.n ? v.n + ' audio, ' + h(megabyte(v.byte)) + contoScaricati(v) : 'nessun audio') + '<br>' +
+      (v.foto.n ? v.foto.n + ' foto, ' + h(megabyte(v.foto.byte)) + contoScaricati(v.foto) : 'nessuna foto') + '</span>' +
+      (v.n ? '<button class="btn medio" style="flex:1 1 100%" data-az="spazio-scarica" data-mese="' + m + '">Scarica gli audio di ' + nomeMese + '</button>' : '') +
+      (v.foto.n ? '<button class="btn medio" style="flex:1 1 100%" data-az="spazio-scarica-foto" data-mese="' + m + '">Scarica le foto di ' + nomeMese + '</button>' : '') +
+      '<button class="btn medio btn-rosso" style="flex:1 1 100%" data-az="spazio-libera" data-mese="' + m + '"' + (tuttiScaricati ? '' : ' disabled') + '>Libera spazio</button></div>';
   });
   if (SPAZIO.orfani.length) html += '<div class="card-piede"><span style="flex:1">' + SPAZIO.orfani.length + ' audio senza documento</span><button class="btn medio" data-az="spazio-orfani">Pulisci</button></div>';
   html += '</div>';
@@ -2699,35 +3039,63 @@ async function scaricaAudioMese(mese) {
     }
   }
   if (!file.length) { avvisa('Niente da scaricare', 'att'); return; }
-  let riuscito = false;
-  if (navigator.share && navigator.canShare && navigator.canShare({ files: file })) {
-    try { await navigator.share({ files: file, title: 'Audio CANTIERI ' + mese }); riuscito = true; }
-    catch (e) { if (e && e.name === 'AbortError') { avvisa('Annullato', 'att'); return; } }
-  }
-  if (!riuscito) {
-    // Senza condivisione (un computer): si scaricano uno per uno.
-    for (const f of file) {
-      const url = URL.createObjectURL(f);
-      const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
-      await attendi(300);
-      URL.revokeObjectURL(url);
-    }
-    riuscito = true;
-  }
-  if (riuscito) {
-    const adesso = adessoISO();
-    const toccati = new Set();
-    pezziDelMese.forEach(function (x) { x.pezzo.scaricato = adesso; toccati.add(x.sop); });
-    toccati.forEach(function (s) { salva('sopralluogo', s); });
-    avvisa('Scaricati', 'ok');
-    await misuraSpazio();
-    aggiornaVista();
-  }
+  if (!(await portaFuori(file, 'Audio CANTIERI ' + mese))) return;
+  const adesso = adessoISO();
+  const toccati = new Set();
+  pezziDelMese.forEach(function (x) { x.pezzo.scaricato = adesso; toccati.add(x.sop); });
+  toccati.forEach(function (s) { salva('sopralluogo', s); });
+  avvisa('Scaricati', 'ok');
+  await misuraSpazio();
+  aggiornaVista();
 }
 
-// Cancella solo dopo che lo scaricamento è andato a buon fine, e solo l'audio: testo e nomi restano per sempre.
+/* I file escono dal telefono con il tasto di condivisione dell'iPhone (i File, iCloud).
+   Torna vero se sono usciti, falso se l'uomo ha annullato: serve ad audio e foto allo stesso modo. */
+async function portaFuori(file, titolo) {
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: file })) {
+    try { await navigator.share({ files: file, title: titolo }); return true; }
+    catch (e) { if (e && e.name === 'AbortError') { avvisa('Annullato', 'att'); return false; } }
+  }
+  // Senza condivisione (un computer): si scaricano uno per uno.
+  for (const f of file) {
+    const url = URL.createObjectURL(f);
+    const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+    await attendi(300);
+    URL.revokeObjectURL(url);
+  }
+  return true;
+}
+
+// Come per gli audio: le foto di un mese escono tutte insieme, col nome che dice giorno, ora, codice e referto.
+async function scaricaFotoMese(mese) {
+  const file = [];
+  const fotoDelMese = [];
+  for (const s of valori(leggiTutto().sopralluoghi)) {
+    if (s.giorno.slice(0, 7) !== mese) continue;
+    for (const f of fotoDi(s)) {
+      if (!f.file) continue;
+      const blob = await leggiMedia(f.file);
+      if (!blob) continue;
+      const referto = primaRiga(f.referto);
+      const nome = s.codice + '_' + f.giorno + '_' + String(f.ora || '').replace(':', '-') + '_' + f.codice + (referto ? '_' + nomeFile(referto) : '') + '.jpg';
+      file.push(new File([blob], nome, { type: blob.type || 'image/jpeg' }));
+      fotoDelMese.push({ sop: s, foto: f });
+    }
+  }
+  if (!file.length) { avvisa('Niente da scaricare', 'att'); return; }
+  if (!(await portaFuori(file, 'Foto CANTIERI ' + mese))) return;
+  const adesso = adessoISO();
+  const toccati = new Set();
+  fotoDelMese.forEach(function (x) { x.foto.scaricato = adesso; toccati.add(x.sop); });
+  toccati.forEach(function (s) { salva('sopralluogo', s); });
+  avvisa('Scaricate', 'ok');
+  await misuraSpazio();
+  aggiornaVista();
+}
+
+// Cancella solo dopo che lo scaricamento è andato a buon fine, e solo i file: testo, referti e nomi restano per sempre.
 async function liberaSpazioMese(mese) {
-  const ok = await chiedi('Liberare lo spazio?', 'Gli audio di ' + titoloMese(mese + '-01') + ' si cancellano dal telefono. Il testo trascritto e i nomi restano.', 'Libera spazio', 'rosso');
+  const ok = await chiedi('Liberare lo spazio?', 'Gli audio e le foto di ' + titoloMese(mese + '-01') + ' si cancellano dal telefono. Il testo trascritto, i referti e i nomi restano.', 'Libera spazio', 'rosso');
   chiudiFoglio();
   if (!ok) return;
   const oggi = oggiISO();
@@ -2738,6 +3106,12 @@ async function liberaSpazioMese(mese) {
       if (!p.audio || !p.scaricato) continue;
       await cancellaMedia(p.audio);
       p.audio = null; p.archiviato = oggi; toccato = true;
+    }
+    for (const f of fotoDi(s)) {
+      if (!f.file || !f.scaricato) continue;
+      scordaFoto(f.file);
+      await cancellaMedia(f.file);
+      f.file = null; f.archiviato = oggi; toccato = true;
     }
     if (toccato) salva('sopralluogo', s);
   }
@@ -2814,7 +3188,7 @@ async function creaPdf(idVerbale) {
 // Le lettere che il carattere standard non sa scrivere si sostituiscono, se no pdf-lib si ferma.
 function testoPdf(s) {
   return String(s || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[—–]/g, '-').replace(/…/g, '...')
-    .replace(/[^\x20-\x7E\xA0-\xFF\u20AC\u2022]/g, '?');
+    .replace(/[^\x20-\x7E\xA0-\xFF\u20AC\u2022\n]/g, '?');
 }
 function spezzaRighe(font, testo, corpo, larghezza) {
   const righe = [];
@@ -2864,6 +3238,29 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       y -= corpo * 1.4;
     });
   };
+  // Le foto marcate si preparano tutte prima: l'incorporazione è asincrona, il ciclo sotto no.
+  const fotoPerVerbale = await preparaFotoPdf(doc, verbali, soloSezione);
+  // Una foto per riga, larga quanto il testo ma mai più alta di mezza pagina; sotto il referto e, in piccolo, i dati.
+  const scalaFoto = function (img) { return Math.min(larghezza / img.width, 340 / img.height, 1); };
+  const altezzaFoto = function (voce) { return voce && voce.img ? voce.img.height * scalaFoto(voce.img) : 0; };
+  const disegnaFoto = function (voce, c) {
+    const f = voce.foto;
+    const dati = f.codice + ' - ' + dataEstesa(f.giorno) + ', ' + (f.ora || '') + ' - ' + (c.nome || '');
+    if (voce.img) {
+      const scala = scalaFoto(voce.img);
+      const W = voce.img.width * scala, A = voce.img.height * scala;
+      spazio(A + 40);
+      y -= 4;
+      pagina.drawImage(voce.img, { x: M, y: y - A, width: W, height: A });
+      y -= A + 6;
+    } else {
+      spazio(40);
+      scrivi('[' + (f.file ? 'foto non leggibile' : 'foto archiviata' + (f.archiviato ? ' il ' + dataSenzaAnno(f.archiviato) : '')) + ']', 10, normale, PDF.rgb(0.45, 0.45, 0.45));
+    }
+    if (String(f.referto || '').trim()) scrivi(f.referto, 11, normale);
+    scrivi(dati, 9, normale, PDF.rgb(0.45, 0.45, 0.45));
+    y -= 8;
+  };
   const c0 = cantierePerCodice(verbali[0].cantiere) || {};
   const conCopertina = info.modo === 'periodo' || (info.modo === 'sezione' && verbali.length > 1);
   if (conCopertina) {
@@ -2894,21 +3291,56 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       scrivi(dataEstesa(v.giorno).toUpperCase() + ' - ' + v.codice, 12, grassetto);
     }
     const chiavi = soloSezione ? [soloSezione] : CHIAVI_SEZIONI;
+    const fotoQui = fotoPerVerbale[v.id] || {};
     let stampate = 0;
     chiavi.forEach(function (k) {
       const testo = String(v.sezioni[k] || '').trim();
-      if (!testo) return;
+      const foto = fotoQui[k] || [];
+      if (!testo && !foto.length) return;
       const def = SEZIONI.find(function (z) { return z.chiave === k; });
-      spazio(40);
+      // Una sezione di sole foto: il titolo deve stare nella stessa pagina della prima foto, non orfano in fondo.
+      spazio(40 + (testo ? 0 : altezzaFoto(foto[0]) + 40));
       scrivi(def.nome.toUpperCase(), 11, grassetto);
-      if (def.elenco) righeElenco(testo).forEach(function (r) { scrivi('• ' + r, 11, normale, null, 6); });
+      if (!testo) { /* sezione con sole foto: il titolo fa da intestazione e basta */ }
+      else if (def.elenco) righeElenco(testo).forEach(function (r) { scrivi('• ' + r, 11, normale, null, 6); });
       else scrivi(testo, 11, normale);
+      foto.forEach(function (voce) { disegnaFoto(voce, c); });
       y -= 8;
       stampate++;
     });
     if (!stampate) scrivi(soloSezione ? '(sezione vuota)' : '(nessuna sezione compilata)', 11, normale, PDF.rgb(0.45, 0.45, 0.45));
   });
   return await doc.save();
+}
+
+/* Le foto marcate dei verbali richiesti, ricompresse per la stampa e già incorporate nel
+   documento: { idVerbale: { chiaveSezione: [ { foto, img } ] } }. Una foto il cui file non
+   c'è più (archiviata) entra lo stesso, senza immagine: il referto è informazione. */
+async function preparaFotoPdf(doc, verbali, soloSezione) {
+  const per = {};
+  const sops = valori(leggiTutto().sopralluoghi);
+  for (const v of verbali) {
+    const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
+    if (!s) continue;
+    for (const f of fotoDi(s)) {
+      if (!f.nelPdf) continue;
+      const k = sezioneFoto(f);
+      if (soloSezione && k !== soloSezione) continue;
+      let img = null;
+      if (f.file) {
+        const blob = await leggiMedia(f.file);
+        if (blob) {
+          try {
+            const ridotta = await riduciFoto(blob, LATO_FOTO_PDF, QUALITA_FOTO_PDF);
+            img = await doc.embedJpg(await ridotta.blob.arrayBuffer());
+          } catch (e) { img = null; }
+        }
+      }
+      per[v.id] = per[v.id] || {};
+      (per[v.id][k] = per[v.id][k] || []).push({ foto: f, img: img });
+    }
+  }
+  return per;
 }
 
 async function condividiFile(blob, nome, titolo) {
@@ -3053,12 +3485,64 @@ const AZIONI = {
     chiudiFoglio();
     if (!ok) return;
     for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
+    await cancellaFileFoto(s);
     const v = verbaleDiSopralluogo(s.codice);
     if (v) cancella('verbale', v.id);
     const c = cantierePerCodice(s.cantiere);
     cancella('sopralluogo', s.id);
     avvisa('Eliminato', 'ok');
     vai(c ? '#/cantiere/' + c.id : '#/');
+  },
+  // --- foto ---
+  'foto-scatta': function () { const f = document.getElementById('file-foto-scatta'); if (f) f.click(); },
+  'foto-rullino': function () { const f = document.getElementById('file-foto-rullino'); if (f) f.click(); },
+  'foto-sezione': function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.id);
+    if (!f) return;
+    f.sezione = el.dataset.sezione;
+    salva('sopralluogo', s);
+    avvisa(nomeSezione(f.sezione), 'ok');
+    aggiornaVista();
+  },
+  'foto-marca': function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.id);
+    if (!f) return;
+    f.nelPdf = !f.nelPdf;
+    salva('sopralluogo', s);
+    avvisa(f.nelPdf ? 'Nel PDF' : 'Fuori dal PDF', f.nelPdf ? 'ok' : undefined);
+    aggiornaVista();
+  },
+  'foto-marca-tutte': function (el) {
+    const s = sopralluogo(el.dataset.id);
+    if (!s) return;
+    const foto = fotoDi(s);
+    if (!foto.length) return;
+    // Se sono già tutte dentro, il tasto le tira fuori tutte: un tasto solo, due versi.
+    const tutte = foto.every(function (f) { return f.nelPdf; });
+    foto.forEach(function (f) { f.nelPdf = !tutte; });
+    salva('sopralluogo', s);
+    avvisa(tutte ? 'Nessuna nel PDF' : 'Tutte nel PDF', tutte ? undefined : 'ok');
+    aggiornaVista();
+  },
+  'foto-detta': function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.id);
+    if (!f) return;
+    avviaRegistrazione({ tipo: 'foto', sop: s.id, foto: f.id });
+  },
+  'foto-elimina': async function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.id);
+    if (!f) return;
+    if (REG.attiva && REG.destinazione && REG.destinazione.foto === f.id) { avvisa('Ferma prima la registrazione', 'att'); return; }
+    const ok = await chiedi('Eliminare ' + f.codice + '?', 'La foto e il suo referto si cancellano dal telefono. Il codice non verrà riusato.', 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    await eliminaFoto(s, f);
+    avvisa('Eliminata', 'ok');
+    vai('#/giorno/' + s.id);
   },
   // --- contabilità ---
   'detta-contabilita': function (el) { const c = cantiere(el.dataset.id); if (c) avviaRegistrazione({ tipo: 'contabilita', cantiere: c.id }); },
@@ -3179,6 +3663,7 @@ const AZIONI = {
     if (!ok) return;
     for (const s of sops) {
       for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
+      await cancellaFileFoto(s);
       const v = verbaleDiSopralluogo(s.codice);
       if (v) cancella('verbale', v.id);
       cancella('sopralluogo', s.id);
@@ -3251,6 +3736,7 @@ const AZIONI = {
     aggiornaVista();
   },
   'spazio-scarica': function (el) { scaricaAudioMese(el.dataset.mese); },
+  'spazio-scarica-foto': function (el) { scaricaFotoMese(el.dataset.mese); },
   'spazio-libera': function (el) { liberaSpazioMese(el.dataset.mese); },
   'spazio-orfani': async function () {
     for (const id of SPAZIO.orfani) await cancellaMedia(id);
@@ -3343,6 +3829,25 @@ function suCampo(el, evento) {
     if (f) avviaImportListino(f);
     return;
   }
+  if (campo === 'file-foto' && evento === 'change') {
+    const f = el.files && el.files[0];
+    const sopId = el.dataset.id, origine = el.dataset.origine;
+    // Si svuota subito: così la stessa foto si può scegliere di nuovo, e il file grosso non resta appeso al campo.
+    el.value = '';
+    if (f) aggiungiFoto(f, sopId, origine).catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
+    return;
+  }
+  if (campo === 'referto-foto') {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.id);
+    if (!f) return;
+    f.referto = el.value;
+    cresciTextarea(el);
+    const capo = el.previousElementSibling;
+    if (capo && capo.classList.contains('card-capo')) capo.classList.toggle('spenta', !el.value.trim());
+    salvaConCalma('foto-' + f.id, function () { salva('sopralluogo', s); });
+    return;
+  }
   if (campo === 'import-intestazione') { IMPORT.schema.riga_intestazione = Number(el.value) || 0; aggiornaVista(); return; }
   if (campo === 'import-decimali') { IMPORT.schema.decimali = el.value; return; }
   if (campo === 'import-colonna') {
@@ -3386,7 +3891,7 @@ function avvio() {
   document.addEventListener('focusout', function (ev) {
     const el = ev.target;
     if (!el || !el.dataset || !el.dataset.campo) return;
-    const prefissi = { 'sezione': 'sop-', 'sezione-verbale': 'ver-', 'note-cantiere': 'cant-', 'note-contabilita': 'cont-' };
+    const prefissi = { 'sezione': 'sop-', 'sezione-verbale': 'ver-', 'note-cantiere': 'cant-', 'note-contabilita': 'cont-', 'referto-foto': 'foto-' };
     const pre = prefissi[el.dataset.campo];
     if (pre && salvaAdesso(pre + el.dataset.id)) avvisa('Salvato', 'ok');
   });

@@ -184,6 +184,39 @@ textarea.corpo::placeholder{color:var(--line)}
 .audio .d{font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 auto}
 .audio.sotto{padding-left:var(--s4);background:var(--surface-2);border-top:1px solid var(--line)}
 
+/* ---------- foto ----------
+   Le miniature sono materiale da consultare: cornice azzurra, come il triangolino del play.
+   Il verde compare solo sulla tacca "nel PDF", che è una scelta fatta. */
+.foto-fila{display:flex;flex-wrap:wrap;gap:var(--s2);padding:var(--s2) var(--s4) var(--s3)}
+.card-corpo + .foto-fila,textarea.corpo + .foto-fila,.audio + .foto-fila{border-top:1px solid var(--line)}
+.foto-mini{width:104px;flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.foto-mini .q{position:relative;display:block;width:104px;height:104px;padding:0;border-radius:10px;overflow:hidden;
+  background:var(--surface-2);border:2px solid rgba(56,189,248,.5);color:var(--muted);font-size:14px}
+.foto-mini .q:active{filter:brightness(1.2)}
+.foto-mini .q img{display:block;width:100%;height:100%;object-fit:cover}
+.foto-mini .q.manca::after,.foto-mini .q.persa::after{content:'archiviata';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+.foto-mini .q.persa::after{content:'non trovata'}
+.foto-mini.pdf .q{border-color:var(--accent)}
+.foto-mini .tacca{position:absolute;right:4px;bottom:4px;padding:3px 7px;border-radius:999px;
+  background:rgba(13,15,18,.85);color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.05em}
+.foto-mini .e{display:block;text-align:center;font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.foto-mini .e.att{color:var(--gold)}
+.foto-mini .e.err{color:var(--danger)}
+.foto-segna{display:flex;align-items:center;justify-content:center;width:100%;min-height:var(--riga);padding:0 4px;
+  background:var(--surface-2);color:var(--text);border:1px solid var(--line);border-radius:var(--radius-p);font-size:16px;font-weight:600}
+.foto-segna.on{background:rgba(61,220,132,.16);color:var(--accent);border-color:rgba(61,220,132,.5)}
+.foto-segna:active{filter:brightness(1.25)}
+/* la foto grande: come esce dalla fotocamera, senza niente scritto sopra; i dati stanno sotto */
+.foto-grande{margin:0 var(--s4) var(--s3);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.foto-grande img{display:block;width:100%;height:auto;max-height:64vh;object-fit:contain;background:#000}
+.foto-grande .foto-vuota{padding:var(--s5) var(--s4);text-align:center;color:var(--muted);font-size:17px}
+.foto-grande.manca img{display:none}
+.foto-grande.persa::before{content:'Foto non trovata nel telefono';display:block;padding:var(--s5) var(--s4);text-align:center;color:var(--muted);font-size:17px}
+.foto-dati{padding:10px var(--s4);border-top:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-size:16px;line-height:1.4}
+.card-capo .dx.att{color:var(--gold)}
+.card-capo .dx.err{color:var(--danger)}
+
 /* ---------- barra in fondo ---------- */
 .barra{position:fixed;left:0;right:0;bottom:0;z-index:5;
   padding:var(--s2) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));
@@ -195,6 +228,10 @@ textarea.corpo::placeholder{color:var(--line)}
 .az.stretta{flex:0 0 118px}
 .az:active{filter:brightness(1.2)}
 .az:disabled{opacity:.45;filter:none}
+/* Tre bottoni nella barra (Detta, Foto, Chiudi): i due verdi hanno lo stesso peso, Chiudi si stringe.
+   Il carattere scende di un punto perché "🎙️ Continua" deve stare su una riga anche sullo schermo piccolo. */
+.barra.tre .az{padding:0 var(--s2);font-size:17px;white-space:nowrap}
+.barra.tre .az.stretta{flex:0 0 92px}
 
 /* ---------- striscia di registrazione (sostituisce la barra) ---------- */
 .reg{position:fixed;left:0;right:0;bottom:0;z-index:6;height:calc(60px + env(safe-area-inset-bottom));
