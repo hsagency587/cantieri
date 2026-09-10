@@ -52,6 +52,11 @@ L'app CANTIERI si vede come un prodotto che si vende a professionisti, e ogni sc
 | D1 | I colori non si toccano in questa operazione. Restano i quattro che ci sono. | 10/09/2026 |
 | D2 | Lo stile nuovo va in un foglio a parte, `stile.css`, caricato dopo `styles.css`, che non si apre mai. Costo accettato: due fogli che parlano degli stessi elementi, e una fusione a fine lavoro. | 10/09/2026 |
 | D3 | Il service worker non si tocca: mette già in cache da solo i file nuovi dell'origine. Un file conteso in meno. | 10/09/2026 |
+| D4 | Le icone si disegnano in `stile.css` con la maschera, non come SVG dentro `app.js`. Così `app.js` cambia di poche lettere e il disegno resta in un posto solo. | 10/09/2026 |
+| D5 | I sette componenti arrivati dopo (scheda azienda, elenco PDF) si allineano da `stile.css` §16, senza aprire `styles.css`. | 10/09/2026 |
+| D6 | L'app sta stretta: spazi ridotti di circa un terzo, margine laterale a 12px, due informazioni sulla stessa riga dove ci stanno. Restano fermi i 52px di qualsiasi bersaglio da toccare e i 64 del bottone principale. | 10/09/2026 |
+| D7 | Le azioni della testata scendono a 34px: non sono bersagli da cantiere. Il bottone principale in fondo scende da 64 a 54. | 10/09/2026 |
+| D8 | Nell'elenco aziende i cantieri stanno dentro una tendina sulla riga dell'azienda. La scheda dell'azienda si raggiunge dall'ultima voce di dentro, non più dalla riga di testa. | 10/09/2026 |
 
 ---
 
@@ -65,10 +70,11 @@ L'app CANTIERI si vede come un prodotto che si vende a professionisti, e ogni sc
 |---|---|
 | 0 — Le regole scritte | **fatto** — `STILE.md` nella cartella dell'app |
 | 1 — Le fondamenta | **fatto** — dentro `stile.css`, provato su quattro schermate |
-| 2 — La pelle | **fatto in parte** — manca il carattere (R4) e le icone (fase 3) |
-| 3 — Le icone | da fare — ⛔ |
-| 4 — Le schermate storte | da fare in parte — ⛔ |
-| 5 — Il giro completo | da fare |
+| 2 — La pelle | **fatto in parte** — manca solo il carattere (R4) |
+| 3 — Le icone | **fatto** — 27 emoji sostituite in `app.js`, dieci icone in `stile.css` §15 |
+| 4 — Le schermate storte | **fatto in parte** — resta il testo del verbale spezzato in capoversi |
+| 5 — Compressione | **fatto** — spazi ristretti, `stile.css` §17 |
+| 6 — Il giro completo | da fare |
 
 ## FASE 0 — Le regole scritte **[bloccante]**
 
@@ -96,21 +102,46 @@ Fatto: via il bordo dai riquadri, la banda in testa diventa un'etichetta, il mai
 
 **Esito atteso:** nessuna emoji nell'app.
 
-Un corredo di venti icone a linea, in un file a parte, e la sostituzione punto per punto dentro `app.js`.
+Fatto il 10/09/2026, dopo che l'altra chat aveva chiuso il suo giro.
 
-Primo passo dentro il file conteso: va fatto in una finestra in cui l'altra chat è ferma.
+Dieci icone a linea, disegnate in `stile.css` §15 e richiamate da `app.js` con `<span class="ico ico-nome"></span>`. Ventisette sostituzioni: microfono 7, lente 6, documento 3, righello 2, calcolatrice 2, firma 2, fotocamera 2, invio 1, edificio 1, cestino 1.
+
+Tolti anche i selettori di variante emoji, che forzavano il disegno a colori.
+
+Non sono emoji e restano: → ← ✓ ✕ ● ▶ ❚ ☐ ▲ ▼ ↻. Sono segni tipografici monocromatici, uguali su ogni telefono.
+
+**Punto di revisione di fase 3.** Provata dal vivo su Live Server. Al primo giro le icone uscivano come quadrati pieni: nel foglio le virgolette doppie dentro `url("...")` chiudevano la stringa. Rifatte con l'apice singolo.
 
 ## FASE 4 — Le schermate storte ⛔
 
 **Esito atteso:** niente si rompe con i dati veri.
 
-Rimane da fare in `app.js`, perché in `stile.css` non si può:
+Fatto in `stile.css`: la testata che regge i titoli lunghi, le etichette dei bottoni rimpicciolite perché ci stiano, le miniature alleggerite, un solo bottone pieno per barra.
 
-- il testo dettato spezzato in capoversi veri, invece di un blocco continuo
-- le etichette dei bottoni troppo lunghe per lo spazio che hanno ("Correggi il verbale", "Rilievo da contabilità")
-- le miniature: quattro segni su un quadrato di 104px sono ancora troppi
+Resta una cosa sola, e sta in `app.js`: **il testo del verbale spezzato in capoversi veri**. Oggi arriva come blocco unico con i ritorni a capo dentro, e l'unica cosa che si può fare da fuori è allargare l'interlinea. Non l'ho toccato: è la funzione che genera il corpo delle sezioni, cioè logica, non stile.
 
-## FASE 5 — Il giro completo
+## FASE 5 — Compressione
+
+**Esito atteso:** più roba in una schermata, senza rimpicciolire niente di quello che si tocca.
+
+Fatto in `stile.css` §17 e nella scala degli spazi: margine laterale da 20 a 12, spazio fra due riquadri da 12 a 7, margine interno da 16 a 12, distanza fra i gruppi da 32 a 22. I tre numeri del cantiere passano da 62px di altezza a 36, con valore ed etichetta sulla stessa riga. Righe da 60 a 52, miniature da 104 a 92, pallino del play da 52 a 44.
+
+Il riferimento è l'app di routine di Simone, che è più stretta di così: qui ci si è fermati a metà strada, perché questa si usa con i guanti.
+
+**Punto di revisione di fase 5.** Provata su Live Server: nella scheda azienda entra un cantiere in più nella stessa schermata.
+
+**Secondo giro, sui sei rilievi di Simone:**
+
+1. La testata sprecava spazio: "modifica" era un bottone alto 52 in cima a destra e sotto il titolo restava mezza riga vuota. Le azioni della testata scendono a 34.
+2. A destra di "＋ Sopralluogo di oggi" c'erano 120 pixel vuoti: adesso ci sta la data.
+3. I quattro bottoni dei rilievi erano due righe da due: adesso una riga sola che scorre di lato.
+4. "＋ Foto dal rullino" occupava 52px più i margini per una riga di testo: sceso a 38 senza margini.
+5. I bottoni in fondo da 64 a 54.
+6. I cantieri dell'azienda chiusi in una tendina. ⛔ questo è in `app.js`.
+
+Tolto anche uno stile scritto a mano dentro `app.js` (l'indirizzo del cantiere aveva un margine suo di 16px, ed era l'ultima riga disallineata rimasta).
+
+## FASE 6 — Il giro completo
 
 **Esito atteso:** tutte e quattordici le schermate provate con i dati veri sul telefono, e i due fogli di stile fusi in uno.
 
