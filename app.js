@@ -2047,8 +2047,8 @@ function filaFoto(s, lista, opzioni) {
       '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(f.codice) + '">' +
       (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') +
       (f.nelPdf ? '<span class="tacca">✓ PDF</span>' : '') + '</button>' +
-      // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla. Nel verbale chiuso non c'è.
-      (opzioni.segna ? '' : '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(f.codice) + '">✕</button>') +
+      // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
+      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(f.codice) + '">✕</button>' +
       '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
       (opzioni.segna ? '<button class="foto-segna' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '☑ nel PDF' : '☐ nel PDF') + '</button>' : '') +
       '</div>';
@@ -2185,11 +2185,6 @@ function testoElenco(testo, elenco) {
   return righeElenco(testo).map(function (r) { return '<div class="voce"><span class="segno">●</span><span>' + h(r) + '</span></div>'; }).join('');
 }
 // "extra" è quello che sta sotto il testo: le foto della sezione. Una sezione con sole foto non ha corpo.
-function cardSezioneLettura(chiave, testo, extra) {
-  const s = SEZIONI.find(function (x) { return x.chiave === chiave; });
-  return '<div class="card" id="sez-' + chiave + '"><div class="card-capo' + (String(testo || '').trim() ? '' : ' spenta') + '">' + h(s.nome) + '</div>' +
-    (String(testo || '').trim() ? '<div class="card-corpo">' + testoElenco(testo, s.elenco) + '</div>' : '') + (extra || '') + '</div>';
-}
 function rigaAudio(sop, pezzo, opzioni) {
   opzioni = opzioni || {};
   const suona = pezzoInAscolto === pezzo.id;
@@ -2207,8 +2202,8 @@ function rigaAudio(sop, pezzo, opzioni) {
     '<button class="play' + (spento ? ' spento' : '') + (suona ? ' suona' : '') + '" data-az="riascolta" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Riascolta">' + (suona ? '❚❚' : '▶') + '</button>' +
     '<button class="n" data-az="vai-sezione" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '"><div class="t">' + h(nome) + '</div><div class="s ' + classe + '">' + h(sotto) + '</div></button>' +
     '<span class="d">' + durataBreve(pezzo.durata) + '</span>' +
-    // La ✕ in fondo alla riga: una registrazione venuta male si butta e si rifà. A giornata chiusa non c'è.
-    (sop.chiuso ? '' : '<button class="x-riga" data-az="pezzo-elimina" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Elimina la registrazione">✕</button>') + '</div>';
+    // La ✕ in fondo alla riga: una registrazione venuta male si butta e si rifà, sempre.
+    '<button class="x-riga" data-az="pezzo-elimina" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Elimina la registrazione">✕</button></div>';
 }
 
 /* Gli audio in una scatola alta tre righe, che scorre dentro di sé: dieci registrazioni
@@ -2397,7 +2392,8 @@ function vistaGiorno(id) {
   const c = cantierePerCodice(s.cantiere) || { nome: '?', id: '' };
   // Aprire un giorno vale come aprire il suo cantiere: è quello su cui "Detta" della dashboard andrà.
   if (c.id) { const loc = leggiLocale(); if (loc.ultimoCantiere !== c.id) { loc.ultimoCantiere = c.id; salvaLocale(); } }
-  return s.chiuso ? vistaGiornoChiuso(s, c) : vistaGiornoInCorso(s, c);
+  // Una vista sola: fatto il verbale, la giornata resta quella che era e si continua a lavorarci.
+  return vistaGiornoInCorso(s, c);
 }
 
 function vistaGiornoInCorso(s, c) {
@@ -2406,10 +2402,21 @@ function vistaGiornoInCorso(s, c) {
   const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id;
   const quanteFoto = fotoDi(s).length;
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + ' · ' + h(s.codice), tocca: 'modifica-testata', id: s.id,
-    destra: registrandoQui ? '<span class="pill reg">● rec</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>' });
+    destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
+      (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
   html += '<div class="avanz"><div class="r"><span><b>' + piene.length + '</b> sezioni su 11</span><span class="dx">' +
     (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div>' +
     '<div class="barra-av"><i style="width:' + Math.round(piene.length / 11 * 100) + '%"></i></div></div>';
+
+  /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
+     e si tocca Aggiorna. Da qui si esce col PDF o si va a correggere il verbale. */
+  if (s.chiuso) {
+    const vb = verbaleDiSopralluogo(s.codice);
+    html += '<div class="card"><div class="card-capo">Verbale ' + h(vb ? vb.codice : (s.verbale || '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
+      '<div class="card-corpo" style="color:var(--text-2)">La giornata resta modificabile. Se cambi qualcosa, tocca Aggiorna qui sotto e il verbale si rifà.</div>' +
+      '<div class="griglia"><button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta il PDF</button>' +
+      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi il verbale</button>' : '') + '</div></div>';
+  }
 
   if (String(s.sezioni.da_smistare || '').trim()) {
     html += '<div class="card gialla"><div class="card-capo gialla">Da smistare</div>' +
@@ -2420,7 +2427,7 @@ function vistaGiornoInCorso(s, c) {
   }
   // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
   // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
-  html += cardFotoGiorno(s, false);
+  html += cardFotoGiorno(s, !!s.chiuso);
   if (s.pezzi.length) {
     html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">' + s.pezzi.length + ' · tocca per sentire</span></div>' +
       listaAudio(s, s.pezzi.slice().reverse()) + '</div>';
@@ -2433,7 +2440,7 @@ function vistaGiornoInCorso(s, c) {
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui) + '</div>';
+      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui, { segna: !!s.chiuso }) + '</div>';
     // Una sezione con una foto dentro non è vuota: se finisse nella tendina, la foto sparirebbe.
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
@@ -2442,26 +2449,27 @@ function vistaGiornoInCorso(s, c) {
   if (!REG.attiva) {
     html += '<div class="barra tre"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '">🎙️ ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(s.id) + '">📷 Foto</button>' +
-      '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">Chiudi</button></div>';
+      '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">' + (s.chiuso ? 'Aggiorna' : 'Chiudi') + '</button></div>';
   }
   return html;
 }
 
 /* La card delle foto del giorno, con i due ingressi nascosti: la fotocamera (capture)
    e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
-function cardFotoGiorno(s, chiuso) {
+function cardFotoGiorno(s, conVerbale) {
   const foto = fotoDi(s);
   const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
   let html = '';
   if (foto.length) {
     const tutte = nelPdf === foto.length;
-    html += '<div class="card"><div class="card-capo">' + (chiuso ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
-      (chiuso ? '' : filaFoto(s, foto)) +
-      '<div class="card-piede"><span style="flex:1">' + (chiuso ? (tutte ? 'Vanno tutte nel PDF.' : 'Nel PDF vanno solo le foto marcate.') : 'Tocca una foto per dettare il referto.') + '</span>' +
-      (chiuso || foto.length > 1 ? '<button class="btn medio" style="width:auto;flex:0 0 auto;padding:0 14px" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button>' : '') +
+    // Fatto il verbale, sotto ogni miniatura compare la spunta "nel PDF": è il momento in cui serve scegliere.
+    html += '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
+      filaFoto(s, foto, { segna: conVerbale }) +
+      '<div class="card-piede"><span style="flex:1">' + (conVerbale ? (tutte ? 'Vanno tutte nel PDF.' : 'Nel PDF vanno solo le foto marcate.') : 'Tocca una foto per dettare il referto.') + '</span>' +
+      (conVerbale || foto.length > 1 ? '<button class="btn medio" style="width:auto;flex:0 0 auto;padding:0 14px" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button>' : '') +
       '</div></div>';
   }
-  if (!chiuso) html += ingressiFoto(s);
+  html += ingressiFoto(s);
   return html;
 }
 
@@ -2474,35 +2482,6 @@ function ingressiFoto(s) {
     '<button class="link blocco" data-az="foto-rullino">＋ Foto dal rullino</button>';
 }
 
-function vistaGiornoChiuso(s, c) {
-  const v = verbaleDiSopralluogo(s.codice);
-  const sezioni = v ? v.sezioni : s.sezioni;
-  const piene = sezioniPiene(sezioni);
-  const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
-  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + ' · ' + h(v ? v.codice : s.codice), tocca: 'modifica-testata', id: s.id,
-    destra: '<span class="pill ok">chiuso alle ' + h(oraDaISO(s.chiuso)) + '</span>' });
-  const quanteFoto = fotoDi(s).length;
-  html += '<div class="numeri"><div class="n"><div class="v">' + piene.length + '/11</div><div class="k">sezioni</div></div>' +
-    '<div class="n"><div class="v">' + s.pezzi.length + '</div><div class="k">audio</div></div>' +
-    (quanteFoto ? '<div class="n"><div class="v">' + quanteFoto + '</div><div class="k">foto</div></div>' : '') +
-    '<div class="n"><div class="v">' + durataBreve(parlato) + '</div><div class="k">parlato</div></div></div>';
-  if (s.pezzi.length) {
-    html += '<div class="card"><div class="card-capo">Audio della giornata<span class="dx">' + s.pezzi.length + '</span></div>' +
-      listaAudio(s, s.pezzi) + '</div>';
-  }
-  html += cardFotoGiorno(s, true);
-  // Le foto stanno sotto il testo della loro sezione, con il tasto per metterle nel PDF. Una sezione con sole foto si mostra lo stesso.
-  const fotoPer = fotoPerSezione(s);
-  const mostrate = CHIAVI_SEZIONI.filter(function (k) { return piene.indexOf(k) !== -1 || fotoPer[k]; });
-  mostrate.forEach(function (k) { html += cardSezioneLettura(k, sezioni[k], filaFoto(s, fotoPer[k] || [], { segna: true })); });
-  if (!mostrate.length) html += '<div class="vuoto-stato">Verbale senza sezioni piene.</div>';
-  html += tendinaGrezzo(s);
-  html += '<div class="barra' + (v ? ' tre' : '') + '"><button class="az verde" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta PDF</button>' +
-    (v ? '<button class="az stretta" data-az="vai" data-a="#/verbale/' + h(v.id) + '">Modifica</button>' : '') +
-    '<button class="az stretta" data-az="riapri-giornata" data-id="' + h(s.id) + '">Riapri</button></div>';
-  return html;
-}
-
 // Il testo grezzo resta sempre sotto: è la prova di cosa è stato detto, anche dopo il riordino.
 function tendinaGrezzo(s) {
   const grezzi = s.pezzi.filter(function (p) { return p.grezzo; });
@@ -2513,57 +2492,35 @@ function tendinaGrezzo(s) {
     }).join('') + '</div>');
 }
 
+/* Chiudere la giornata vuol dire scrivere il verbale, e basta: la giornata non si blocca.
+   Si continua a cambiarla, e si ripreme Aggiorna quante volte si vuole. Il verbale è
+   sempre lo stesso documento, con lo stesso codice: si riscrive, non se ne fa un altro. */
 async function chiudiGiornata(sopId) {
   const s = sopralluogo(sopId);
-  if (!s || s.chiuso) return;
+  if (!s) return;
   if (REG.attiva) { avvisa('Ferma prima la registrazione', 'att'); return; }
   const inCoda = leggiLocale().coda.some(function (l) { return l.sop === s.id && l.stato !== 'fallito'; });
-  let testo = 'Si crea il verbale della giornata. Il sopralluogo resta com\'è, il verbale si potrà correggere.';
+  const giaFatto = verbaleDiSopralluogo(s.codice);
+  let testo = giaFatto
+    ? 'Il verbale ' + giaFatto.codice + ' si rifà con quello che hai cambiato. Le correzioni fatte a mano sul verbale si perdono. La giornata resta modificabile.'
+    : 'Si scrive il verbale della giornata. La giornata resta modificabile: se cambi qualcosa, tocca Aggiorna e il verbale si rifà.';
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
-  const giaFatto = verbaleDiSopralluogo(s.codice);
-  if (giaFatto) testo += ' Il verbale ' + giaFatto.codice + ' si riscrive: le correzioni fatte a mano si perdono.';
-  const ok = await chiedi('Chiudere la giornata?', testo, 'Chiudi la giornata');
+  const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale');
   chiudiFoglio();
   if (!ok) return;
   const sezioni = {};
   CHIAVI_SEZIONI.forEach(function (k) { sezioni[k] = s.sezioni[k] || ''; });
   if (String(s.sezioni.da_smistare || '').trim()) sezioni.note = aggiungiTesto(sezioni.note, s.sezioni.da_smistare);
-  // Una giornata riaperta e richiusa riscrive il suo verbale: non ne nasce un secondo.
-  let v = verbaleDiSopralluogo(s.codice);
+  let v = giaFatto;
   if (v) { v.sezioni = sezioni; v.giorno = s.giorno; v.ora = s.ora; v = salva('verbale', v); }
   else v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, sezioni: sezioni });
+  // "chiuso" adesso vuol dire "verbale scritto, l'ultima volta a quest'ora".
   s.chiuso = adessoISO();
   s.verbale = v.codice;
   salva('sopralluogo', s);
-  avvisa('Verbale ' + v.codice, 'ok');
+  avvisa(giaFatto ? 'Verbale ' + v.codice + ' aggiornato' : 'Verbale ' + v.codice, 'ok');
   aggiornaVista();
-}
-
-/* Una giornata chiusa si riapre e resta la stessa: di quella data ce n'è una sola.
-   Il verbale non si perde, si riscrive quando la giornata si richiude. */
-async function riapriGiornata(sopId) {
-  const s = sopralluogo(sopId);
-  if (!s || !s.chiuso) return;
-  const v = verbaleDiSopralluogo(s.codice);
-  const ok = await chiedi('Riaprire la giornata?', dataEstesa(s.giorno) + '. Si torna a dettare su questo stesso giorno' +
-    (v ? ': il verbale ' + v.codice + ' resta, e si riscrive quando la richiudi.' : '.'), 'Riapri la giornata');
-  chiudiFoglio();
-  if (!ok) return;
-  s.chiuso = null;
-  salva('sopralluogo', s);
-  avvisa('Giornata riaperta', 'ok');
-  aggiornaVista();
-}
-
-/* Si detta su una giornata chiusa: la giornata si riapre da sola e si detta lì. Di quella
-   data ce n'è una sola, e a chi ha già cominciato a parlare non si sbarra la strada. Il
-   verbale non si perde: si riscrive quando la giornata si richiude. */
-function riapriPerDettare(s) {
-  if (!s || !s.chiuso) return;
-  s.chiuso = null;
-  salva('sopralluogo', s);
-  avvisa('Giornata riaperta', 'ok');
 }
 
 /* ---------------- VERBALE: modifica ---------------- */
@@ -3994,11 +3951,9 @@ const AZIONI = {
   'detta': function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
-    riapriPerDettare(s);
     avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
-  'riapri-giornata': function (el) { riapriGiornata(el.dataset.id); },
   'esporta-pdf': function (el) { apriEsportaPdf(el.dataset.id); },
   'pdf-crea': function (el) { creaPdf(el.dataset.id); },
   // --- chiusura del cantiere e relazione ---
@@ -4374,8 +4329,6 @@ const AZIONI = {
 
 async function dettaSu(c) {
   const s = sopralluogoPerDettare(c);
-  // Se era chiusa si riapre prima di andarci, così la giornata si apre già "in corso".
-  riapriPerDettare(s);
   vai('#/giorno/' + s.id);
   await avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
 }
