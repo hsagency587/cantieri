@@ -574,7 +574,7 @@ function localeVuoto() {
     ultimoCantiere: null,
     notificheChieste: false,
     promemoriaGiorno: null,
-    github: { daMandare: false, ultimoInvio: null, errore: null },
+    github: { daMandare: false, ultimoInvio: null, errore: null, sha: null },
     scaricati: {}
   };
 }
@@ -983,6 +983,54 @@ async function scaricaGitHub() {
   return cambiato;
 }
 
+/* Due archivi sono uguali se lo sono a meno dell'ora dell'ultimo salvataggio,
+   che si muove da sola a ogni tocco e non è un dato. Le chiavi si ordinano prima
+   di confrontare: due oggetti uguali possono avere le chiavi in ordine diverso. */
+function jsonOrdinato(valore) {
+  if (valore === null || typeof valore !== 'object') return JSON.stringify(valore);
+  if (Array.isArray(valore)) return '[' + valore.map(jsonOrdinato).join(',') + ']';
+  const chiavi = Object.keys(valore).sort();
+  return '{' + chiavi.map(function (k) { return JSON.stringify(k) + ':' + jsonOrdinato(valore[k]); }).join(',') + '}';
+}
+function stessiDati(a, b) {
+  try {
+    const senzaOra = function (o) { const c = Object.assign({}, o); delete c.aggiornato; return jsonOrdinato(c); };
+    return senzaOra(a) === senzaOra(b);
+  } catch (e) { return false; }
+}
+
+/* L'ultima spinta quando la pagina sparisce. Il browser porta a termine una richiesta
+   marcata keepalive anche a pagina chiusa, ma solo sotto i 60 KB. Si usa lo sha
+   dell'ultima scrittura, perché qui non c'è il tempo di rileggerlo: se è vecchio la
+   scrittura fallisce e basta. Il dato resta nel telefono e riparte alla prossima apertura,
+   e lì il controllo "è già uguale" evita il commit doppio. */
+function salvagenteGitHub() {
+  const loc = leggiLocale();
+  if (!loc.github.daMandare || !githubPronto() || !navigator.onLine || !loc.github.sha) return;
+  let corpo;
+  try {
+    corpo = JSON.stringify({
+      message: 'CANTIERI ' + adessoISO(),
+      content: base64Utf8(JSON.stringify(leggiTutto())),
+      branch: 'dati',
+      sha: loc.github.sha
+    });
+  } catch (e) { return; }
+  if (corpo.length > 60000) return;
+  try {
+    fetch('https://api.github.com/repos/' + repoGitHub() + '/contents/dati.json', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + loc.chiavi.github,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: corpo,
+      keepalive: true
+    }).catch(function () { /* a pagina chiusa non si può fare altro */ });
+  } catch (e) { /* niente da fare: riparte alla prossima apertura */ }
+}
+
 async function inviaGitHub() {
   const loc = leggiLocale();
   if (!githubPronto() || !navigator.onLine) return false;
@@ -990,21 +1038,36 @@ async function inviaGitHub() {
   const intestazioni = { 'Authorization': 'Bearer ' + loc.chiavi.github, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' };
   const urlFile = 'https://api.github.com/repos/' + repo + '/contents/dati.json';
   try {
-    let sha = null;
+    let sha = null, remoto = null;
     const attuale = await fetch(urlFile + '?ref=dati&t=' + Date.now(), { headers: intestazioni, cache: 'no-store' });
     if (attuale.ok) {
       const j = await attuale.json();
       sha = j.sha;
+      try { remoto = JSON.parse(daBase64Utf8(j.content || '')); } catch (e) { remoto = null; }
       // Se online c'è qualcosa di più fresco (un altro telefono), si fonde prima di scrivere sopra.
-      try { fondiArchivi(leggiTutto(), JSON.parse(daBase64Utf8(j.content || ''))); } catch (e) { /* file vuoto o rotto: si scrive il nostro */ }
+      if (remoto) fondiArchivi(leggiTutto(), remoto);
     } else if (attuale.status !== 404) {
       throw new Error('GitHub ' + attuale.status);
     }
     const db = leggiTutto();
+    // Se online c'è già esattamente questa roba, non si scrive. Un commit identico al
+    // precedente non serve a niente, e la storia del repository si porta dietro per
+    // sempre una copia intera del file a ogni commit.
+    if (remoto && stessiDati(db, remoto)) {
+      loc.github.daMandare = false;
+      loc.github.ultimoInvio = adessoISO();
+      loc.github.errore = null;
+      loc.github.sha = sha;
+      salvaLocale();
+      aggiornaSeDev();
+      return true;
+    }
     const corpo = { message: 'CANTIERI ' + adessoISO(), content: base64Utf8(JSON.stringify(db)), branch: 'dati' };
     if (sha) corpo.sha = sha;
     const r = await fetch(urlFile, { method: 'PUT', headers: intestazioni, body: JSON.stringify(corpo) });
     if (!r.ok) throw new Error('GitHub ' + r.status);
+    // Lo sha nuovo serve al salvagente: alla chiusura non c'è tempo di rileggerlo.
+    try { const jr = await r.json(); loc.github.sha = (jr && jr.content && jr.content.sha) || null; } catch (e) { loc.github.sha = null; }
     loc.github.daMandare = false;
     loc.github.ultimoInvio = adessoISO();
     loc.github.errore = null;
@@ -3360,9 +3423,9 @@ function avvio() {
   window.addEventListener('online', function () { avvisa('Rete tornata', 'ok'); elaboraCoda(); if (leggiLocale().github.daMandare) programmaInvioGitHub(); aggiornaVista(); });
   window.addEventListener('offline', function () { avvisa('Manca la rete', 'att'); aggiornaVista(); });
   // Prima di sparire si scrive quello che è rimasto in sospeso.
-  window.addEventListener('pagehide', salvaSubitoTutto);
+  window.addEventListener('pagehide', function () { salvaSubitoTutto(); salvagenteGitHub(); });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') salvaSubitoTutto();
+    if (document.visibilityState === 'hidden') { salvaSubitoTutto(); salvagenteGitHub(); }
     else { ricaricaSeFresco(); aggiornaVista(); elaboraCoda(); controllaPromemoria(); }
   });
 
