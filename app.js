@@ -18,7 +18,7 @@ const MODELLO = 'claude-haiku-4-5';
 const VERSIONE_APP = '1.0.0';
 
 // Prezzi del modello in dollari per milione di token: servono solo per la stima dei consumi.
-const PREZZI = { ingresso: 1.0, uscita: 5.0, cacheLettura: 0.10, cacheScrittura: 1.25 };
+const PREZZI = { ingresso: 1.0, uscita: 5.0, cacheLettura: 0.10, cacheScrittura: 2.00 };
 
 // Oltre questo tempo una registrazione si spezza da sola: sopra i 25 MB la trascrizione la rifiuta.
 const LIMITE_PEZZO_SECONDI = 40 * 60;
@@ -1056,7 +1056,9 @@ async function trascriviConGroq(blob) {
 }
 
 // Ogni chiamata è indipendente: nessuna storia, nessun messaggio precedente.
-// Il messaggio di sistema porta cache_control: si paga una volta e poi si rilegge a un decimo.
+// Il messaggio di sistema porta cache_control con durata di un'ora: si scrive una volta
+// e per i sessanta minuti dopo si rilegge a un decimo. Ogni rilettura fa ripartire l'ora.
+// Con i cinque minuti di prima, fra un sopralluogo e l'altro il foglio si riscriveva sempre.
 async function chiamaClaude(regole, messaggioUtente, maxTokens) {
   const chiave = chiaveAnthropic();
   if (!chiave) throw new ErroreConfig('Manca la chiave Anthropic');
@@ -1064,7 +1066,7 @@ async function chiamaClaude(regole, messaggioUtente, maxTokens) {
     model: modelloAttivo(),
     max_tokens: Math.max(800, maxTokens || 800),
     temperature: 0,
-    system: [{ type: 'text', text: regole, cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: regole, cache_control: { type: 'ephemeral', ttl: '1h' } }],
     messages: [{ role: 'user', content: messaggioUtente }]
   };
   let r;
