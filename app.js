@@ -3450,6 +3450,3 @@ function avvio() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', avvio);
 else avvio();
-
-
-function proveIlCancello( {
