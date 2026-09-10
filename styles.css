@@ -228,8 +228,14 @@ textarea.corpo::placeholder{color:var(--line)}
 .foto-mini .q.manca::after,.foto-mini .q.persa::after{content:'archiviata';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
 .foto-mini .q.persa::after{content:'non trovata'}
 .foto-mini.pdf .q{border-color:var(--accent)}
-.foto-mini .tacca{position:absolute;right:4px;bottom:4px;padding:3px 7px;border-radius:999px;
-  background:rgba(13,15,18,.85);color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.05em}
+/* Il bollino del PDF: sta nell'angolo basso della foto, non più dentro il bottone che
+   la apre — così può essere lui il tasto. Il riquadro è alto 104: il fondo del bollino
+   si appoggia a 4 pixel da lì. Acceso è verde, spento è grigio. */
+.foto-mini .tacca{position:absolute;right:4px;top:100px;transform:translateY(-100%);z-index:1;
+  padding:5px 8px;border:0;border-radius:999px;line-height:1;
+  background:rgba(13,15,18,.85);color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.05em}
+.foto-mini .tacca.on{color:var(--accent)}
+.foto-mini .tacca:active{filter:brightness(1.5)}
 /* La ✕ sull'angolo alto della miniatura: sta sopra l'immagine, dalla parte opposta
    della tacca "nel PDF", e non ruba spazio alla fila. Chiede conferma prima di cancellare. */
 .foto-mini .x-mini{position:absolute;top:0;right:0;width:34px;height:34px;padding:0;z-index:1;
@@ -240,10 +246,7 @@ textarea.corpo::placeholder{color:var(--line)}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .foto-mini .e.att{color:var(--gold)}
 .foto-mini .e.err{color:var(--danger)}
-.foto-segna{display:flex;align-items:center;justify-content:center;width:100%;min-height:var(--riga);padding:0 4px;
-  background:var(--surface-2);color:var(--text);border:1px solid var(--line);border-radius:var(--radius-p);font-size:16px;font-weight:600}
-.foto-segna.on{background:rgba(61,220,132,.16);color:var(--accent);border-color:rgba(61,220,132,.5)}
-.foto-segna:active{filter:brightness(1.25)}
+
 /* la foto grande: come esce dalla fotocamera, senza niente scritto sopra; i dati stanno sotto */
 .foto-grande{margin:0 var(--s4) var(--s3);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .foto-grande img{display:block;width:100%;height:auto;max-height:64vh;object-fit:contain;background:#000}

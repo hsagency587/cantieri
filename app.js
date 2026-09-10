@@ -2045,12 +2045,15 @@ function filaFoto(s, lista, opzioni) {
     const eti = st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora);
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
       '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(f.codice) + '">' +
-      (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') +
-      (f.nelPdf ? '<span class="tacca">✓ PDF</span>' : '') + '</button>' +
+      (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') + '</button>' +
       // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
       '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(f.codice) + '">✕</button>' +
+      /* Il bollino del PDF sta nell'angolo basso della foto. Dove serve scegliere si tocca,
+         e non ruba una riga sotto la miniatura; altrove dice soltanto com'è messa. */
+      (opzioni.segna
+        ? '<button class="tacca' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="' + (f.nelPdf ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (f.nelPdf ? '✓ PDF' : '☐ PDF') + '</button>'
+        : (f.nelPdf ? '<span class="tacca on">✓ PDF</span>' : '')) +
       '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
-      (opzioni.segna ? '<button class="foto-segna' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '☑ nel PDF' : '☐ nel PDF') + '</button>' : '') +
       '</div>';
   }).join('') + '</div>';
 }
@@ -2413,7 +2416,6 @@ function vistaGiornoInCorso(s, c) {
   if (s.chiuso) {
     const vb = verbaleDiSopralluogo(s.codice);
     html += '<div class="card"><div class="card-capo">Verbale ' + h(vb ? vb.codice : (s.verbale || '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
-      '<div class="card-corpo" style="color:var(--text-2)">La giornata resta modificabile. Se cambi qualcosa, tocca Aggiorna qui sotto e il verbale si rifà.</div>' +
       '<div class="griglia"><button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta il PDF</button>' +
       (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi il verbale</button>' : '') + '</div></div>';
   }
