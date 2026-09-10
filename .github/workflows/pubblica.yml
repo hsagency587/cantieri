@@ -1,0 +1,70 @@
+# Il cancello prima di pubblicare.
+# Un app.js che non si legge farebbe morire l'app alla prima apertura, sul telefono
+# di chi la usa in cantiere. Qui si controlla prima: se il controllo non passa, il
+# sito non viene ripubblicato e online resta la versione di ieri, quella che funziona.
+# Nello stesso lavoro si alza anche il numero della cache, cosi' il sito si aggiorna
+# una volta sola invece di due.
+name: Controlla e pubblica
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Due pubblicazioni insieme si darebbero fastidio: si fa la fila.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  pubblica:
+    # Il commit fatto qui sotto porta [cache] nel messaggio: cosi' il lavoro non si richiama da solo.
+    if: "!contains(github.event.head_commit.message, '[cache]')"
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pubblicazione.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # IL CANCELLO. Se questo passo fallisce, tutto il resto non parte.
+      - name: Controlla che i file si leggano
+        run: |
+          node --check app.js
+          node --check sw.js
+          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
+
+      - name: Alza il numero della cache
+        run: |
+          NUOVO="cantieri-${GITHUB_SHA::7}"
+          sed -i "s/^const VERSIONE = .*/const VERSIONE = '$NUOVO';/" sw.js
+          node --check sw.js
+          if git diff --quiet sw.js; then
+            echo "Il numero era gia' quello giusto."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add sw.js
+            git commit -m "[cache] numero cache $NUOVO"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - name: Prepara la cartella del sito
+        run: |
+          mkdir -p _site
+          rsync -a --exclude='.git' --exclude='.github' --exclude='_site' --exclude='README.md' ./ _site/
+          ls -la _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: pubblicazione
+        uses: actions/deploy-pages@v4
