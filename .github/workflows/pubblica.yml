@@ -1,10 +1,11 @@
-# Il cancello prima di pubblicare.
-# Un app.js che non si legge farebbe morire l'app alla prima apertura, sul telefono
-# di chi la usa in cantiere. Qui si controlla prima: se il controllo non passa, il
-# sito non viene ripubblicato e online resta la versione di ieri, quella che funziona.
-# Nello stesso lavoro si alza anche il numero della cache, cosi' il sito si aggiorna
-# una volta sola invece di due.
-name: Controlla e pubblica
+# Controlla i file a ogni caricamento e alza da solo il numero della cache in sw.js.
+#
+# ATTENZIONE, cambiato il 10/09/2026: il sito NON si pubblica più da qui.
+# La pubblicazione è tornata a GitHub Pages "dal ramo main", perché il passo di
+# pubblicazione via Actions si è piantato per un'ora. Conseguenza da sapere:
+# questo controllo ORA AVVISA MA NON BLOCCA. Se app.js è rotto, GitHub manda una
+# mail che dice che il lavoro è fallito, ma il file va online lo stesso.
+name: Controlla e numero cache
 
 on:
   push:
@@ -13,26 +14,19 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
-# Due pubblicazioni insieme si darebbero fastidio: si fa la fila.
 concurrency:
-  group: pages
+  group: controlla
   cancel-in-progress: false
 
 jobs:
-  pubblica:
-    # Il commit fatto qui sotto porta [cache] nel messaggio: cosi' il lavoro non si richiama da solo.
+  controlla:
+    # Il commit fatto qui sotto porta [cache] nel messaggio: così non si richiama da solo.
     if: "!contains(github.event.head_commit.message, '[cache]')"
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.pubblicazione.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
-      # IL CANCELLO. Se questo passo fallisce, tutto il resto non parte.
       - name: Controlla che i file si leggano
         run: |
           node --check app.js
@@ -53,18 +47,3 @@ jobs:
             git commit -m "[cache] numero cache $NUOVO"
             git push
           fi
-
-      - uses: actions/configure-pages@v5
-
-      - name: Prepara la cartella del sito
-        run: |
-          mkdir -p _site
-          rsync -a --exclude='.git' --exclude='.github' --exclude='_site' --exclude='README.md' ./ _site/
-          ls -la _site
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-      - id: pubblicazione
-        uses: actions/deploy-pages@v4
