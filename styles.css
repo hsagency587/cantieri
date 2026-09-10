@@ -321,13 +321,3 @@ select.campo{-webkit-appearance:none;appearance:none;padding-right:36px;
 @media (prefers-reduced-motion:reduce){
   .reg .dot,.onda i{animation:none;transition:none}
 }
-
-/* Il titolo si tiene premuto due secondi per aprire il modo sviluppatore.
-   Senza queste righe iPhone fa altro: i tocchi ripetuti li legge come "ingrandisci",
-   e la pressione lunga apre il menu copia/cerca sopra la parola. */
-#titolo-app {
-  touch-action: manipulation;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
