@@ -187,7 +187,16 @@ textarea.corpo::placeholder{color:var(--line)}
 /* ---------- foto ----------
    Le miniature sono materiale da consultare: cornice azzurra, come il triangolino del play.
    Il verde compare solo sulla tacca "nel PDF", che è una scelta fatta. */
-.foto-fila{display:flex;flex-wrap:wrap;gap:var(--s2);padding:var(--s2) var(--s4) var(--s3)}
+/* Le foto stanno tutte su una riga sola e scorrono di lato, come un rullino: due o tre
+   si vedono subito e le altre si tirano col dito. Se andassero a capo, dieci foto
+   spingerebbero il resto della giornata fuori dallo schermo. */
+.foto-fila{display:flex;flex-wrap:nowrap;gap:var(--s2);padding:var(--s2) var(--s4) var(--s3);
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+  scroll-snap-type:x proximity;scrollbar-width:none;overscroll-behavior-x:contain}
+.foto-fila::-webkit-scrollbar{display:none}
+/* Senza questo, in molti browser il margine di destra sparisce quando si è scorsi in fondo. */
+.foto-fila::after{content:'';flex:0 0 1px}
+.foto-fila .foto-mini{scroll-snap-align:start}
 .card-corpo + .foto-fila,textarea.corpo + .foto-fila,.audio + .foto-fila{border-top:1px solid var(--line)}
 .foto-mini{width:104px;flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:4px}
 .foto-mini .q{position:relative;display:block;width:104px;height:104px;padding:0;border-radius:10px;overflow:hidden;
