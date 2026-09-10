@@ -73,8 +73,8 @@ const PAROLE_SEZIONE = {
 };
 
 // Prefissi dei codici automatici e dove sta ogni tipo di documento nell'archivio.
-const PREFISSI = { cantiere: 'CANT', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', foto: 'FOTO' };
-const COLLEZIONI = { cantiere: 'cantieri', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino' };
+const PREFISSI = { cantiere: 'CANT', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', foto: 'FOTO', relazione: 'REL' };
+const COLLEZIONI = { cantiere: 'cantieri', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino', relazione: 'relazioni' };
 
 // Unità di misura: la tabella dei sinonimi si applica in locale, gratis. Claude si chiama solo per quello che manca qui.
 const UM_SINONIMI = {
@@ -438,6 +438,13 @@ function durataBreve(secondi) {
   const m = Math.floor(secondi / 60), s = secondi % 60;
   return m + ':' + String(s).padStart(2, '0');
 }
+// Il parlato di un cantiere intero si conta in ore: "2 h 05" si legge, "125:30" no.
+function durataLunga(secondi) {
+  secondi = Math.max(0, Math.round(secondi || 0));
+  if (secondi < 3600) return durataBreve(secondi);
+  const o = Math.floor(secondi / 3600), m = Math.floor((secondi % 3600) / 60);
+  return o + ' h ' + String(m).padStart(2, '0');
+}
 function euro(n) {
   n = Number(n) || 0;
   return n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -579,8 +586,8 @@ let LOCALE = null;   // le cose del telefono, in memoria
 function archivioVuoto() {
   return {
     versione: 1,
-    contatori: { CANT: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0 },
-    cantieri: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {},
+    contatori: { CANT: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0, REL: 0 },
+    cantieri: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {}, relazioni: {},
     cancellati: {},     // id → quando: perché una cancellazione arrivi anche all'altra copia
     soloEsempio: true,  // finché è vero, dentro ci sono solo i dati di esempio
     aggiornato: adessoISO()
@@ -613,6 +620,8 @@ function leggiTutto() {
   }
   if (!DB || !DB.contatori) DB = archivioVuoto();
   if (!DB.cancellati) DB.cancellati = {};
+  // Le relazioni sono arrivate dopo: un archivio scritto prima non ha la collezione.
+  if (!DB.relazioni) DB.relazioni = {};
   return DB;
 }
 // Dice se nel telefono c'è già un archivio: la prima volta si parte con gli esempi.
@@ -650,6 +659,7 @@ function ricaricaSeFresco() {
   if (sulTelefono && sulTelefono.aggiornato && DB && DB.aggiornato && sulTelefono.aggiornato > DB.aggiornato) {
     DB = sulTelefono;
     if (!DB.cancellati) DB.cancellati = {};
+    if (!DB.relazioni) DB.relazioni = {};
   }
 }
 function persisti() {
@@ -775,6 +785,11 @@ function verbaleDiSopralluogo(codiceSop) {
 }
 function contabilitaDi(codiceCantiere) {
   return valori(leggiTutto().contabilita).find(function (c) { return c.cantiere === codiceCantiere; }) || null;
+}
+function relazione(id) { return leggiTutto().relazioni[id] || null; }
+// Una relazione per cantiere: si riscrive, non se ne fa una seconda.
+function relazioneDi(codiceCantiere) {
+  return valori(leggiTutto().relazioni).find(function (r) { return r.cantiere === codiceCantiere; }) || null;
 }
 function contabilitaOCrea(codiceCantiere) {
   let c = contabilitaDi(codiceCantiere);
@@ -1010,6 +1025,7 @@ async function scaricaGitHub() {
     // Nel telefono ci sono solo gli esempi e online c'è roba vera: gli esempi si buttano, senza mescolarli.
     DB = remoto;
     if (!DB.cancellati) DB.cancellati = {};
+    if (!DB.relazioni) DB.relazioni = {};
     DB.soloEsempio = false;
     cambiato = true;
   } else {
@@ -2107,6 +2123,8 @@ function disegna() {
       case 'modifica-cantiere': html = vistaCantiereForm(ROTTA.parametri[0]); break;
       case 'giorno': html = vistaGiorno(ROTTA.parametri[0]); break;
       case 'verbale': html = vistaVerbaleModifica(ROTTA.parametri[0]); break;
+      case 'relazione': html = vistaRelazione(ROTTA.parametri[0]); break;
+      case 'modifica-relazione': html = vistaRelazioneModifica(ROTTA.parametri[0]); break;
       case 'foto': html = vistaFoto(ROTTA.parametri[0], ROTTA.parametri[1]); break;
       case 'contabilita': html = vistaContabilita(ROTTA.parametri[0]); break;
       case 'listino': html = vistaListino(ROTTA.parametri[0], ROTTA.parametri[1]); break;
@@ -2254,6 +2272,13 @@ function vistaCantiere(id) {
   html += '<div class="numeri"><div class="n"><div class="v">' + sops.length + '</div><div class="k">giorni</div></div>' +
     '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">verbali</div></div>' +
     '<div class="n"><div class="v fatto">' + h(compatto(totale)) + '</div><div class="k">contabilità €</div></div></div>';
+  // Un cantiere chiuso ha la sua relazione in testa, prima dei giorni: è la cosa che si va a leggere.
+  const rel = c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
+  if (c.stato === 'chiuso') {
+    if (rel) html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
+      '<div class="fila"><span class="pill ok">' + h(rel.codice) + '</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div></div>';
+    else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni, con i conti</div></div></div>';
+  }
   if (!sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso') {
     html += '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p><div class="sotto">' + h(dataEstesa(oggi)) + '</div></div></div>';
   }
@@ -2280,14 +2305,23 @@ function vistaCantiere(id) {
       '<div class="stat">' + pill + '<span class="mini">' + piene + '/11 sezioni · ' + s.pezzi.length + ' audio</span></div></div></button>';
   });
   if (meseCorrente) html += '</div>';
-  if (!sops.length) html += '<div class="vuoto-stato">Nessun sopralluogo ancora. Premi il bottone verde e parla.</div>';
+  if (!sops.length) html += '<div class="vuoto-stato">' + (c.stato === 'chiuso' ? 'Nessun sopralluogo in questo cantiere.' : 'Nessun sopralluogo ancora. Premi il bottone verde e parla.') + '</div>';
   html += tendina('voci-' + c.id, 'Contabilità · Note · Listino',
     '<div class="card">' +
     '<button class="riga" data-az="vai" data-a="#/contabilita/' + h(c.id) + '"><span class="desc">Contabilità<small>' + (cont ? h(cont.codice) + ' · ' + cont.righe.length + ' righe · ' + h(euro(totale)) : 'ancora vuota') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/note/' + h(c.id) + '"><span class="desc">Note del cantiere<small>' + h(primaRiga(c.note) || 'nessuna nota') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listino prezzi<small>' + listinoTutto().length + ' voci</small></span><span class="frec">›</span></button>' +
     '</div>');
-  if (!REG.attiva && c.stato !== 'chiuso') html += '<div class="barra"><button class="az verde" data-az="parla-cantiere" data-id="' + h(c.id) + '">🎙️ Detta un sopralluogo</button></div>';
+  // In fondo, come nel giorno: l'azione grande a sinistra, "Chiudi" stretto a destra. Chiuso, al posto di Detta c'è la relazione, e Riapri.
+  if (!REG.attiva) {
+    if (c.stato === 'chiuso') {
+      html += '<div class="barra">' + (rel ? '<button class="az verde" data-az="vai" data-a="#/relazione/' + h(rel.id) + '">Apri la relazione</button>' : '<button class="az verde" data-az="relazione-genera" data-id="' + h(c.id) + '">Scrivi la relazione</button>') +
+        '<button class="az stretta" data-az="riapri-cantiere" data-id="' + h(c.id) + '">Riapri</button></div>';
+    } else {
+      html += '<div class="barra"><button class="az verde" data-az="parla-cantiere" data-id="' + h(c.id) + '">🎙️ Detta un sopralluogo</button>' +
+        '<button class="az stretta" data-az="chiudi-cantiere" data-id="' + h(c.id) + '">Chiudi</button></div>';
+    }
+  }
   return html;
 }
 
@@ -2460,6 +2494,265 @@ function vistaVerbaleModifica(id) {
   return html;
 }
 
+/* ============================================================
+   LA CHIUSURA DEL CANTIERE E LA RELAZIONE DI FINE CANTIERE
+   La giornata si chiude e ne esce un verbale; il cantiere si chiude e ne
+   esce una relazione: un documento unico che racconta tutto il lavoro, con
+   i conti. È una fotografia dei documenti al momento della chiusura, con un
+   codice suo (REL-001): si corregge a mano come un verbale, e si rigenera
+   se dopo la chiusura si aggiunge qualcosa. Un cantiere chiuso si riapre
+   senza perdere niente: la relazione resta, e si riscrive quando si richiude.
+   ============================================================ */
+
+// id della relazione → vero finché Claude sta scrivendo le due righe "in breve"
+const RELAZIONI_IN_SCRITTURA = {};
+
+/* Il riepilogo per sezione: sotto ogni sezione, quello che è stato scritto nei
+   vari giorni, ogni pezzo con la sua data davanti. Per un giorno chiuso vale
+   il verbale, che è il documento corretto; per un giorno aperto il sopralluogo. */
+function riepilogoPerSezione(sops) {
+  const per = {};
+  CHIAVI_SEZIONI.forEach(function (k) { per[k] = []; });
+  sops.forEach(function (s) {
+    const v = s.chiuso ? verbaleDiSopralluogo(s.codice) : null;
+    const sezioni = v ? v.sezioni : s.sezioni;
+    CHIAVI_SEZIONI.forEach(function (k) {
+      let testo = String(sezioni[k] || '').trim();
+      // In un giorno aperto il testo da smistare finirebbe nelle Note alla chiusura: qui si fa lo stesso, così non si perde.
+      if (!v && k === 'note' && String(s.sezioni.da_smistare || '').trim()) testo = aggiungiTesto(testo, s.sezioni.da_smistare);
+      if (testo) per[k].push({ giorno: s.giorno, codice: v ? v.codice : s.codice, aperta: !s.chiuso, testo: testo });
+    });
+  });
+  return per;
+}
+
+// L'etichetta di un pezzo del riepilogo: la data davanti, poi il codice del documento da cui viene.
+function etichettaBlocco(b, esteso) {
+  const data = b.giorno ? (esteso ? dataEstesa(b.giorno) : dataBreve(b.giorno)) : 'aggiunto a mano';
+  return data + (b.codice ? (esteso ? ' - ' : ' · ') + b.codice : '') + (esteso && b.aperta ? ' - giornata non chiusa' : '');
+}
+
+/* Scrive la relazione dai documenti di adesso, o la riscrive se esiste già (stesso codice).
+   Tutto quello che c'è dentro è copiato: correggere la relazione non tocca verbali e contabilità,
+   e correggere quelli non cambia la relazione finché non la si rigenera. */
+function generaRelazione(c, esistente) {
+  // Dal primo giorno all'ultimo: la relazione racconta in ordine, non dal più recente.
+  const sops = sopralluoghiDi(c.codice).slice().reverse();
+  const cont = contabilitaDi(c.codice);
+  const rel = esistente || { cantiere: c.codice };
+  rel.apertura = c.aperto || (sops.length ? sops[0].giorno : oggiISO());
+  rel.chiusura = c.chiuso || oggiISO();
+  rel.numeri = {
+    giorni: sops.length,
+    verbali: sops.filter(function (s) { return s.chiuso; }).length,
+    aperte: sops.filter(function (s) { return !s.chiuso; }).length,
+    foto: sops.reduce(function (t, s) { return t + fotoDi(s).length; }, 0),
+    parlato: sops.reduce(function (t, s) { return t + s.pezzi.reduce(function (u, p) { return u + (p.durata || 0); }, 0); }, 0),
+    totale: totaleContabilita(cont)
+  };
+  rel.sezioni = riepilogoPerSezione(sops);
+  rel.contabilita = {
+    codice: cont ? cont.codice : '',
+    note: cont ? String(cont.note || '') : '',
+    totale: totaleContabilita(cont),
+    righe: (cont ? cont.righe : []).map(function (r) {
+      return { codice: r.codice, descrizione: r.descrizione, quantita: r.quantita, um: r.um, prezzo: r.prezzo, importo: r.importo, dacompletare: !!r.dacompletare };
+    })
+  };
+  rel.giorni = sops.map(function (s) {
+    const v = s.chiuso ? verbaleDiSopralluogo(s.codice) : null;
+    return { sop: s.id, sopralluogo: s.codice, verbale: v ? v.codice : (s.verbale || null), giorno: s.giorno, ora: s.ora, chiuso: !!s.chiuso,
+      sezioni: sezioniPiene(v ? v.sezioni : s.sezioni).length, audio: s.pezzi.length, foto: fotoDi(s).length };
+  });
+  rel.inBreve = '';
+  rel.generata = adessoISO();
+  // Nata da un cantiere di esempio, è un esempio anche lei: "butta via gli esempi" la porta via.
+  if (c.esempio) rel.esempio = true;
+  salva('relazione', rel);
+  c.relazione = rel.codice;
+  salva('cantiere', c);
+  scriviInBreve(rel);
+  return rel;
+}
+
+/* Le due righe "in breve" le scrive Claude con il foglio del riassunto, dal riepilogo appena fatto.
+   Senza chiave o senza rete si salta: la relazione esce lo stesso, e si può rigenerare più tardi. */
+async function scriviInBreve(rel) {
+  if (!chiaveAnthropic() || !navigator.onLine) return;
+  const c = cantierePerCodice(rel.cantiere) || {};
+  const testo = SEZIONI.map(function (z) {
+    const blocchi = (rel.sezioni[z.chiave] || []).filter(function (b) { return String(b.testo || '').trim(); });
+    return blocchi.length ? z.nome + ':\n' + blocchi.map(function (b) { return (b.giorno ? dataBreve(b.giorno) + ': ' : '') + b.testo; }).join('\n') : '';
+  }).filter(Boolean).join('\n\n');
+  if (!testo) return;
+  RELAZIONI_IN_SCRITTURA[rel.id] = true;
+  aggiornaVista();
+  try {
+    const risposta = await chiamaClaude(REGOLE_RIASSUNTO, 'Cantiere: ' + (c.nome || '') + '\nPeriodo: dal ' + dataEstesa(rel.apertura) + ' al ' + dataEstesa(rel.chiusura) + '\nVerbali:\n' + testo.slice(0, 20000), 800);
+    const fresca = relazione(rel.id);
+    // Se nel frattempo è stata rigenerata o cancellata, questa risposta non vale più.
+    if (fresca && fresca.generata === rel.generata) { fresca.inBreve = String(risposta || '').trim(); salva('relazione', fresca); }
+  } catch (e) { /* senza "in breve" la relazione vale lo stesso */ }
+  delete RELAZIONI_IN_SCRITTURA[rel.id];
+  aggiornaVista();
+}
+
+async function chiudiCantiere(id) {
+  const c = cantiere(id);
+  if (!c || c.stato === 'chiuso') return;
+  if (REG.attiva) { avvisa('Ferma prima la registrazione', 'att'); return; }
+  const sops = sopralluoghiDi(c.codice);
+  const aperte = sops.filter(function (s) { return !s.chiuso; }).length;
+  const idSops = sops.map(function (s) { return s.id; });
+  const inCoda = leggiLocale().coda.some(function (l) { return (idSops.indexOf(l.sop) !== -1 || l.cantiere === c.id) && l.stato !== 'fallito'; });
+  const esistente = relazioneDi(c.codice);
+  let testo = 'Si scrive la relazione di fine cantiere: il riepilogo di tutti i giorni e i conti. Il cantiere va fra quelli chiusi, e si potrà riaprire.';
+  if (aperte) testo = (aperte === 1 ? 'Una giornata è ancora aperta' : aperte + ' giornate sono ancora aperte') + ': nella relazione compaiono come non chiuse. ' + testo;
+  if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nella relazione. ' + testo;
+  if (esistente) testo += ' La relazione ' + esistente.codice + ' si riscrive: le correzioni fatte a mano si perdono.';
+  const ok = await chiedi('Chiudere il cantiere?', testo, 'Chiudi il cantiere');
+  chiudiFoglio();
+  if (!ok) return;
+  c.stato = 'chiuso';
+  c.chiuso = oggiISO();
+  salva('cantiere', c);
+  const rel = generaRelazione(c, esistente);
+  avvisa('Relazione ' + rel.codice, 'ok');
+  vai('#/relazione/' + rel.id);
+}
+
+async function riapriCantiere(id) {
+  const c = cantiere(id);
+  if (!c || c.stato !== 'chiuso') return;
+  const rel = relazioneDi(c.codice);
+  const ok = await chiedi('Riaprire ' + c.codice + '?', c.nome + ' torna fra i cantieri attivi. Non si perde niente' + (rel ? ': la relazione ' + rel.codice + ' resta, e si riscrive quando lo richiudi.' : '.'), 'Riapri il cantiere');
+  chiudiFoglio();
+  if (!ok) return;
+  c.stato = 'attivo';
+  c.chiuso = null;
+  salva('cantiere', c);
+  avvisa('Cantiere riaperto', 'ok');
+  aggiornaVista();
+}
+
+async function rigeneraRelazione(relId) {
+  const rel = relazione(relId);
+  const c = rel && cantierePerCodice(rel.cantiere);
+  if (!c) return;
+  const ok = await chiedi('Rigenerare ' + rel.codice + '?', 'Si riscrive dai verbali e dalla contabilità di adesso. Le correzioni fatte a mano sulla relazione si perdono.', 'Rigenera');
+  chiudiFoglio();
+  if (!ok) return;
+  generaRelazione(c, rel);
+  avvisa('Rigenerata', 'ok');
+  aggiornaVista();
+}
+
+/* ---------------- RELAZIONE: lettura ---------------- */
+/* Si legge come si legge un giorno chiuso: i numeri in testa, poi le card, in fondo Esporta e Modifica. */
+function vistaRelazione(id) {
+  const rel = relazione(id);
+  if (!rel) return vistaDashboard();
+  const c = cantierePerCodice(rel.cantiere) || { nome: '?', id: '', codice: rel.cantiere, stato: 'chiuso' };
+  const n = rel.numeri || {};
+  const scrivendo = !!RELAZIONI_IN_SCRITTURA[rel.id];
+  const inBreve = String(rel.inBreve || '').trim();
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Relazione di fine cantiere', sotto: h(c.nome) + ' · ' + h(rel.codice),
+    // La pastiglia dice una parola: la data di chiusura sta nella card sotto. Una pastiglia lunga schiaccia il titolo.
+    destra: c.stato === 'chiuso' ? '<span class="pill ok">chiuso</span>' : '<span class="pill att">riaperto</span>' });
+  // L'intestazione
+  html += '<div class="card"><div class="card-capo">Cantiere<span class="dx">' + h(c.codice) + '</span></div><div class="card-corpo">' + h(c.nome) +
+    (c.committente ? '\nCommittente: ' + h(c.committente) : '') + (c.indirizzo ? '\n' + h(c.indirizzo) : '') +
+    '\nAperto ' + h(dataEstesa(rel.apertura)) + '\nChiuso ' + h(dataEstesa(rel.chiusura)) + '</div>' +
+    '<div class="card-piede">Scritta il ' + h(dataSenzaAnno(rel.generata)) + ' alle ' + h(oraDaISO(rel.generata)) + '</div></div>';
+  // I numeri, come nella giornata chiusa; il totale è l'unico verde, le giornate aperte l'unico giallo
+  html += '<div class="numeri sei">' +
+    '<div class="n"><div class="v">' + (n.giorni || 0) + '</div><div class="k">giorni</div></div>' +
+    '<div class="n"><div class="v">' + (n.verbali || 0) + '</div><div class="k">verbali</div></div>' +
+    '<div class="n"><div class="v' + (n.aperte ? ' att' : '') + '">' + (n.aperte || 0) + '</div><div class="k">non chiuse</div></div>' +
+    '<div class="n"><div class="v">' + (n.foto || 0) + '</div><div class="k">foto</div></div>' +
+    '<div class="n"><div class="v">' + h(durataLunga(n.parlato)) + '</div><div class="k">parlato</div></div>' +
+    '<div class="n"><div class="v fatto">' + h(compatto(n.totale)) + '</div><div class="k">totale €</div></div></div>';
+  html += '<button class="link blocco" data-az="relazione-rigenera" data-id="' + h(rel.id) + '">↻ Rigenera dai documenti di adesso</button>';
+  // In breve: due righe di Claude. Se mancano e nessuno le sta scrivendo, la card non c'è.
+  if (scrivendo || inBreve) {
+    html += '<div class="card"><div class="card-capo' + (inBreve ? '' : ' spenta') + '">In breve' + (scrivendo ? '<span class="dx att">scrivo…</span>' : '') + '</div>' +
+      (inBreve ? '<div class="card-corpo">' + h(inBreve) + '</div>' : '') + '</div>';
+  }
+  // Il riepilogo per sezione: le sezioni vuote non si mostrano
+  html += '<div class="eti">Riepilogo per sezione</div>';
+  let piene = 0;
+  SEZIONI.forEach(function (z) {
+    const blocchi = (rel.sezioni[z.chiave] || []).filter(function (b) { return String(b.testo || '').trim(); });
+    if (!blocchi.length) return;
+    piene++;
+    html += '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo">' + h(z.nome) + '<span class="dx">' + blocchi.length + (blocchi.length === 1 ? ' giorno' : ' giorni') + '</span></div>' +
+      blocchi.map(function (b) {
+        return '<div class="card-capo spenta">' + h(etichettaBlocco(b)) + (b.aperta ? '<span class="dx att">non chiusa</span>' : '') + '</div>' +
+          '<div class="card-corpo">' + testoElenco(b.testo, z.elenco) + '</div>';
+      }).join('') + '</div>';
+  });
+  if (!piene) html += '<div class="vuoto-stato">Nessuna sezione compilata nei giorni di questo cantiere.</div>';
+  // La contabilità completa: le righe senza prezzo si segnalano, il totale sta in fondo
+  const cont = rel.contabilita || { righe: [], totale: 0, note: '' };
+  const daCompletare = cont.righe.filter(function (r) { return r.dacompletare; }).length;
+  html += '<div class="eti">Contabilità' + (cont.codice ? ' · ' + h(cont.codice) : '') + (daCompletare ? '<span class="n" style="color:var(--gold)">' + daCompletare + ' da completare</span>' : '') + '</div>';
+  if (cont.righe.length) html += '<div class="card">' + cont.righe.map(function (r) { return rigaContabilitaHtml(r, { lettura: true }); }).join('') + '</div>';
+  else html += '<div class="vuoto-stato">Nessuna riga di contabilità.</div>';
+  html += '<div class="totale"><span class="eti">Totale</span><span class="cifra">' + h(euro(cont.totale)) + '</span></div>';
+  if (String(cont.note || '').trim()) html += '<div class="card"><div class="card-capo spenta">Note della contabilità</div><div class="card-corpo">' + h(cont.note) + '</div></div>';
+  // L'elenco dei giorni: una riga per giornata, si tocca e si va al giorno
+  html += '<div class="eti">Giorni<span class="n">' + rel.giorni.length + '</span></div>';
+  if (rel.giorni.length) {
+    html += '<div class="card">' + rel.giorni.map(function (g) {
+      return '<button class="riga" data-az="vai" data-a="#/giorno/' + h(g.sop) + '"><span class="desc">' + h(dataBreve(g.giorno)) + ' · ' + h(g.ora) +
+        '<small>' + g.sezioni + '/11 sezioni · ' + g.audio + ' audio · ' + g.foto + ' foto</small></span>' +
+        (g.chiuso ? '<span class="pill ok">' + h(g.verbale || 'chiusa') + '</span>' : '<span class="pill att">non chiusa</span>') + '<span class="frec">›</span></button>';
+    }).join('') + '</div>';
+  } else html += '<div class="vuoto-stato">Nessun giorno di sopralluogo.</div>';
+  // Le foto marcate, giorno per giorno: si leggono dal sopralluogo, come fa il PDF del verbale
+  let fotoHtml = '';
+  rel.giorni.forEach(function (g) {
+    const s = sopralluogo(g.sop);
+    const marcate = s ? fotoDi(s).filter(function (f) { return f.nelPdf; }) : [];
+    if (!marcate.length) return;
+    fotoHtml += '<div class="card"><div class="card-capo spenta">' + h(dataBreve(g.giorno)) + '<span class="dx">' + h(g.verbale || g.sopralluogo) + '</span></div>' + filaFoto(s, marcate) + '</div>';
+  });
+  if (fotoHtml) html += '<div class="eti">Foto nel PDF</div>' + fotoHtml;
+  html += '<div class="barra"><button class="az verde" data-az="esporta-pdf-relazione" data-id="' + h(rel.id) + '">Esporta PDF</button>' +
+    '<button class="az stretta" data-az="vai" data-a="#/modifica-relazione/' + h(rel.id) + '">Modifica</button></div>';
+  return html;
+}
+
+/* ---------------- RELAZIONE: modifica ---------------- */
+/* Come la modifica del verbale, ma ogni sezione è fatta di pezzi con la loro data: un campo per pezzo. */
+function vistaRelazioneModifica(id) {
+  const rel = relazione(id);
+  if (!rel) return vistaDashboard();
+  const c = cantierePerCodice(rel.cantiere) || { nome: '?' };
+  let html = testata({ indietro: '#/relazione/' + rel.id, titolo: 'Modifica ' + rel.codice, sotto: 'relazione di fine cantiere · ' + h(c.nome) });
+  html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Correggere la relazione non tocca i verbali né la contabilità. Rigenerandola, le correzioni si perdono.</div>';
+  html += '<div class="card"><div class="card-capo' + (String(rel.inBreve || '').trim() ? '' : ' spenta') + '">In breve</div>' +
+    '<textarea class="corpo" data-campo="inbreve-relazione" data-id="' + h(rel.id) + '" placeholder="Due righe su com\'è andato il cantiere">' + h(rel.inBreve || '') + '</textarea></div>';
+  SEZIONI.forEach(function (z) {
+    const blocchi = rel.sezioni[z.chiave] || [];
+    const pieno = blocchi.some(function (b) { return String(b.testo || '').trim(); });
+    const segnaposto = z.elenco ? 'una voce per riga' : '—';
+    html += '<div class="card"><div class="card-capo' + (pieno ? '' : ' spenta') + '">' + h(z.nome) + '</div>';
+    if (blocchi.length) {
+      blocchi.forEach(function (b, i) {
+        html += '<div class="card-capo spenta">' + h(etichettaBlocco(b)) + (b.aperta ? '<span class="dx att">non chiusa</span>' : '') + '</div>' +
+          '<textarea class="corpo" data-campo="blocco-relazione" data-id="' + h(rel.id + '/' + z.chiave + '/' + i) + '" placeholder="' + segnaposto + '">' + h(b.testo || '') + '</textarea>';
+      });
+    } else {
+      // Una sezione rimasta vuota si può riempire a mano: il pezzo nasce alla prima lettera, senza data.
+      html += '<textarea class="corpo" data-campo="blocco-relazione" data-id="' + h(rel.id + '/' + z.chiave + '/0') + '" placeholder="' + segnaposto + '"></textarea>';
+    }
+    html += '</div>';
+  });
+  html += '<div class="barra"><button class="az verde" data-az="salva-relazione" data-id="' + h(rel.id) + '">Salva</button></div>';
+  return html;
+}
+
 /* ---------------- LA FOTO GRANDE ---------------- */
 /* È una schermata e non un foglio: così la striscia di registrazione resta
    sopra a tutto e il gesto "indietro" riporta al giorno. Sotto la foto i suoi
@@ -2528,12 +2821,14 @@ function vistaContabilita(idCantiere) {
   return html;
 }
 function rigaContabilitaHtml(r, rif) {
-  const attr = rif.proposta ? 'data-az="riga-modifica" data-proposta="' + h(rif.proposta) + '" data-indice="' + rif.indice + '"' : 'data-az="riga-modifica" data-cont="' + h(rif.cont) + '" data-id="' + h(r.codice) + '"';
-  return '<button class="voceriga' + (r.dacompletare ? ' dacompletare' : '') + '" ' + attr + '>' +
+  // Nella relazione la riga è una copia e si legge soltanto: stesso disegno, ma non è un bottone.
+  const tag = rif.lettura ? 'div' : 'button';
+  const attr = rif.lettura ? '' : (rif.proposta ? ' data-az="riga-modifica" data-proposta="' + h(rif.proposta) + '" data-indice="' + rif.indice + '"' : ' data-az="riga-modifica" data-cont="' + h(rif.cont) + '" data-id="' + h(r.codice) + '"');
+  return '<' + tag + ' class="voceriga' + (r.dacompletare ? ' dacompletare' : '') + '"' + attr + '>' +
     '<div class="desc">' + h(r.descrizione || '(senza descrizione)') + '</div>' +
     '<div class="conti"><span class="codice">' + h(r.codice || 'nuova') + '</span><span>' + h(numeroIt(r.quantita)) + ' ' + h(r.um || '') + '</span>' +
     '<span>× ' + h(euro(r.prezzo)) + '</span>' + (r.dallistino ? '<span class="targa">' + h(r.dallistino) + '</span>' : '') +
-    '<span class="importo">' + (r.dacompletare ? 'da completare' : h(euro(r.importo))) + '</span></div></button>';
+    '<span class="importo">' + (r.dacompletare ? 'da completare' : h(euro(r.importo))) + '</span></div></' + tag + '>';
 }
 
 function ricalcolaRiga(r) {
@@ -3139,10 +3434,13 @@ function apriEsportaPdf(sopId) {
   const c = cantierePerCodice(v.cantiere);
   const tutti = valori(leggiTutto().verbali).filter(function (x) { return x.cantiere === v.cantiere; }).sort(function (a, b) { return a.giorno.localeCompare(b.giorno); });
   const primo = tutti.length ? tutti[0].giorno : v.giorno;
+  // Nel cantiere chiuso c'è una voce in più: la relazione di fine cantiere.
+  const rel = c && c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
   apriFoglio(
     '<h2>Esporta PDF</h2><p>' + h(c ? c.nome : '') + ' · ' + h(v.codice) + '</p>' +
     '<label class="eticampo">Cosa</label><select class="campo" id="pdf-modo" data-campo="pdf-modo">' +
-    '<option value="questo">Questo verbale</option><option value="periodo">Tutti i verbali del cantiere in un periodo</option><option value="sezione">Una sola sezione</option></select>' +
+    '<option value="questo">Questo verbale</option><option value="periodo">Tutti i verbali del cantiere in un periodo</option><option value="sezione">Una sola sezione</option>' +
+    (rel ? '<option value="relazione">Relazione di fine cantiere (' + h(rel.codice) + ')</option>' : '') + '</select>' +
     '<div id="pdf-periodo" hidden><div style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Dal</label><input class="campo" type="date" id="pdf-dal" value="' + h(primo) + '"></div><div style="flex:1"><label class="eticampo">Al</label><input class="campo" type="date" id="pdf-al" value="' + h(v.giorno) + '"></div></div></div>' +
     '<div id="pdf-sezione" hidden><label class="eticampo">Sezione</label><select class="campo" id="pdf-quale">' + SEZIONI.map(function (z) { return '<option value="' + z.chiave + '">' + h(z.nome) + '</option>'; }).join('') + '</select>' +
     '<label class="eticampo">Di quali verbali</label><select class="campo" id="pdf-ambito" data-campo="pdf-ambito"><option value="questo">Solo questo verbale</option><option value="periodo">Tutti quelli di un periodo</option></select></div>' +
@@ -3164,6 +3462,13 @@ async function creaPdf(idVerbale) {
   const v = verbale(idVerbale);
   if (!v) return;
   const modo = document.getElementById('pdf-modo').value;
+  if (modo === 'relazione') {
+    // La relazione ha il suo PDF: il foglio è servito solo a sceglierla.
+    chiudiFoglio();
+    const rel = relazioneDi(v.cantiere);
+    if (rel) await creaPdfRelazione(rel.id); else avvisa('Nessuna relazione', 'att');
+    return;
+  }
   const dal = document.getElementById('pdf-dal').value, al = document.getElementById('pdf-al').value;
   const quale = document.getElementById('pdf-quale').value;
   const ambito = document.getElementById('pdf-ambito').value;
@@ -3266,6 +3571,17 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     scrivi(dati, 9, normale, PDF.rgb(0.45, 0.45, 0.45));
     y -= 8;
   };
+  // La relazione di fine cantiere ha una forma sua, ma la pagina, il testo e le foto sono questi:
+  // le passa come attrezzi e si ferma qui. "giu" e "linea" muovono y e pagina, che vivono solo qui dentro.
+  if (info.relazione) {
+    disegnaRelazionePdf(info.relazione, {
+      PDF: PDF, normale: normale, grassetto: grassetto, scrivi: scrivi, spazio: spazio, nuovaPagina: nuovaPagina,
+      disegnaFoto: disegnaFoto, altezzaFoto: altezzaFoto, fotoPerGiorno: fotoPerVerbale,
+      giu: function (n) { y -= n; },
+      linea: function () { spazio(14); y -= 6; pagina.drawLine({ start: { x: M, y: y }, end: { x: L - M, y: y }, thickness: 0.8, color: PDF.rgb(0.2, 0.2, 0.2) }); y -= 12; }
+    });
+    return await doc.save();
+  }
   const c0 = cantierePerCodice(verbali[0].cantiere) || {};
   const conCopertina = info.modo === 'periodo' || (info.modo === 'sezione' && verbali.length > 1);
   if (conCopertina) {
@@ -3346,6 +3662,99 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
     }
   }
   return per;
+}
+
+/* La relazione di fine cantiere sulla carta, nell'ordine deciso: intestazione, numeri, in breve,
+   riepilogo per sezione, contabilità col totale, elenco dei giorni, foto marcate. Riceve gli
+   attrezzi di costruisciPdf e non ne conosce l'interno: la meccanica del PDF resta una sola. */
+function disegnaRelazionePdf(rel, a) {
+  const c = cantierePerCodice(rel.cantiere) || {};
+  const grigio = a.PDF.rgb(0.45, 0.45, 0.45);
+  const giallo = a.PDF.rgb(0.62, 0.45, 0);
+  const n = rel.numeri || {};
+  const titolo = function (t) { a.giu(6); a.spazio(70); a.scrivi(t, 12, a.grassetto); a.giu(4); };
+  a.nuovaPagina();
+  a.scrivi('RELAZIONE DI FINE CANTIERE', 18, a.grassetto);
+  a.giu(4);
+  a.scrivi(rel.codice, 11, a.normale);
+  a.scrivi('Cantiere: ' + (c.codice || '') + ' - ' + (c.nome || '') + (c.indirizzo ? ' - ' + c.indirizzo : ''), 11, a.normale);
+  a.scrivi('Committente: ' + (c.committente || ''), 11, a.normale);
+  a.scrivi('Aperto il ' + dataEstesa(rel.apertura) + '   -   Chiuso il ' + dataEstesa(rel.chiusura), 11, a.normale);
+  a.linea();
+  // I numeri in una riga, e il totale sotto in grassetto
+  const conta = function (q, uno, tanti) { return (q || 0) + ' ' + ((q || 0) === 1 ? uno : tanti); };
+  a.scrivi(conta(n.giorni, 'giorno di sopralluogo', 'giorni di sopralluogo') + ', ' + conta(n.verbali, 'verbale chiuso', 'verbali chiusi') + ', ' + conta(n.aperte, 'giornata non chiusa', 'giornate non chiuse') + ', ' + (n.foto || 0) + ' foto, ' + durataLunga(n.parlato) + ' di parlato', 11, a.normale);
+  a.scrivi('Contabilità: ' + euro(n.totale), 12, a.grassetto);
+  if (String(rel.inBreve || '').trim()) { titolo('IN BREVE'); a.scrivi(rel.inBreve, 11, a.normale); }
+  // Il riepilogo per sezione: le sezioni vuote non si stampano
+  titolo('RIEPILOGO PER SEZIONE');
+  let stampate = 0;
+  SEZIONI.forEach(function (z) {
+    const blocchi = (rel.sezioni[z.chiave] || []).filter(function (b) { return String(b.testo || '').trim(); });
+    if (!blocchi.length) return;
+    a.spazio(60);
+    a.scrivi(z.nome.toUpperCase(), 11, a.grassetto);
+    blocchi.forEach(function (b) {
+      a.spazio(40);
+      a.scrivi(etichettaBlocco(b, true), 9, a.normale, grigio);
+      if (z.elenco) righeElenco(b.testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); });
+      else a.scrivi(b.testo, 11, a.normale);
+      a.giu(4);
+    });
+    a.giu(6);
+    stampate++;
+  });
+  if (!stampate) a.scrivi('(nessuna sezione compilata)', 11, a.normale, grigio);
+  // La contabilità completa: ogni riga coi suoi numeri, le righe senza prezzo segnalate, il totale in fondo
+  const cont = rel.contabilita || { righe: [], totale: 0, note: '' };
+  titolo('CONTABILITÀ' + (cont.codice ? ' - ' + cont.codice : ''));
+  if (!cont.righe.length) a.scrivi('(nessuna riga)', 11, a.normale, grigio);
+  cont.righe.forEach(function (r) {
+    a.spazio(36);
+    a.scrivi((r.codice ? r.codice + '   ' : '') + (r.descrizione || '(senza descrizione)'), 11, a.normale);
+    a.scrivi(numeroIt(r.quantita) + ' ' + (r.um || '') + '  ×  ' + euro(r.prezzo) + '  =  ' + (r.dacompletare ? 'DA COMPLETARE: manca il prezzo' : euro(r.importo)), 10, a.normale, r.dacompletare ? giallo : grigio, 6);
+    a.giu(3);
+  });
+  const daCompletare = cont.righe.filter(function (r) { return r.dacompletare; }).length;
+  a.giu(4); a.spazio(40);
+  a.scrivi('TOTALE   ' + euro(cont.totale), 13, a.grassetto);
+  if (daCompletare) a.scrivi(daCompletare + (daCompletare === 1 ? ' riga senza prezzo non conta' : ' righe senza prezzo non contano') + ' nel totale.', 10, a.normale, giallo);
+  if (String(cont.note || '').trim()) a.scrivi('Note: ' + cont.note, 10, a.normale, grigio);
+  // L'elenco dei giorni, dal primo all'ultimo; le giornate non chiuse marcate
+  titolo('ELENCO DEI GIORNI');
+  if (!rel.giorni.length) a.scrivi('(nessun giorno di sopralluogo)', 11, a.normale, grigio);
+  rel.giorni.forEach(function (g) {
+    a.scrivi('• ' + dataEstesa(g.giorno) + ', ' + (g.ora || '') + '  -  ' + (g.chiuso ? (g.verbale || 'chiusa') : g.sopralluogo + ' (NON CHIUSA)') + '  -  ' + g.sezioni + ' sezioni, ' + g.audio + ' audio, ' + g.foto + ' foto', 11, a.normale, g.chiuso ? null : giallo, 6);
+  });
+  // Le foto marcate, giorno per giorno, con il referto: come nel PDF del verbale
+  const conFoto = rel.giorni.filter(function (g) { return a.fotoPerGiorno[g.sop]; });
+  if (conFoto.length) {
+    a.giu(6);
+    conFoto.forEach(function (g, i) {
+      const per = a.fotoPerGiorno[g.sop];
+      const prima = CHIAVI_SEZIONI.map(function (k) { return (per[k] || [])[0]; }).filter(Boolean)[0];
+      // Il titolo FOTO e quello del giorno restano sulla stessa pagina della prima foto, non orfani in fondo.
+      a.spazio((i === 0 ? 30 : 0) + 40 + a.altezzaFoto(prima) + 40);
+      if (i === 0) { a.scrivi('FOTO', 12, a.grassetto); a.giu(4); }
+      a.scrivi(dataEstesa(g.giorno).toUpperCase() + ' - ' + (g.verbale || g.sopralluogo), 11, a.grassetto);
+      CHIAVI_SEZIONI.forEach(function (k) {
+        (per[k] || []).forEach(function (voce) { a.scrivi(nomeSezione(k), 9, a.normale, grigio); a.disegnaFoto(voce, c); });
+      });
+    });
+  }
+}
+
+async function creaPdfRelazione(relId) {
+  if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
+  const rel = relazione(relId);
+  if (!rel) return;
+  avvisa('Preparo il PDF…');
+  // Le foto marcate si cercano giorno per giorno: a preparaFotoPdf bastano l'id e il codice del sopralluogo.
+  const giorni = rel.giorni.map(function (g) { return { id: g.sop, sopralluogo: g.sopralluogo, cantiere: rel.cantiere, giorno: g.giorno }; });
+  let byte;
+  try { byte = await costruisciPdf(giorni, null, rel.inBreve, { modo: 'relazione', relazione: rel }); }
+  catch (e) { avvisa('PDF non riuscito', 'err'); return; }
+  await condividiFile(new Blob([byte], { type: 'application/pdf' }), rel.codice + '.pdf', 'Relazione di fine cantiere');
 }
 
 async function condividiFile(blob, nome, titolo) {
@@ -3435,6 +3844,26 @@ const AZIONI = {
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
   'esporta-pdf': function (el) { apriEsportaPdf(el.dataset.id); },
   'pdf-crea': function (el) { creaPdf(el.dataset.id); },
+  // --- chiusura del cantiere e relazione ---
+  'chiudi-cantiere': function (el) { chiudiCantiere(el.dataset.id); },
+  'riapri-cantiere': function (el) { riapriCantiere(el.dataset.id); },
+  'relazione-genera': function (el) {
+    // Un cantiere messo "chiuso" dal modulo non ha la relazione: la si scrive da qui.
+    const c = cantiere(el.dataset.id);
+    if (!c) return;
+    const rel = generaRelazione(c, relazioneDi(c.codice));
+    avvisa('Relazione ' + rel.codice, 'ok');
+    vai('#/relazione/' + rel.id);
+  },
+  'relazione-rigenera': function (el) { rigeneraRelazione(el.dataset.id); },
+  'esporta-pdf-relazione': function (el) { creaPdfRelazione(el.dataset.id); },
+  'salva-relazione': function (el) {
+    const rel = relazione(el.dataset.id);
+    if (!rel) return;
+    salva('relazione', rel);
+    avvisa('Salvato', 'ok');
+    vai('#/relazione/' + rel.id);
+  },
   'salva-verbale': function (el) {
     const v = verbale(el.dataset.id);
     if (!v) return;
@@ -3655,6 +4084,8 @@ const AZIONI = {
     c.indirizzo = document.getElementById('c-ind').value.trim();
     c.stato = document.getElementById('c-stato').value;
     c.aperto = document.getElementById('c-aperto').value || oggiISO();
+    // Chiudere o riaprire dal modulo vale come farlo dalla scheda: la data di chiusura segue lo stato.
+    if (c.stato === 'chiuso') { if (!c.chiuso) c.chiuso = oggiISO(); } else c.chiuso = null;
     salva('cantiere', c);
     avvisa('Salvato', 'ok');
     vai('#/cantiere/' + c.id);
@@ -3663,9 +4094,11 @@ const AZIONI = {
     const c = cantiere(el.dataset.id);
     if (!c) return;
     const sops = sopralluoghiDi(c.codice);
-    const ok = await chiedi('Eliminare ' + c.codice + '?', c.nome + ': si cancellano anche ' + sops.length + ' sopralluoghi, i verbali e la contabilità. Il listino resta.', 'Elimina tutto', 'rosso');
+    const rel = relazioneDi(c.codice);
+    const ok = await chiedi('Eliminare ' + c.codice + '?', c.nome + ': si cancellano anche ' + sops.length + ' sopralluoghi, i verbali' + (rel ? ', la relazione ' + rel.codice : '') + ' e la contabilità. Il listino resta.', 'Elimina tutto', 'rosso');
     chiudiFoglio();
     if (!ok) return;
+    if (rel) cancella('relazione', rel.id);
     for (const s of sops) {
       for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
       await cancellaFileFoto(s);
@@ -3814,6 +4247,31 @@ function suCampo(el, evento) {
     salvaConCalma('ver-' + v.id, function () { salva('verbale', v); });
     return;
   }
+  if (campo === 'inbreve-relazione') {
+    const rel = relazione(el.dataset.id);
+    if (!rel) return;
+    rel.inBreve = el.value;
+    cresciTextarea(el);
+    const capo = el.previousElementSibling;
+    if (capo) capo.classList.toggle('spenta', !el.value.trim());
+    salvaConCalma('rel-' + el.dataset.id, function () { salva('relazione', rel); });
+    return;
+  }
+  if (campo === 'blocco-relazione') {
+    // L'id del campo dice relazione, sezione e pezzo: "id/sezione/indice". Così ogni campo ha un id suo,
+    // e dopo un ridisegno il cursore torna nel pezzo giusto e non nel primo della relazione.
+    const p = String(el.dataset.id).split('/');
+    const rel = relazione(p[0]);
+    if (!rel) return;
+    const blocchi = rel.sezioni[p[1]] || (rel.sezioni[p[1]] = []);
+    const i = Number(p[2]) || 0;
+    // Il pezzo di una sezione vuota nasce qui, senza data: è un'aggiunta a mano.
+    if (!blocchi[i]) blocchi[i] = { giorno: null, codice: '', aperta: false, testo: '' };
+    blocchi[i].testo = el.value;
+    cresciTextarea(el);
+    salvaConCalma('rel-' + el.dataset.id, function () { salva('relazione', rel); });
+    return;
+  }
   if (campo === 'note-contabilita') {
     const c = cantiere(el.dataset.id);
     if (!c) return;
@@ -3896,7 +4354,7 @@ function avvio() {
   document.addEventListener('focusout', function (ev) {
     const el = ev.target;
     if (!el || !el.dataset || !el.dataset.campo) return;
-    const prefissi = { 'sezione': 'sop-', 'sezione-verbale': 'ver-', 'note-cantiere': 'cant-', 'note-contabilita': 'cont-', 'referto-foto': 'foto-' };
+    const prefissi = { 'sezione': 'sop-', 'sezione-verbale': 'ver-', 'note-cantiere': 'cant-', 'note-contabilita': 'cont-', 'referto-foto': 'foto-', 'inbreve-relazione': 'rel-', 'blocco-relazione': 'rel-' };
     const pre = prefissi[el.dataset.campo];
     if (pre && salvaAdesso(pre + el.dataset.id)) avvisa('Salvato', 'ok');
   });

@@ -74,6 +74,12 @@ button.pill{min-height:var(--riga);padding:0 16px;font-size:14px}
 .numeri .v.fatto{color:var(--accent)}
 .numeri .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:1px}
 
+/* La relazione di fine cantiere ha sei numeri: su un telefono non stanno in una riga sola,
+   si spezzano in due file da tre. Le giornate non chiuse sono l'unico numero giallo. */
+.numeri.sei{flex-wrap:wrap}
+.numeri.sei .n{flex:1 1 calc(33.333% - 6px)}
+.numeri .v.att{color:var(--gold)}
+
 /* ---------- card ---------- */
 .card{margin:0 var(--s4) var(--s3);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .card.tocca{cursor:pointer}
@@ -145,6 +151,8 @@ textarea.corpo::placeholder{color:var(--line)}
 .riga .frec{color:var(--azione);font-size:22px;flex:0 0 auto}
 .riga .desc{flex:1;min-width:0}
 .riga .desc small{display:block;font-size:16px;color:var(--muted)}
+/* una pastiglia dentro una riga (l'elenco dei giorni della relazione) non si schiaccia */
+.riga .pill{flex:0 0 auto}
 
 /* ---------- i giorni ---------- */
 .giorno{display:flex;gap:var(--s3);align-items:flex-start;padding:var(--s3) var(--s4);width:100%;text-align:left;
