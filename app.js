@@ -2967,7 +2967,9 @@ function vistaListino(idCantiere, sotto) {
   const voci = filtroListino ? cercaListinoLocale(filtroListino).map(function (r) { return r.voce; }) : tutte;
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Listino prezzi', sotto: tutte.length + ' voci · ' + h(c.nome) });
   html += '<div class="cerca">🔍 <input type="search" placeholder="Cerca nella descrizione" value="' + h(filtroListino) + '" data-campo="filtro-listino" autocomplete="off"></div>';
-  html += '<div class="modulo"><button class="btn medio" data-az="vai" data-a="#/listino/' + h(c.id) + '/carica">📄 Carica listino da file</button></div>';
+  html += '<div class="modulo"><button class="btn medio" data-az="vai" data-a="#/listino/' + h(c.id) + '/carica">📄 Carica listino da file</button>' +
+    // Svuotare tutto in un colpo: un listino sbagliato o di prova si butta senza toccare le voci una per una.
+    (tutte.length ? '<button class="btn medio btn-rosso" data-az="listino-svuota" style="margin-top:8px">🗑 Svuota il listino</button>' : '') + '</div>';
   if (voci.length) {
     html += '<div class="card" style="margin-top:12px">' + voci.slice(0, 200).map(function (v) {
       return '<button class="riga" data-az="voce-modifica" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + h(v.codice) + (v.rif ? ' · ' + h(v.rif) : '') + ' · ' + h(v.um || '—') + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
@@ -4160,6 +4162,17 @@ const AZIONI = {
   },
   // --- listino ---
   'voce-nuova': function () { apriVoceListino(null); },
+  'listino-svuota': async function () {
+    const tutte = listinoTutto();
+    if (!tutte.length) return;
+    const ok = await chiedi('Svuotare il listino?', 'Si cancellano tutte e ' + tutte.length + ' le voci. Le righe di contabilità già scritte restano come sono, col prezzo che hanno adesso.', 'Svuota il listino', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    tutte.forEach(function (v) { cancella('listino', v.id); });
+    filtroListino = '';
+    avvisa('Listino svuotato', 'ok');
+    aggiornaVista();
+  },
   'voce-modifica': function (el) { const v = leggiTutto().listino[el.dataset.id]; if (v) apriVoceListino(v); },
   'voce-salva': function () { if (VOCE_APERTA) salvaVoceAperta(); },
   'voce-elimina': async function () {
