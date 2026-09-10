@@ -9,7 +9,7 @@
    ============================================================ */
 
 // Il PIN del modo sviluppatore. Va cambiato prima di dare il telefono all'utente.
-const PIN = '1234';
+const PIN = '2211';
 
 // Il modello che riordina il testo. Si cambia qui, o dal modo sviluppatore.
 const MODELLO = 'claude-haiku-4-5';
