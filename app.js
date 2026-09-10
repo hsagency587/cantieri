@@ -2317,10 +2317,11 @@ function vistaGiornoInCorso(s, c) {
   const piene = sezioniPiene(s.sezioni);
   const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
   const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id;
+  const quanteFoto = fotoDi(s).length;
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + ' · ' + h(s.codice), tocca: 'modifica-testata', id: s.id,
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>' });
   html += '<div class="avanz"><div class="r"><span><b>' + piene.length + '</b> sezioni su 11</span><span class="dx">' +
-    (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato')) + '</span></div>' +
+    (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div>' +
     '<div class="barra-av"><i style="width:' + Math.round(piene.length / 11 * 100) + '%"></i></div></div>';
 
   if (String(s.sezioni.da_smistare || '').trim()) {
@@ -2330,11 +2331,13 @@ function vistaGiornoInCorso(s, c) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
+  // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
+  // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
+  html += cardFotoGiorno(s, false);
   if (s.pezzi.length) {
     html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">tocca per sentire</span></div>' +
       s.pezzi.slice().reverse().map(function (p) { return rigaAudio(s, statoLavoroPezzo(p)); }).join('') + '</div>';
   }
-  html += cardFotoGiorno(s, false);
   const fotoPer = fotoPerSezione(s);
   const vuote = [];
   SEZIONI.forEach(function (z) {
@@ -2386,8 +2389,10 @@ function vistaGiornoChiuso(s, c) {
   const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + ' · ' + h(v ? v.codice : s.codice), tocca: 'modifica-testata', id: s.id,
     destra: '<span class="pill ok">chiuso alle ' + h(oraDaISO(s.chiuso)) + '</span>' });
+  const quanteFoto = fotoDi(s).length;
   html += '<div class="numeri"><div class="n"><div class="v">' + piene.length + '/11</div><div class="k">sezioni</div></div>' +
     '<div class="n"><div class="v">' + s.pezzi.length + '</div><div class="k">audio</div></div>' +
+    (quanteFoto ? '<div class="n"><div class="v">' + quanteFoto + '</div><div class="k">foto</div></div>' : '') +
     '<div class="n"><div class="v">' + durataBreve(parlato) + '</div><div class="k">parlato</div></div></div>';
   if (s.pezzi.length) {
     html += '<div class="card"><div class="card-capo">Audio della giornata</div>' +
