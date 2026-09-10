@@ -1,7 +1,7 @@
 /* CANTIERI — service worker
    Il numero qui sotto va alzato a ogni rilascio: è l'unico modo per far
    buttare via al telefono la versione vecchia dei file. */
-const VERSIONE = 'cantieri-v1';
+const VERSIONE = 'cantieri-763a69a';
 
 /* Quello che serve per aprire l'app senza rete. pdf-lib sta qui perché il PDF
    deve uscire anche in cantiere, dove la linea non c'è. */
