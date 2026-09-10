@@ -191,6 +191,20 @@ textarea.corpo::placeholder{color:var(--line)}
 .audio .s.att{color:var(--gold)}
 .audio .d{font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 auto}
 .audio.sotto{padding-left:var(--s4);background:var(--surface-2);border-top:1px solid var(--line)}
+/* La ✕ per buttare una registrazione: piccola e spenta, ma con l'area di tocco piena. */
+.x-riga{flex:0 0 36px;height:44px;margin-right:-8px;padding:0;background:transparent;border:0;
+  color:var(--muted);font-size:18px;line-height:1}
+.x-riga:active{color:var(--danger)}
+
+/* Gli audio dentro una scatola alta tre righe che scorre da sola: una giornata da dieci
+   registrazioni non deve spingere le sezioni fuori dallo schermo. 70px è una riga:
+   52 di altezza minima più i 9+9 di margine interno. */
+.audio-lista.corta{max-height:210px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.audio-lista.corta::-webkit-scrollbar{width:4px}
+.audio-lista.corta::-webkit-scrollbar-thumb{background:var(--line);border-radius:999px}
+.lista-tutta{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px;
+  background:var(--surface-2);border:0;border-top:1px solid var(--line);color:var(--azione);font-size:15px;font-weight:600}
+.lista-tutta:active{filter:brightness(1.3)}
 
 /* ---------- foto ----------
    Le miniature sono materiale da consultare: cornice azzurra, come il triangolino del play.
@@ -206,7 +220,7 @@ textarea.corpo::placeholder{color:var(--line)}
 .foto-fila::after{content:'';flex:0 0 1px}
 .foto-fila .foto-mini{scroll-snap-align:start}
 .card-corpo + .foto-fila,textarea.corpo + .foto-fila,.audio + .foto-fila{border-top:1px solid var(--line)}
-.foto-mini{width:104px;flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.foto-mini{position:relative;width:104px;flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:4px}
 .foto-mini .q{position:relative;display:block;width:104px;height:104px;padding:0;border-radius:10px;overflow:hidden;
   background:var(--surface-2);border:2px solid rgba(56,189,248,.5);color:var(--muted);font-size:14px}
 .foto-mini .q:active{filter:brightness(1.2)}
@@ -216,6 +230,12 @@ textarea.corpo::placeholder{color:var(--line)}
 .foto-mini.pdf .q{border-color:var(--accent)}
 .foto-mini .tacca{position:absolute;right:4px;bottom:4px;padding:3px 7px;border-radius:999px;
   background:rgba(13,15,18,.85);color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.05em}
+/* La ✕ sull'angolo alto della miniatura: sta sopra l'immagine, dalla parte opposta
+   della tacca "nel PDF", e non ruba spazio alla fila. Chiede conferma prima di cancellare. */
+.foto-mini .x-mini{position:absolute;top:0;right:0;width:34px;height:34px;padding:0;z-index:1;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(13,15,18,.75);color:var(--text-2);border:0;border-radius:0 10px 0 10px;font-size:16px;line-height:1}
+.foto-mini .x-mini:active{background:var(--danger);color:#fff}
 .foto-mini .e{display:block;text-align:center;font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .foto-mini .e.att{color:var(--gold)}

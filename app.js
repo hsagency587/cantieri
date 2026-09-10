@@ -1924,7 +1924,7 @@ async function riduciFoto(file, latoMax, qualita) {
 
 /* Dal file scelto (scattato o preso dal rullino) alla voce in media del sopralluogo.
    Poi si apre la foto grande: la cosa più probabile è che voglia dire subito cos'è. */
-async function aggiungiFoto(file, sopId, origine) {
+async function aggiungiFoto(file, sopId, origine, apri) {
   const s = sopralluogo(sopId);
   if (!s || !file) return;
   avvisa('Preparo la foto…');
@@ -1947,8 +1947,23 @@ async function aggiungiFoto(file, sopId, origine) {
   };
   s.media.push(f);
   salva('sopralluogo', s);
+  // Una foto sola si apre grande: la cosa più probabile è che voglia dire subito cos'è.
+  // Più foto in fila no: si resta dov'è e le miniature compaiono da sole.
+  if (apri === false) return;
   avvisa('Foto salvata', 'ok');
   vai('#/foto/' + s.id + '/' + f.id);
+}
+
+/* Tolta una registrazione, si toglie l'audio dal telefono e i suoi lavori dalla coda.
+   Il testo già finito nelle sezioni resta dov'è: è del verbale, non della registrazione. */
+async function eliminaPezzo(s, p) {
+  const loc = leggiLocale();
+  loc.coda = loc.coda.filter(function (l) { return l.pezzo !== p.id; });
+  salvaLocale();
+  if (pezzoInAscolto === p.id) { const lettore = document.getElementById('lettore'); if (lettore) lettore.pause(); pezzoInAscolto = null; }
+  if (p.audio) await cancellaMedia(p.audio);
+  s.pezzi = s.pezzi.filter(function (x) { return x !== p; });
+  salva('sopralluogo', s);
 }
 
 // Tolta una foto, si tolgono il file, l'audio del referto se è ancora in giro, e i suoi lavori in coda.
@@ -2032,6 +2047,8 @@ function filaFoto(s, lista, opzioni) {
       '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(f.codice) + '">' +
       (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') +
       (f.nelPdf ? '<span class="tacca">✓ PDF</span>' : '') + '</button>' +
+      // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla. Nel verbale chiuso non c'è.
+      (opzioni.segna ? '' : '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(f.codice) + '">✕</button>') +
       '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
       (opzioni.segna ? '<button class="foto-segna' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '☑ nel PDF' : '☐ nel PDF') + '</button>' : '') +
       '</div>';
@@ -2189,8 +2206,27 @@ function rigaAudio(sop, pezzo, opzioni) {
   return '<div class="audio' + (opzioni.dentroSezione ? ' sotto' : '') + '">' +
     '<button class="play' + (spento ? ' spento' : '') + (suona ? ' suona' : '') + '" data-az="riascolta" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Riascolta">' + (suona ? '❚❚' : '▶') + '</button>' +
     '<button class="n" data-az="vai-sezione" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '"><div class="t">' + h(nome) + '</div><div class="s ' + classe + '">' + h(sotto) + '</div></button>' +
-    '<span class="d">' + durataBreve(pezzo.durata) + '</span></div>';
+    '<span class="d">' + durataBreve(pezzo.durata) + '</span>' +
+    // La ✕ in fondo alla riga: una registrazione venuta male si butta e si rifà. A giornata chiusa non c'è.
+    (sop.chiuso ? '' : '<button class="x-riga" data-az="pezzo-elimina" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Elimina la registrazione">✕</button>') + '</div>';
 }
+
+/* Gli audio in una scatola alta tre righe, che scorre dentro di sé: dieci registrazioni
+   non devono spingere il resto della giornata fuori dallo schermo. Il tasto sotto la
+   apre tutta, e la scelta resta memorizzata come le tendine. */
+const AUDIO_A_VISTA = 3;
+function listaAudio(sop, pezzi, opzioni) {
+  opzioni = opzioni || {};
+  if (!pezzi.length) return '';
+  const chiave = 'audio-' + (opzioni.chiave || sop.id);
+  const tutta = !!leggiLocale().tendine[chiave];
+  const troppi = pezzi.length > AUDIO_A_VISTA;
+  return '<div class="audio-lista' + (troppi && !tutta ? ' corta' : '') + '">' +
+    pezzi.map(function (p) { return rigaAudio(sop, statoLavoroPezzo(p), opzioni); }).join('') + '</div>' +
+    (troppi ? '<button class="lista-tutta" data-az="lista-tutta" data-chiave="' + h(chiave) + '">' +
+      (tutta ? '▲ Mostra solo le ultime ' + AUDIO_A_VISTA : '▼ Vedi tutte e ' + pezzi.length) + '</button>' : '');
+}
+
 function statoLavoroPezzo(pezzo) {
   // La coda sa più del pezzo: se un lavoro suo è in corso, lo si dice.
   const loc = leggiLocale();
@@ -2369,8 +2405,8 @@ function vistaGiornoInCorso(s, c) {
   // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
   html += cardFotoGiorno(s, false);
   if (s.pezzi.length) {
-    html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">tocca per sentire</span></div>' +
-      s.pezzi.slice().reverse().map(function (p) { return rigaAudio(s, statoLavoroPezzo(p)); }).join('') + '</div>';
+    html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">' + s.pezzi.length + ' · tocca per sentire</span></div>' +
+      listaAudio(s, s.pezzi.slice().reverse()) + '</div>';
   }
   const fotoPer = fotoPerSezione(s);
   const vuote = [];
@@ -2380,7 +2416,7 @@ function vistaGiornoInCorso(s, c) {
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      pezziQui.map(function (p) { return rigaAudio(s, statoLavoroPezzo(p), { dentroSezione: true }); }).join('') + filaFoto(s, fotoQui) + '</div>';
+      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui) + '</div>';
     // Una sezione con una foto dentro non è vuota: se finisse nella tendina, la foto sparirebbe.
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
@@ -2408,12 +2444,17 @@ function cardFotoGiorno(s, chiuso) {
       (chiuso || foto.length > 1 ? '<button class="btn medio" style="width:auto;flex:0 0 auto;padding:0 14px" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button>' : '') +
       '</div></div>';
   }
-  if (!chiuso) {
-    html += '<input type="file" accept="image/*" capture="environment" id="file-foto-scatta" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="scatto">' +
-      '<input type="file" accept="image/*" id="file-foto-rullino" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="rullino">' +
-      '<button class="link blocco" data-az="foto-rullino">＋ Foto dal rullino</button>';
-  }
+  if (!chiuso) html += ingressiFoto(s);
   return html;
+}
+
+/* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza) — più il
+   link del rullino. Stanno nel giorno e anche nella schermata di una foto: dopo
+   averne caricata una se ne carica un'altra da lì, senza tornare indietro. */
+function ingressiFoto(s) {
+  return '<input type="file" accept="image/*" capture="environment" id="file-foto-scatta" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="scatto">' +
+    '<input type="file" accept="image/*" multiple id="file-foto-rullino" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="rullino">' +
+    '<button class="link blocco" data-az="foto-rullino">＋ Foto dal rullino</button>';
 }
 
 function vistaGiornoChiuso(s, c) {
@@ -2429,8 +2470,8 @@ function vistaGiornoChiuso(s, c) {
     (quanteFoto ? '<div class="n"><div class="v">' + quanteFoto + '</div><div class="k">foto</div></div>' : '') +
     '<div class="n"><div class="v">' + durataBreve(parlato) + '</div><div class="k">parlato</div></div></div>';
   if (s.pezzi.length) {
-    html += '<div class="card"><div class="card-capo">Audio della giornata</div>' +
-      s.pezzi.map(function (p) { return rigaAudio(s, statoLavoroPezzo(p)); }).join('') + '</div>';
+    html += '<div class="card"><div class="card-capo">Audio della giornata<span class="dx">' + s.pezzi.length + '</span></div>' +
+      listaAudio(s, s.pezzi) + '</div>';
   }
   html += cardFotoGiorno(s, true);
   // Le foto stanno sotto il testo della loro sezione, con il tasto per metterle nel PDF. Una sezione con sole foto si mostra lo stesso.
@@ -2779,7 +2820,10 @@ function vistaFoto(sopId, fotoId) {
     '</div></div>';
   html += '<div class="modulo"><button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>' +
     '<button class="btn btn-rosso medio" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" style="margin-top:12px">Elimina la foto</button></div>';
-  if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="foto-detta" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">🎙️ ' + (String(f.referto || '').trim() ? 'Aggiungi al referto' : 'Detta il referto') + '</button></div>';
+  // I tasti della foto restano anche qui: caricata una, la successiva parte da questa schermata.
+  html += ingressiFoto(s);
+  if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="foto-detta" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">🎙️ ' + (String(f.referto || '').trim() ? 'Aggiungi al referto' : 'Detta il referto') + '</button>' +
+    '<button class="az stretta" data-az="foto-scatta">📷 Foto</button></div>';
   return html;
 }
 
@@ -3812,6 +3856,25 @@ const AZIONI = {
     if (el.nextElementSibling) { el.nextElementSibling.hidden = !aperta; el.nextElementSibling.querySelectorAll('textarea.corpo').forEach(cresciTextarea); }
   },
   'riascolta': function (el) { riascolta(el.dataset.sop, el.dataset.id); },
+  // Apre o richiude una lista di audio lunga. La scelta sta con le tendine, così regge il ridisegno.
+  'lista-tutta': function (el) {
+    const loc = leggiLocale();
+    loc.tendine[el.dataset.chiave] = !loc.tendine[el.dataset.chiave];
+    salvaLocale();
+    aggiornaVista();
+  },
+  'pezzo-elimina': async function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const p = s && s.pezzi.find(function (x) { return x.id === el.dataset.id; });
+    if (!p) return;
+    const nome = p.titolo || 'Registrazione delle ' + p.ora;
+    const ok = await chiedi('Eliminare questa registrazione?', nome + '. L\'audio si cancella dal telefono; il testo già finito nelle sezioni resta.', 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    await eliminaPezzo(s, p);
+    avvisa('Eliminata', 'ok');
+    aggiornaVista();
+  },
   'vai-sezione': function (el) {
     const s = sopralluogo(el.dataset.sop);
     const p = s && s.pezzi.find(function (x) { return x.id === el.dataset.id; });
@@ -3976,7 +4039,8 @@ const AZIONI = {
     if (!ok) return;
     await eliminaFoto(s, f);
     avvisa('Eliminata', 'ok');
-    vai('#/giorno/' + s.id);
+    // Dalla schermata della foto si torna al giorno; dalla miniatura si resta dov'è, si ridisegna e basta.
+    if (ROTTA.nome === 'foto') vai('#/giorno/' + s.id); else aggiornaVista();
   },
   // --- contabilità ---
   'detta-contabilita': function (el) { const c = cantiere(el.dataset.id); if (c) avviaRegistrazione({ tipo: 'contabilita', cantiere: c.id }); },
@@ -4293,11 +4357,16 @@ function suCampo(el, evento) {
     return;
   }
   if (campo === 'file-foto' && evento === 'change') {
-    const f = el.files && el.files[0];
+    const scelte = Array.prototype.slice.call(el.files || []);
     const sopId = el.dataset.id, origine = el.dataset.origine;
     // Si svuota subito: così la stessa foto si può scegliere di nuovo, e il file grosso non resta appeso al campo.
     el.value = '';
-    if (f) aggiungiFoto(f, sopId, origine).catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
+    if (!scelte.length) return;
+    // Dal rullino se ne possono prendere più d'una: si caricano in fila e si resta dov'è.
+    (async function () {
+      for (const f of scelte) await aggiungiFoto(f, sopId, origine, scelte.length === 1);
+      if (scelte.length > 1) { avvisa(scelte.length + ' foto salvate', 'ok'); aggiornaVista(); }
+    })().catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
     return;
   }
   if (campo === 'referto-foto') {
