@@ -15,6 +15,10 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
+<!-- Lo strato visivo sta in un foglio a parte, caricato dopo: corregge styles.css
+     per sovrapposizione senza che nessuno debba aprirlo. Le regole a parole
+     stanno in STILE.md. Per tornare indietro basta togliere questa riga. -->
+<link rel="stylesheet" href="stile.css">
 <!-- pdf-lib è l'unica libreria esterna: serve soltanto a scrivere il PDF.
      Sta in un file a parte perché il service worker la tiene in cache dopo il primo giro:
      così il PDF esce anche senza rete. -->

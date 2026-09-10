@@ -1,0 +1,313 @@
+/* CANTIERI — stile.css
+   Foglio dello strato visivo. Si carica DOPO styles.css e lo corregge per
+   sovrapposizione: styles.css non si apre mai, così due persone possono
+   lavorare sull'app nello stesso periodo senza cancellarsi il lavoro.
+
+   Regola dura: qui dentro non nasce nessun colore nuovo. Si usano solo
+   --accent, --azione, --gold, --danger e i grigi che ci sono già.
+
+   Le regole di questo foglio stanno scritte in italiano in STILE.md.
+   Se cambi una misura qui, cambiala anche lì. */
+
+
+/* ============ 1. LE MISURE ============
+   Sei misure di testo al posto di quindici, sette spazi al posto di cinque,
+   due angoli al posto di nove. È quello che fa la differenza fra un'app che
+   sembra costruita e una che sembra capitata. */
+
+:root{
+  /* Testo. Sotto --t2 non va nessuna informazione che si deve leggere. */
+  --t1:13px;   /* etichette, targhe, didascalie */
+  --t2:15px;   /* testo di servizio, sottotitoli, note */
+  --t3:17px;   /* il testo che si legge davvero */
+  --t4:20px;   /* titoli di blocco */
+  --t5:24px;   /* titolo di schermata */
+  --t6:30px;   /* numeri grossi */
+
+  /* La variabile vecchia continua a esistere e punta alla scala nuova:
+     tutte le regole di styles.css che la usano si allineano da sole. */
+  --testo:var(--t3);
+
+  /* Spazio. I due grandi mancavano: senza quelli niente si separa da niente. */
+  --s6:32px;   /* fra due gruppi diversi */
+  --s7:48px;   /* fra due parti diverse della schermata */
+
+  /* Angoli: uno per le cose piccole, uno per i contenitori. */
+  --radius:16px;
+  --radius-p:8px;
+
+  /* Il margine laterale lo dà il contenitore, una volta sola.
+     I blocchi non se lo portano più addosso. */
+  --margine:16px;
+}
+
+@media (min-width:400px){ :root{ --margine:20px } }
+
+
+/* ============ 2. IL CARATTERE ============
+   Quando i file del carattere saranno nella cartella, togli il commento qui
+   sotto e il resto funziona da solo: 'IBM Plex Sans' è già primo nell'elenco.
+   Servono tre file woff2 (400, 600, 700) in una cartella "font". */
+
+/*
+@font-face{font-family:'IBM Plex Sans';src:url('font/plex-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('font/plex-600.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('font/plex-700.woff2') format('woff2');font-weight:700;font-display:swap}
+*/
+
+body{
+  font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI",Roboto,system-ui,sans-serif;
+  letter-spacing:-.006em;
+}
+
+/* I numeri stanno in colonna: stessa larghezza per ogni cifra, ovunque
+   ci sia una quantità, un'ora o un importo. */
+.numeri .v,.voceriga .importo,.voceriga .conti,.totale .cifra,
+.giorno .dnum,.audio .d,.reg .t,.avanz .r b{font-variant-numeric:tabular-nums}
+
+
+/* ============ 3. LA GRIGLIA ============
+   Un solo punto decide dove comincia il testo. Prima erano trenta punti
+   diversi, e infatti il sottotitolo di una schermata non era allineato al
+   titolo che gli stava sopra. */
+
+#vista{padding-left:var(--margine);padding-right:var(--margine)}
+
+#vista > .top,
+#vista > .modulo,
+#vista > .griglia,
+#vista > .colonna,
+#vista > .anteprima{padding-left:0;padding-right:0}
+
+#vista > .card,
+#vista > .sub,
+#vista > .numeri,
+#vista > .cerca,
+#vista > .eti,
+#vista > .tend,
+#vista > .avanz,
+#vista > .totale,
+#vista > .avviso,
+#vista > .vuoto-stato,
+#vista > .foto-grande,
+#vista > .link.blocco{margin-left:0;margin-right:0}
+
+/* La barra in fondo è fissa allo schermo: il margine se lo tiene lei. */
+
+
+/* ============ 4. IL RITMO VERTICALE ============
+   Dentro un gruppo si sta stretti, fra due gruppi si respira. Senza questo
+   salto tutto ha lo stesso peso e la schermata sembra un elenco piatto. */
+
+#vista > .eti{margin-top:var(--s6);margin-bottom:var(--s3)}
+#vista > .eti:first-of-type{margin-top:var(--s5)}
+#vista > .card + .card{margin-top:var(--s3)}
+#vista > .card{margin-bottom:var(--s3)}
+#vista > .numeri{margin-bottom:var(--s5)}
+#vista > .totale{margin-top:var(--s5)}
+#vista > .avanz{margin-bottom:var(--s5)}
+
+/* Il sottotitolo di una schermata sta attaccato al titolo, non a mezz'aria */
+#vista > .sub{margin-top:-8px;margin-bottom:var(--s4);font-size:var(--t2)}
+
+/* La tendina si allargava con un conto suo: adesso segue il contenitore */
+#vista > .tend{width:100%}
+
+/* La barra in fondo può essere alta tre bottoni: sotto ci vuole più aria,
+   se no l'ultimo riquadro resta coperto a metà. */
+#vista{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+
+
+/* ============ 5. LA TESTATA ============
+   Il titolo va a capo sotto il tasto di destra, non dentro una colonna
+   stretta: "Aq 15 Via mosso" ci sta in una riga sola, e parte dallo stesso
+   punto di tutto il resto. */
+
+.top{
+  flex-wrap:wrap;align-items:center;
+  padding-top:calc(var(--s3) + env(safe-area-inset-top));
+  padding-bottom:var(--s4);
+  gap:var(--s2);
+}
+.top .indietro{margin:0 0 0 -10px;min-height:44px;font-size:26px}
+.top .destra{margin-left:auto;padding-top:0}
+.top .tit{flex:1 1 auto;min-width:0}
+
+/* Il titolo va sulla riga sua solo quando c'è il tasto indietro a rubargli
+   spazio. Nella schermata di partenza, che il tasto non ce l'ha, resta in
+   linea con il bottone di destra. */
+.top .indietro ~ .destra{order:2}
+.top .indietro ~ .tit{order:3;flex:1 0 100%;min-width:100%}
+
+.top h1,.top h1.pic{
+  font-size:var(--t5);font-weight:700;line-height:1.15;letter-spacing:-.02em;
+  text-transform:none;
+}
+.top .sub{font-size:var(--t2);margin-top:4px;line-height:1.35}
+
+/* Se la testata non ha il tasto indietro, il titolo non deve andare a capo
+   da solo: resta in linea. */
+.top .tit:first-child{flex:1 1 auto;min-width:0}
+
+.pieno-tit{font-size:var(--t2);letter-spacing:.06em}
+
+
+/* ============ 6. LE MISURE DEL TESTO, UNA PER UNA ============
+   Ogni misura fuori scala riportata dentro. */
+
+.card .titolo{font-size:var(--t4);font-weight:700;letter-spacing:-.01em;margin-bottom:2px}
+.card .sotto{font-size:var(--t2)}
+.card-piede{font-size:var(--t2)}
+.card-corpo{font-size:var(--t3);line-height:1.6}
+textarea.corpo{font-size:var(--t3);line-height:1.6}
+
+.numeri .v{font-size:var(--t4);letter-spacing:-.01em}
+.numeri .k{font-size:var(--t1);letter-spacing:.04em}
+
+.riga{font-size:var(--t3)}
+.riga .dx,.riga .desc small{font-size:var(--t2)}
+.riga .frec{font-size:var(--t4)}
+
+.giorno .dnum{font-size:var(--t5);letter-spacing:-.02em}
+.giorno .dset{font-size:var(--t1)}
+.giorno .titolo{font-size:var(--t3)}
+.giorno .prima,.mini{font-size:var(--t2)}
+
+.audio .t{font-size:var(--t3)}
+.audio .s,.audio .d{font-size:var(--t2)}
+.lista-tutta{font-size:var(--t2)}
+
+.cerca,.cerca input{font-size:var(--t3)}
+.tend{font-size:var(--t3)}
+.link{font-size:var(--t2)}
+.eti{font-size:var(--t1);letter-spacing:.1em}
+.eticampo{font-size:var(--t1);letter-spacing:.04em}
+.campo{font-size:var(--t3)}
+.foglio h2{font-size:var(--t4);letter-spacing:-.01em}
+.pieno-testo{font-size:var(--t3);line-height:1.6}
+.avviso,.vuoto-stato,.foto-grande .foto-vuota,.foto-dati{font-size:var(--t2)}
+.toast{font-size:var(--t2)}
+.btn{font-size:var(--t4);font-weight:600}
+.btn.medio,.griglia .btn{font-size:var(--t3)}
+.az{font-size:var(--t3)}
+.az.verde{font-size:var(--t3)}
+.barra.tre .az{font-size:var(--t2)}
+.voceriga .desc{font-size:var(--t3)}
+.voceriga .conti{font-size:var(--t2)}
+.voceriga .importo{font-size:var(--t3)}
+.voceriga .codice,.targa{font-size:var(--t1)}
+.totale .cifra{font-size:var(--t6);letter-spacing:-.02em}
+.avanz .r{font-size:var(--t2)}
+.avanz .r b{font-size:var(--t3)}
+.foto-mini .e{font-size:var(--t1)}
+.dev .card-corpo,.dev small,.dev .coda-riga{font-size:var(--t2)}
+
+
+/* ============ 7. VIA LE SCATOLE ============
+   Prima ogni cosa stava dentro un riquadro con bordo, angolo e banda in
+   testa: tre bande maiuscole una sotto l'altra nella stessa schermata.
+   Il riquadro resta, ma si vede molto meno: lo separa il fondo, non la riga. */
+
+.card{border-color:transparent;border-radius:var(--radius)}
+
+/* La banda in testa non è più una banda: è un'etichetta appoggiata sopra
+   il contenuto, senza fondo diverso e senza riga di chiusura. */
+.card-capo{
+  background:transparent;border-bottom:0;
+  padding:var(--s3) var(--s4) var(--s2);
+  font-size:var(--t1);font-weight:700;letter-spacing:.08em;
+}
+.card-capo .dx{font-size:var(--t2)}
+.card-piede{background:transparent;border-top-color:var(--line)}
+
+/* Il piede della card e la riga di ricerca perdono il bordo: basta il fondo. */
+.cerca{border-color:transparent;border-radius:var(--radius-p)}
+.tend{border-color:transparent;border-radius:var(--radius-p)}
+.numeri .n{border-color:transparent;border-radius:var(--radius-p)}
+.totale{border-color:transparent;border-radius:var(--radius)}
+.campo{border-radius:var(--radius-p)}
+.foto-grande{border-color:transparent;border-radius:var(--radius)}
+
+/* L'ultima riga di un elenco dentro una card non ha bisogno della riga sotto */
+.card .riga:last-child,.voceriga:last-child{border-bottom:0}
+
+
+/* ============ 8. IL MAIUSCOLETTO, SOLO DOVE SERVE ============
+   Era in otto posti. Quando è ovunque non dice più niente.
+   Resta sulle etichette di gruppo e sulle targhe dei codici. */
+
+.eticampo{text-transform:none;letter-spacing:0;font-size:var(--t2);color:var(--muted)}
+.giorno .dset{text-transform:none;letter-spacing:.02em}
+.numeri .k{text-transform:none;letter-spacing:.01em}
+.pieno-tit{text-transform:none}
+.pill:not(.cod){text-transform:none;letter-spacing:0}
+
+
+/* ============ 9. LE PASTIGLIE ============
+   Meno tonde, meno grasse, meno numerose all'occhio. La pastiglia
+   completamente tonda è il segno delle app di consegne, non degli
+   strumenti da lavoro. */
+
+.pill{border-radius:6px;padding:4px 8px;font-size:var(--t1);font-weight:600}
+.pill.cod{letter-spacing:.06em;font-weight:500}
+button.pill{border-radius:var(--radius-p);font-size:var(--t2);padding:0 14px}
+
+
+/* ============ 10. I BOTTONI ============
+   Uno solo comanda. Prima nella barra ce n'erano due pieni della stessa
+   misura: se gridano in due, non grida nessuno. */
+
+.az{border-radius:var(--radius-p);font-weight:600}
+.az.verde{
+  font-size:var(--t3);font-weight:700;letter-spacing:-.01em;
+  box-shadow:none;               /* via l'ombra colorata */
+}
+/* Dal secondo bottone pieno in poi: stesso colore, ma vuoto. */
+.barra .az.verde ~ .az.verde{
+  background:transparent;color:var(--accent);
+  border:1px solid var(--accent);font-weight:600;
+}
+.btn{border-radius:var(--radius-p)}
+.btn-ok{font-weight:700}
+
+/* Due bottoni affiancati dentro una card: "Correggi il verbale" ci deve
+   stare senza spezzarsi in due righe. */
+.griglia{padding-left:0;padding-right:0;gap:var(--s2)}
+.griglia .btn{font-size:var(--t2);line-height:1.2;padding:0 10px}
+.barra{padding-bottom:calc(var(--s4) + env(safe-area-inset-bottom))}
+
+
+/* ============ 11. LE MINIATURE ============
+   Su un quadrato di 104 pixel c'erano quattro segni sovrapposti.
+   Il bordo si assottiglia, la tacca del PDF si fa piccola, la ✕ si spegne. */
+
+.foto-mini .q{border-width:1px;border-radius:var(--radius-p)}
+.foto-mini .tacca{font-size:11px;padding:4px 7px;font-weight:600;letter-spacing:.02em}
+.foto-mini .x-mini{width:30px;height:30px;font-size:14px;border-radius:0 var(--radius-p) 0 var(--radius-p)}
+.foto-mini .e{font-size:var(--t1);opacity:.8}
+.foto-fila{padding-left:var(--s4);padding-right:var(--s4)}
+
+
+/* ============ 12. IL TESTO LUNGO ============
+   Un verbale dettato è un muro di righe attaccate. L'interlinea più larga
+   e un filo di aria dopo ogni capoverso lo rendono leggibile in cantiere,
+   con il telefono in mano e il sole addosso. */
+
+.card-corpo,textarea.corpo,.pieno-testo{line-height:1.6}
+.voce{margin-bottom:2px}
+
+
+/* ============ 13. QUANDO SI TOCCA, SI VEDE ============
+   Serve a chi usa l'app con i guanti e a chi la usa con la tastiera. */
+
+:focus-visible{outline:2px solid var(--azione);outline-offset:2px;border-radius:4px}
+.campo:focus{border-color:var(--azione)}
+
+
+/* ============ 14. SCHERMI LARGHI ============
+   La colonna resta stretta come un telefono, ma non attaccata al bordo. */
+
+@media (min-width:700px){
+  #vista{max-width:680px}
+  .barra,.reg{max-width:680px}
+}

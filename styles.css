@@ -398,3 +398,36 @@ select.campo{-webkit-appearance:none;appearance:none;padding-right:36px;
 @media (prefers-reduced-motion:reduce){
   .reg .dot,.onda i{animation:none;transition:none}
 }
+/* La riga di un PDF archiviato: il nome che si tocca per aprirlo, il tasto per mandarlo
+   fuori, la ✕ per buttarlo. Stessa forma della riga di un audio, che è già familiare. */
+.riga-pdf{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s4);border-bottom:1px solid var(--line)}
+.riga-pdf:last-child{border-bottom:0}
+.riga-pdf .n{flex:1;min-width:0;text-align:left;padding:0;background:transparent;border:0;color:var(--text)}
+.riga-pdf .n .t{font-size:17px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.riga-pdf .n .s{font-size:15px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.riga-pdf .n:active{filter:brightness(1.3)}
+.riga-pdf .pill{flex:0 0 auto}
+
+/* ---------- aziende ----------
+   La riga di un'azienda porta il suo logo: è il modo più veloce per riconoscerla,
+   più del nome. Senza logo, due lettere su fondo scuro. */
+.az-riga{display:flex;align-items:center;gap:var(--s3)}
+.az-logo{flex:0 0 56px;width:56px;height:56px;border-radius:12px;object-fit:contain;background:var(--surface-2);border:1px solid var(--line)}
+.az-logo.vuoto{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:18px;font-weight:800;letter-spacing:.06em}
+.az-riga .frec{flex:0 0 auto;color:var(--muted);font-size:22px}
+
+/* Logo e firma affiancati nella scheda: si vedono per quello che sono, immagini. */
+.az-imm{display:flex;gap:var(--s3)}
+.az-slot{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s2)}
+.az-slot .et{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.az-slot img{display:block;width:100%;height:96px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--line)}
+.az-slot .vuoto{display:flex;align-items:center;justify-content:center;height:96px;border-radius:10px;
+  background:var(--surface-2);border:1px dashed var(--line);color:var(--muted);font-size:15px}
+
+/* La riga dell'azienda in cima alla sua card: come una riga normale, ma con il logo
+   davanti e il nome in grande. Sotto ci stanno i suoi cantieri, uno per riga. */
+.riga.az-capo{gap:var(--s3);padding-top:var(--s3);padding-bottom:var(--s3)}
+.riga.az-capo .az-logo{flex:0 0 44px;width:44px;height:44px;border-radius:10px}
+.riga.az-capo .desc b{font-size:19px;font-weight:800;display:block}
+.riga.piu{color:var(--azione);font-weight:600}
+.riga .pill{flex:0 0 auto;margin-right:var(--s2)}
