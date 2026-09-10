@@ -1,0 +1,9 @@
+# File che vivono solo sul PC e non devono finire nel sito.
+# La sbarra davanti vuol dire "solo qui nella cartella principale":
+# senza, /pubblica.yml nasconderebbe anche .github/workflows/pubblica.yml.
+
+/app icon.jpg
+/pubblica.yml
+/versione-cache.yml
+/pdf-lib-prova.js
+*.bak

@@ -40,6 +40,18 @@ const LATO_FOTO_PDF = 1200;
 const QUALITA_FOTO_PDF = 0.6;
 // La sezione in cui finisce una foto se nessuno ne sceglie una.
 const SEZIONE_FOTO = 'osservazioni';
+/* I documenti scansionati col telefono: una bolla di consegna, il modulo firme degli
+   operai. Sono foto anche loro, ma si leggono, quindi si riducono meno e si comprimono
+   meno. Vivono nello stesso posto delle foto e si distinguono per il "genere". */
+const LATO_DOC = 2200;
+const QUALITA_DOC = 0.82;
+const LATO_DOC_PDF = 1700;
+const QUALITA_DOC_PDF = 0.7;
+const GENERI = { bolla: 'Bolla', firme: 'Modulo firme' };
+// Sotto una miniatura larga 104 "Modulo firme" non ci sta: lì basta la parola.
+const GENERI_BREVI = { bolla: 'Bolla', firme: 'Firme' };
+// Quale dei due tasti è stato premuto: l'ingresso file è uno solo e non se lo porta dietro.
+let DOC_GENERE = 'bolla';
 
 // Le undici sezioni del sopralluogo, nell'ordine deciso. Non si toccano.
 const SEZIONI = [
@@ -50,6 +62,8 @@ const SEZIONI = [
   { chiave: 'attrezzature_necessarie',  nome: 'Attrezzature necessarie',           elenco: true  },
   { chiave: 'materiali_impiegati',      nome: 'Materiali impiegati',               elenco: true  },
   { chiave: 'materiali_necessari',      nome: 'Materiali necessari',               elenco: true  },
+  { chiave: 'rilievi_ordine',           nome: "Rilievi per l'ordine",              elenco: true  },
+  { chiave: 'rilievi_contabilita',      nome: 'Rilievi per la contabilità',        elenco: true  },
   { chiave: 'sicurezza',                nome: 'Sicurezza',                         elenco: false },
   { chiave: 'problemi',                 nome: 'Problemi o anomalie',               elenco: false },
   { chiave: 'osservazioni',             nome: 'Altre osservazioni',                elenco: false },
@@ -66,6 +80,8 @@ const PAROLE_SEZIONE = {
   attrezzature_necessarie: ['attrezzature necessarie', 'attrezzature che servono', 'mezzi necessari', 'servono mezzi'],
   materiali_impiegati: ['materiali impiegati', 'materiali usati', 'materiale usato', 'materiale impiegato'],
   materiali_necessari: ['materiali necessari', 'materiali che servono', 'materiale da ordinare', 'da ordinare', 'materiali da ordinare'],
+  rilievi_ordine: ['rilievo d\'ordine', 'rilievi d\'ordine', 'rilievo ordine', 'rilievi ordine', 'misure da ordinare', 'rilievo per l\'ordine'],
+  rilievi_contabilita: ['rilievo da contabilità', 'rilievi da contabilità', 'rilievo contabilità', 'rilievi contabilità', 'misure per la contabilità', 'rilievo per la contabilità'],
   sicurezza: ['sicurezza'],
   problemi: ['problemi', 'anomalie', 'problemi o anomalie', 'anomalia', 'problema'],
   osservazioni: ['osservazioni', 'altre osservazioni'],
@@ -108,6 +124,8 @@ Le sezioni sono:
 - attrezzature_necessarie: attrezzature che serviranno più avanti, con quando se detto. Una voce per riga.
 - materiali_impiegati: materiali usati oggi, con la quantità se detta. Una voce per riga.
 - materiali_necessari: materiali che serviranno più avanti, con quando se detto. Una voce per riga.
+- rilievi_ordine: misure prese in cantiere di prodotti da ordinare. Una voce per prodotto, con quantità e misure: "3 finestre 120x150 cm".
+- rilievi_contabilita: misure prese in cantiere di lavorazioni o prodotti da mettere in contabilità. Una voce per riga, con quantità e misure.
 - sicurezza: ponteggi, protezioni, dispositivi, prescrizioni, mancanze rilevate.
 - problemi: anomalie, difetti, ritardi, contestazioni, cose che non vanno.
 - osservazioni: quello che non sta nelle altre sezioni ma va scritto.
@@ -122,7 +140,7 @@ Scrivi ore, misure e quantità in cifre. I nomi propri che trovi nell'elenco all
 
 Dai anche un titolo alla registrazione: tre o quattro parole prese da quello che è stato detto, la cosa più importante. Non un riassunto, un'etichetta: "Getto solaio primo piano", "Ponteggio senza fermapiede".
 
-Rispondi soltanto con un oggetto JSON con queste chiavi: titolo, lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, sicurezza, problemi, osservazioni, note, da_smistare. Ogni valore è una stringa; negli elenchi separa le voci con un a capo. Niente altro testo.
+Rispondi soltanto con un oggetto JSON con queste chiavi: titolo, lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, rilievi_ordine, rilievi_contabilita, sicurezza, problemi, osservazioni, note, da_smistare. Ogni valore è una stringa; negli elenchi separa le voci con un a capo. Niente altro testo.
 Le chiavi rimaste vuote non si scrivono. Nel JSON ci va il titolo piu' soltanto le sezioni che hanno davvero del testo. Una sezione che manca vale come vuota: l'app la lascia com'era. Questo non cambia niente su dove va una frase: le regole di smistamento valgono tutte uguali, e niente si perde.
 
 === COME SI DECIDE DOVE VA UNA FRASE ===
@@ -136,6 +154,8 @@ attrezzature_presenti: "attrezzature presenti", "attrezzature in cantiere", "mez
 attrezzature_necessarie: "attrezzature necessarie", "attrezzature che servono", "servono mezzi", "ci vorrà", "bisogna far arrivare", "da noleggiare", "serve la gru", "serve il ponteggio", "mezzi necessari", "occorre", "servirà".
 materiali_impiegati: "materiali impiegati", "materiali usati", "materiale usato", "abbiamo usato", "sono stati posati", "impiegati oggi", "consumati", "abbiamo messo", "gettati", "posati".
 materiali_necessari: "materiali necessari", "materiali che servono", "materiale da ordinare", "da ordinare", "bisogna ordinare", "serve materiale", "far arrivare", "mancano", "occorrono", "servono", "ordinare per".
+rilievi_ordine: "rilievo d'ordine", "rilievi d'ordine", "rilievo per l'ordine", "misure da ordinare", "prendo le misure per ordinare", "misuro per l'ordine".
+rilievi_contabilita: "rilievo da contabilità", "rilievi da contabilità", "rilievo per la contabilità", "misure per la contabilità", "misuro per la contabilità", "da mettere in contabilità".
 sicurezza: "sicurezza", "capitolo sicurezza", "per la sicurezza", "DPI", "dispositivi di protezione", "ponteggio" quando si parla di protezioni, "parapetti", "prescrizioni", "coordinatore".
 problemi: "problemi", "anomalie", "problemi o anomalie", "c'è un problema", "non va bene", "contestazione", "contestiamo", "difetto", "ritardo", "è arrivato in ritardo", "sbagliato", "rotto", "non funziona", "danneggiato", "infiltrazione", "crepa", "fessura".
 osservazioni: "osservazioni", "altre osservazioni", "da segnalare", "faccio notare", "segnalo che", "osservo che", "da tenere presente".
@@ -147,6 +167,7 @@ Regole di decisione quando le parole chiave non ci sono:
 3. Persone con nome, ditta o mansione vanno in operai. Se si dice solo un numero ("quattro muratori") la voce è "4 muratori — compito" e la ditta si mette solo se detta.
 4. Un mezzo o un'attrezzatura di cui si dice che è in cantiere va in attrezzature_presenti. Se se ne dice che dovrà arrivare, che va noleggiata o che servirà, va in attrezzature_necessarie.
 5. Un materiale di cui si dice che è stato usato, posato, gettato, consumato va in materiali_impiegati. Se va ordinato, se manca, se servirà, va in materiali_necessari.
+5-bis. Una misura dettata dopo "rilievo d'ordine" va in rilievi_ordine; dopo "rilievo da contabilità" va in rilievi_contabilita. Sono misure di prodotti, con la quantità: non vanno in materiali_necessari, che dice cosa serve e non quanto misura.
 6. Tutto quello che riguarda protezioni, ponteggi come protezione, parapetti, caschi, imbracature, cartelli, recinzioni, prescrizioni del coordinatore va in sicurezza. Se una mancanza di sicurezza è anche un problema, va in sicurezza, non in problemi: la sicurezza ha la precedenza.
 7. Ritardi, difetti, errori, danni, contestazioni, cose rotte, materiale sbagliato vanno in problemi.
 8. Quello che è un'osservazione generale sull'andamento, sul meteo, sulle condizioni del cantiere, sui rapporti con il committente, va in osservazioni.
@@ -351,6 +372,22 @@ const REGOLE_UM = `Ricevi un'unità di misura scritta o dettata in un cantiere i
 const REGOLE_RIASSUNTO = `Ricevi i verbali di sopralluogo di un cantiere in un periodo. Scrivi due righe, in italiano, che dicono come è andata: cosa è stato fatto, cosa manca, se ci sono stati problemi. Usa solo quello che c'è nei verbali: non inventare niente. Niente titoli, niente elenchi, solo le due righe.`;
 
 // Il referto di una foto è corto: un foglio corto e dedicato, non quello del sopralluogo, che costerebbe venti volte tanto.
+/* Il rilievo ha un foglio suo, corto: il tasto ha già detto in quale paragrafo va,
+   quindi qui non si smista niente, si pulisce e si scrive in righe. */
+const REGOLE_RILIEVO = `Ricevi il dettato di un rilievo preso in cantiere, già trascritto: misure di prodotti da ordinare, oppure da mettere in contabilità.
+
+Regole:
+- Una riga per prodotto o per voce. Niente elenco puntato, niente titoli.
+- Metti prima la quantità, poi la cosa, poi le misure: "3 finestre 120x150 cm", "solaio 4,20 x 3,10 m".
+- I numeri in cifre e le unità in forma breve: cm, m, m², kg, pz.
+- "per" fra due numeri è una misura: "centoventi per centocinquanta" diventa 120x150.
+- Togli le esitazioni: ehm, cioè, allora, diciamo, praticamente, insomma, ecco, appunto.
+- Applica le correzioni dette a voce: "tre, no, quattro finestre" diventa 4 finestre.
+- Non aggiungere niente che non sia stato detto. Non spiegare, non commentare, non inventare.
+- Se il dettato non si capisce, riporta il testo così com'è senza inventare.
+
+Rispondi soltanto con le righe del rilievo. Niente altro testo, niente virgolette.`;
+
 const REGOLE_FOTO = `Ricevi la descrizione dettata a voce di una fotografia scattata in cantiere, già trascritta. Scrivi la didascalia di quella foto per il verbale di sopralluogo.
 
 Regole:
@@ -823,6 +860,9 @@ function nomeSezione(chiave) {
 function fotoDi(sop) {
   return (sop && Array.isArray(sop.media) ? sop.media : []).filter(function (m) { return m && m.tipo === 'foto'; });
 }
+// Le foto vere sono quelle di quello che si vede. Bolle e moduli firme hanno un genere e vanno per conto loro.
+function fotoNormali(sop) { return fotoDi(sop).filter(function (f) { return !f.genere; }); }
+function documentiDi(sop) { return fotoDi(sop).filter(function (f) { return !!f.genere; }); }
 function trovaFoto(sop, id) {
   return fotoDi(sop).find(function (f) { return f.id === id; }) || null;
 }
@@ -1363,7 +1403,7 @@ function accoda(lavoro) {
   return lavoro;
 }
 function descriviLavoro(l) {
-  const tipi = { trascrizione: 'Trascrizione', riordino: 'Riordino', contabilita: 'Contabilità', nota: 'Nota', referto: 'Referto foto' };
+  const tipi = { trascrizione: 'Trascrizione', riordino: 'Riordino', contabilita: 'Contabilità', nota: 'Nota', referto: 'Referto foto', rilievo: 'Rilievo' };
   return (tipi[l.tipo] || l.tipo) + (l.etichetta ? ' · ' + l.etichetta : '');
 }
 
@@ -1430,7 +1470,7 @@ function segnaFallito(lavoro) {
     if (f) { f.stato = 'errore'; f.errore = lavoro.errore; salva('sopralluogo', sop); }
     return;
   }
-  if (lavoro.tipo === 'trascrizione' || lavoro.tipo === 'riordino') {
+  if (lavoro.tipo === 'trascrizione' || lavoro.tipo === 'riordino' || lavoro.tipo === 'rilievo') {
     const sop = sopralluogo(lavoro.sop);
     const pezzo = sop && sop.pezzi.find(function (p) { return p.id === lavoro.pezzo; });
     if (pezzo) { pezzo.stato = 'errore'; pezzo.errore = lavoro.errore; salva('sopralluogo', sop); }
@@ -1443,6 +1483,7 @@ async function eseguiLavoro(l) {
   if (l.tipo === 'contabilita') return await lavoroContabilita(l);
   if (l.tipo === 'nota') return await lavoroNota(l);
   if (l.tipo === 'referto') return await lavoroReferto(l);
+  if (l.tipo === 'rilievo') return await lavoroRilievo(l);
   throw new Error('Lavoro sconosciuto');
 }
 
@@ -1487,6 +1528,22 @@ async function lavoroTrascrizione(l) {
     if (l.per === 'nota') accoda({ tipo: 'nota', cantiere: l.cantiere, grezzo: l.grezzo, etichetta: l.etichetta });
     else accoda({ tipo: 'contabilita', cantiere: l.cantiere, grezzo: l.grezzo, ora: l.ora, etichetta: l.etichetta });
   }
+  if (l.per === 'rilievo') {
+    const sop = sopralluogo(l.sop);
+    const pezzo = sop && sop.pezzi.find(function (p) { return p.id === l.pezzo; });
+    if (!pezzo) return;
+    if (!pezzo.grezzo) {
+      const blob = await leggiMedia(pezzo.audio);
+      if (!blob) throw new Error('Audio non trovato nel telefono');
+      pezzo.grezzo = await trascriviConGroq(blob);
+      pezzo.stato = 'trascritto';
+      salva('sopralluogo', sop);
+      avvisa('Trascritto', 'ok');
+    }
+    if (!pezzo.grezzo.trim()) { pezzo.stato = 'riordinato'; pezzo.titolo = pezzo.titolo || 'Registrazione vuota'; salva('sopralluogo', sop); return; }
+    accoda({ tipo: 'rilievo', sop: sop.id, pezzo: pezzo.id, sezione: l.sezione, etichetta: l.etichetta });
+    return;
+  }
   if (l.per === 'foto') {
     const sop = sopralluogo(l.sop);
     const f = sop && trovaFoto(sop, l.foto);
@@ -1506,6 +1563,25 @@ async function lavoroTrascrizione(l) {
     salva('sopralluogo', sop);
     accoda({ tipo: 'referto', sop: sop.id, foto: f.id, grezzo: l.grezzo, etichetta: l.etichetta });
   }
+}
+
+/* Il dettato di un rilievo va dritto nel suo paragrafo: il tasto ha già detto dove.
+   Non passa dallo smistamento — costa meno e non può finire nella sezione sbagliata. */
+async function lavoroRilievo(l) {
+  const sop = sopralluogo(l.sop);
+  const pezzo = sop && sop.pezzi.find(function (p) { return p.id === l.pezzo; });
+  if (!pezzo || pezzo.stato === 'riordinato') return;
+  const grezzo = String(pezzo.grezzo || '').trim();
+  let testo = grezzo;
+  if (grezzo && chiaveAnthropic()) {
+    testo = String(await chiamaClaude(REGOLE_RILIEVO, 'Dettato: ' + grezzo, 800)).trim().replace(/^["«“]+|["»”]+$/g, '').trim() || grezzo;
+  }
+  // Come per le sezioni: il testo nuovo non sostituisce quello che c'è già, si aggiunge in fondo.
+  sop.sezioni[l.sezione] = aggiungiTesto(sop.sezioni[l.sezione], testo);
+  pezzo.stato = 'riordinato';
+  pezzo.errore = null;
+  salva('sopralluogo', sop);
+  avvisa('Rilievo pronto', 'ok');
 }
 
 // Il dettato di una foto diventa una didascalia. Senza chiave resta il testo grezzo: non si perde niente.
@@ -1845,6 +1921,18 @@ async function salvaPezzoRegistrato(blob, durata, ora, destinazione) {
   } else if (destinazione.tipo === 'nota') {
     avvisa('Salvato', 'ok');
     accoda({ tipo: 'trascrizione', per: 'nota', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'nota delle ' + ora });
+  } else if (destinazione.tipo === 'rilievo') {
+    const sop = sopralluogo(destinazione.sop);
+    if (!sop) { await cancellaMedia(rif); return; }
+    // Il rilievo resta una registrazione come le altre: si riascolta, si butta, si conta.
+    // Quello che cambia è che la sua sezione è già decisa dal tasto.
+    const nome = nomeSezione(destinazione.sezione);
+    const pezzo = { id: id, ora: ora, durata: durata, audio: rif, grezzo: '', titolo: nome + ' delle ' + ora,
+      sezione: destinazione.sezione, sezioni: [destinazione.sezione], stato: 'in_coda', peso: blob.size };
+    sop.pezzi.push(pezzo);
+    salva('sopralluogo', sop);
+    avvisa('Salvato', 'ok');
+    accoda({ tipo: 'trascrizione', per: 'rilievo', sop: sop.id, pezzo: id, sezione: destinazione.sezione, etichetta: nome + ' delle ' + ora });
   } else if (destinazione.tipo === 'foto') {
     const sop = sopralluogo(destinazione.sop);
     const f = sop && trovaFoto(sop, destinazione.foto);
@@ -1924,12 +2012,13 @@ async function riduciFoto(file, latoMax, qualita) {
 
 /* Dal file scelto (scattato o preso dal rullino) alla voce in media del sopralluogo.
    Poi si apre la foto grande: la cosa più probabile è che voglia dire subito cos'è. */
-async function aggiungiFoto(file, sopId, origine, apri) {
+async function aggiungiFoto(file, sopId, origine, apri, genere) {
   const s = sopralluogo(sopId);
   if (!s || !file) return;
-  avvisa('Preparo la foto…');
+  const doc = !!GENERI[genere];
+  avvisa(doc ? 'Preparo la scansione…' : 'Preparo la foto…');
   let ridotta;
-  try { ridotta = await riduciFoto(file, LATO_FOTO, QUALITA_FOTO); }
+  try { ridotta = await riduciFoto(file, doc ? LATO_DOC : LATO_FOTO, doc ? QUALITA_DOC : QUALITA_FOTO); }
   catch (e) { avvisa(e.message || 'Foto non leggibile', 'err'); return; }
   const id = nuovoId();
   let rif;
@@ -1939,14 +2028,17 @@ async function aggiungiFoto(file, sopId, origine, apri) {
   const d = (origine === 'rullino' && file.lastModified && file.lastModified < Date.now() - 60000) ? new Date(file.lastModified) : new Date();
   if (!Array.isArray(s.media)) s.media = [];
   const f = {
-    id: id, codice: codiceNuovo('FOTO'), tipo: 'foto', file: rif,
+    id: id, codice: codiceNuovo(doc ? 'DOC' : 'FOTO'), tipo: 'foto', genere: doc ? genere : null, file: rif,
     quando: d.toISOString(), giorno: dataLocaleISO(d), ora: oraAdesso(d),
-    sezione: SEZIONE_FOTO, referto: '', grezzo: '', nelPdf: false,
+    // Un documento non è di una sezione del verbale: è un allegato, e ci va sempre.
+    sezione: doc ? '' : SEZIONE_FOTO, referto: '', grezzo: '', nelPdf: doc,
     peso: ridotta.blob.size, larghezza: ridotta.larghezza, altezza: ridotta.altezza,
     stato: '', audio: null
   };
   s.media.push(f);
   salva('sopralluogo', s);
+  // Un documento non si apre: si scansiona e si va avanti, spesso ce n'è più d'uno.
+  if (doc) { avvisa(GENERI[genere] + ' salvata', 'ok'); aggiornaVista(); return; }
   // Una foto sola si apre grande: la cosa più probabile è che voglia dire subito cos'è.
   // Più foto in fila no: si resta dov'è e le miniature compaiono da sole.
   if (apri === false) return;
@@ -2042,7 +2134,7 @@ function filaFoto(s, lista, opzioni) {
   if (!lista.length) return '';
   return '<div class="foto-fila">' + lista.map(function (f) {
     const st = statoLavoroFoto(f);
-    const eti = st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora);
+    const eti = opzioni.doc ? (GENERI_BREVI[f.genere] || 'documento') : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
       '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(f.codice) + '">' +
       (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') + '</button>' +
@@ -2060,7 +2152,7 @@ function filaFoto(s, lista, opzioni) {
 // Le foto di un sopralluogo divise per sezione: serve alle schermate del giorno e al PDF.
 function fotoPerSezione(s) {
   const per = {};
-  fotoDi(s).forEach(function (f) { const k = sezioneFoto(f); (per[k] = per[k] || []).push(f); });
+  fotoNormali(s).forEach(function (f) { const k = sezioneFoto(f); (per[k] = per[k] || []).push(f); });
   return per;
 }
 
@@ -2336,7 +2428,7 @@ function vistaCantiere(id) {
       '<div class="data"><div class="dnum">' + d.getDate() + '</div><div class="dset">' + GIORNI_BREVI[d.getDay()] + '</div></div>' +
       '<div class="n"><div class="titolo">' + h(nomeGiornoRelativo(s.giorno)) + ' · ' + h(s.ora) + '</div>' +
       '<div class="prima">' + h(anteprima) + '</div>' +
-      '<div class="stat">' + pill + '<span class="mini">' + piene + '/11 sezioni · ' + s.pezzi.length + ' audio</span></div></div></button>';
+      '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + s.pezzi.length + ' audio</span></div></div></button>';
   });
   if (meseCorrente) html += '</div>';
   if (!sops.length) html += '<div class="vuoto-stato">' + (c.stato === 'chiuso' ? 'Nessun sopralluogo in questo cantiere.' : 'Nessun sopralluogo ancora. Premi il bottone verde e parla.') + '</div>';
@@ -2402,14 +2494,15 @@ function vistaGiorno(id) {
 function vistaGiornoInCorso(s, c) {
   const piene = sezioniPiene(s.sezioni);
   const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
-  const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id;
-  const quanteFoto = fotoDi(s).length;
+  const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id) ||
+    (REG.destinazione.tipo === 'rilievo' && REG.destinazione.sop === s.id));
+  const quanteFoto = fotoNormali(s).length;
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + ' · ' + h(s.codice), tocca: 'modifica-testata', id: s.id,
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
       (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
-  html += '<div class="avanz"><div class="r"><span><b>' + piene.length + '</b> sezioni su 11</span><span class="dx">' +
+  html += '<div class="avanz"><div class="r"><span><b>' + piene.length + '</b> sezioni su ' + CHIAVI_SEZIONI.length + '</span><span class="dx">' +
     (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div>' +
-    '<div class="barra-av"><i style="width:' + Math.round(piene.length / 11 * 100) + '%"></i></div></div>';
+    '<div class="barra-av"><i style="width:' + Math.round(piene.length / CHIAVI_SEZIONI.length * 100) + '%"></i></div></div>';
 
   /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
      e si tocca Aggiorna. Da qui si esce col PDF o si va a correggere il verbale. */
@@ -2430,6 +2523,8 @@ function vistaGiornoInCorso(s, c) {
   // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
   // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
   html += cardFotoGiorno(s, !!s.chiuso);
+  if (!REG.attiva) html += cardRilievi(s);
+  html += cardDocumenti(s);
   if (s.pezzi.length) {
     html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">' + s.pezzi.length + ' · tocca per sentire</span></div>' +
       listaAudio(s, s.pezzi.slice().reverse()) + '</div>';
@@ -2456,10 +2551,48 @@ function vistaGiornoInCorso(s, c) {
   return html;
 }
 
+/* Lo scanner del telefono: si fotografa una bolla di consegna o il modulo firme degli
+   operai e resta allegato alla giornata. La fotocamera si apre già sul retro; dal rullino
+   si prende una scansione fatta prima. Sono documenti, non foto: ci vanno nel PDF sempre. */
+function ingressiDocumento(s) {
+  return '<input type="file" accept="image/*" capture="environment" id="file-doc-scatta" hidden data-campo="file-documento" data-id="' + h(s.id) + '" data-origine="scatto">' +
+    '<input type="file" accept="image/*" multiple id="file-doc-rullino" hidden data-campo="file-documento" data-id="' + h(s.id) + '" data-origine="rullino">';
+}
+
+function cardDocumenti(s) {
+  const doc = documentiDi(s);
+  const bolle = doc.filter(function (f) { return f.genere === 'bolla'; }).length;
+  const firme = doc.filter(function (f) { return f.genere === 'firme'; }).length;
+  let html = '<div class="card"><div class="card-capo' + (doc.length ? '' : ' spenta') + '">Documenti' +
+    (doc.length ? '<span class="dx">' + doc.length + ' nel PDF</span>' : '') + '</div>' +
+    (doc.length ? filaFoto(s, doc, { doc: true }) : '') +
+    '<div class="griglia">' +
+    '<button class="btn" data-az="doc-scansiona" data-id="' + h(s.id) + '" data-genere="bolla">📄 Bolla' + (bolle ? ' · ' + bolle : '') + '</button>' +
+    '<button class="btn" data-az="doc-scansiona" data-id="' + h(s.id) + '" data-genere="firme">✍️ Modulo firme' + (firme ? ' · ' + firme : '') + '</button>' +
+    '</div>' +
+    '<div class="card-piede">Dal rullino: <button class="link" data-az="doc-rullino" data-id="' + h(s.id) + '" data-genere="bolla">bolla</button> · <button class="link" data-az="doc-rullino" data-id="' + h(s.id) + '" data-genere="firme">modulo firme</button></div>' +
+    '</div>' + ingressiDocumento(s);
+  return html;
+}
+
+/* I due tasti dei rilievi. Si detta una misura e finisce dritta nel suo paragrafo:
+   quello che va ordinato e quello che va messo in contabilità sono due cose diverse,
+   e il tasto scelto dice già quale. */
+function cardRilievi(s) {
+  const quante = function (k) { const t = String(s.sezioni[k] || '').trim(); return t ? righeElenco(t).length : 0; };
+  const nOrd = quante('rilievi_ordine'), nCont = quante('rilievi_contabilita');
+  return '<div class="card"><div class="card-capo' + (nOrd + nCont ? '' : ' spenta') + '">Rilievi' +
+    (nOrd + nCont ? '<span class="dx">' + (nOrd + nCont) + '</span>' : '') + '</div>' +
+    '<div class="griglia">' +
+    '<button class="btn" data-az="detta-rilievo" data-id="' + h(s.id) + '" data-sezione="rilievi_ordine">📐 Rilievo d\'ordine' + (nOrd ? ' · ' + nOrd : '') + '</button>' +
+    '<button class="btn" data-az="detta-rilievo" data-id="' + h(s.id) + '" data-sezione="rilievi_contabilita">🧮 Rilievo da contabilità' + (nCont ? ' · ' + nCont : '') + '</button>' +
+    '</div></div>';
+}
+
 /* La card delle foto del giorno, con i due ingressi nascosti: la fotocamera (capture)
    e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
 function cardFotoGiorno(s, conVerbale) {
-  const foto = fotoDi(s);
+  const foto = fotoNormali(s);
   const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
   let html = '';
   if (foto.length) {
@@ -2595,7 +2728,8 @@ function generaRelazione(c, esistente) {
     giorni: sops.length,
     verbali: sops.filter(function (s) { return s.chiuso; }).length,
     aperte: sops.filter(function (s) { return !s.chiuso; }).length,
-    foto: sops.reduce(function (t, s) { return t + fotoDi(s).length; }, 0),
+    foto: sops.reduce(function (t, s) { return t + fotoNormali(s).length; }, 0),
+    documenti: sops.reduce(function (t, s) { return t + documentiDi(s).length; }, 0),
     parlato: sops.reduce(function (t, s) { return t + s.pezzi.reduce(function (u, p) { return u + (p.durata || 0); }, 0); }, 0),
     totale: totaleContabilita(cont)
   };
@@ -2611,7 +2745,7 @@ function generaRelazione(c, esistente) {
   rel.giorni = sops.map(function (s) {
     const v = s.chiuso ? verbaleDiSopralluogo(s.codice) : null;
     return { sop: s.id, sopralluogo: s.codice, verbale: v ? v.codice : (s.verbale || null), giorno: s.giorno, ora: s.ora, chiuso: !!s.chiuso,
-      sezioni: sezioniPiene(v ? v.sezioni : s.sezioni).length, audio: s.pezzi.length, foto: fotoDi(s).length };
+      sezioni: sezioniPiene(v ? v.sezioni : s.sezioni).length, audio: s.pezzi.length, foto: fotoNormali(s).length, documenti: documentiDi(s).length };
   });
   rel.inBreve = '';
   rel.generata = adessoISO();
@@ -2754,7 +2888,7 @@ function vistaRelazione(id) {
   if (rel.giorni.length) {
     html += '<div class="card">' + rel.giorni.map(function (g) {
       return '<button class="riga" data-az="vai" data-a="#/giorno/' + h(g.sop) + '"><span class="desc">' + h(dataBreve(g.giorno)) + ' · ' + h(g.ora) +
-        '<small>' + g.sezioni + '/11 sezioni · ' + g.audio + ' audio · ' + g.foto + ' foto</small></span>' +
+        '<small>' + g.sezioni + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + g.audio + ' audio · ' + g.foto + ' foto' + (g.documenti ? ' · ' + g.documenti + ' doc' : '') + '</small></span>' +
         (g.chiuso ? '<span class="pill ok">' + h(g.verbale || 'chiusa') + '</span>' : '<span class="pill att">non chiusa</span>') + '<span class="frec">›</span></button>';
     }).join('') + '</div>';
   } else html += '<div class="vuoto-stato">Nessun giorno di sopralluogo.</div>';
@@ -2815,19 +2949,21 @@ function vistaFoto(sopId, fotoId) {
   const st = descriviStatoFoto(statoLavoroFoto(f));
   const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'foto' && REG.destinazione.foto === f.id;
   const sezione = sezioneFoto(f);
-  let html = testata({ indietro: '#/giorno/' + s.id, titolo: f.codice, sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)) + ' · ' + h(f.ora),
+  const doc = !!GENERI[f.genere];
+  let html = testata({ indietro: '#/giorno/' + s.id, titolo: f.codice + (doc ? ' · ' + GENERI[f.genere] : ''), sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)) + ' · ' + h(f.ora),
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' : (f.nelPdf ? '<span class="pill ok">nel PDF</span>' : '<span class="pill grigia">non nel PDF</span>') });
   html += '<div class="foto-grande' + (f.file ? '' : ' manca') + '">' +
     (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '<div class="foto-vuota">Foto archiviata' + (f.archiviato ? ' il ' + h(dataSenzaAnno(f.archiviato)) : '') + ': è nei File del telefono.</div>') +
     '<div class="foto-dati">' + h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(c.nome) + ' · ' + h(s.codice) + '</div></div>';
   html += '<div class="card"><div class="card-capo' + (String(f.referto || '').trim() ? '' : ' spenta') + '">Referto' + (st.testo ? '<span class="dx ' + st.classe + '">' + h(st.testo) + '</span>' : '') + '</div>' +
-    '<textarea class="corpo" data-campo="referto-foto" data-id="' + h(f.id) + '" data-sop="' + h(s.id) + '" placeholder="Detta o scrivi cosa si vede">' + h(f.referto || '') + '</textarea>' +
+    '<textarea class="corpo" data-campo="referto-foto" data-id="' + h(f.id) + '" data-sop="' + h(s.id) + '" placeholder="' + (doc ? 'Detta o scrivi cosa c\'è su questo documento' : 'Detta o scrivi cosa si vede') + '">' + h(f.referto || '') + '</textarea>' +
     (f.grezzo ? '<div class="card-piede">« ' + h(f.grezzo) + ' »</div>' : '') + '</div>';
-  html += '<div class="card"><div class="card-capo">Sezione del verbale<span class="dx">' + h(nomeSezione(sezione)) + '</span></div><div class="griglia">' +
+  // Un documento è un allegato del verbale, non appartiene a una sezione: la scelta non si mostra.
+  if (!doc) html += '<div class="card"><div class="card-capo">Sezione del verbale<span class="dx">' + h(nomeSezione(sezione)) + '</span></div><div class="griglia">' +
     SEZIONI.map(function (z) { return '<button class="btn' + (z.chiave === sezione ? ' btn-ok' : '') + '" data-az="foto-sezione" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
     '</div></div>';
   html += '<div class="modulo"><button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>' +
-    '<button class="btn btn-rosso medio" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" style="margin-top:12px">Elimina la foto</button></div>';
+    '<button class="btn btn-rosso medio" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" style="margin-top:12px">' + (doc ? 'Elimina il documento' : 'Elimina la foto') + '</button></div>';
   // I tasti della foto restano anche qui: caricata una, la successiva parte da questa schermata.
   html += ingressiFoto(s);
   if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="foto-detta" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">🎙️ ' + (String(f.referto || '').trim() ? 'Aggiungi al referto' : 'Detta il referto') + '</button>' +
@@ -3604,6 +3740,8 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
   };
   // Le foto marcate si preparano tutte prima: l'incorporazione è asincrona, il ciclo sotto no.
   const fotoPerVerbale = await preparaFotoPdf(doc, verbali, soloSezione);
+  // I documenti solo quando si stampa tutto: un'estrazione di una sezione sola non li riguarda.
+  const docPerVerbale = soloSezione ? {} : await preparaDocumentiPdf(doc, verbali);
   /* Le foto vanno a due per riga, in due colonne larghe mezza pagina: un verbale con dodici
      foto occupava dodici pagine, così ne occupa tre. Sotto ogni foto il suo referto e i suoi
      dati, dentro la sua colonna: si legge come una scheda, non come un elenco. */
@@ -3652,6 +3790,34 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     if (ref) cima = scriviCol(ref, 10, null, x, cima) - 2;
     scriviCol(datiFoto(f, c), 8, PDF.rgb(0.45, 0.45, 0.45), x, cima);
   };
+  /* Un documento non si mette in colonna: va largo quanto la pagina e alto quanto serve
+     per leggerlo. Uno per riga, col suo cartellino sotto. */
+  const ALT_DOC = 470;
+  // Quanto è alto un documento sulla pagina: serve per non lasciare il titolo orfano in fondo.
+  const altezzaDoc = function (voce) {
+    if (!voce || !voce.img) return 40;
+    return voce.img.height * Math.min(larghezza / voce.img.width, ALT_DOC / voce.img.height, 1) + 44;
+  };
+  const disegnaDocumenti = function (lista, c) {
+    lista.forEach(function (voce) {
+      const f = voce.foto;
+      const eti = (GENERI[f.genere] || 'Documento') + ' - ' + f.codice + ' - ' + dataEstesa(f.giorno) + ', ' + (f.ora || '') + ' - ' + (c.nome || '');
+      if (voce.img) {
+        const scala = Math.min(larghezza / voce.img.width, ALT_DOC / voce.img.height, 1);
+        const lo = voce.img.width * scala, la = voce.img.height * scala;
+        spazio(Math.min(la + 44, A - 2 * M));
+        y -= 4;
+        pagina.drawImage(voce.img, { x: M + (larghezza - lo) / 2, y: y - la, width: lo, height: la });
+        y -= la + 6;
+      } else {
+        spazio(40);
+        scrivi('[' + (f.file ? 'documento non leggibile' : 'documento archiviato') + ']', 10, normale, PDF.rgb(0.45, 0.45, 0.45));
+      }
+      if (String(f.referto || '').trim()) scrivi(f.referto, 10, normale);
+      scrivi(eti, 9, normale, PDF.rgb(0.45, 0.45, 0.45));
+      y -= 10;
+    });
+  };
   const disegnaFotoGriglia = function (lista, c) {
     for (let i = 0; i < lista.length; i += 2) {
       const coppia = lista.slice(i, i + 2);
@@ -3669,7 +3835,8 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
   if (info.relazione) {
     disegnaRelazionePdf(info.relazione, {
       PDF: PDF, normale: normale, grassetto: grassetto, scrivi: scrivi, spazio: spazio, nuovaPagina: nuovaPagina,
-      disegnaFotoGriglia: disegnaFotoGriglia, altezzaFoto: altezzaFoto, fotoPerGiorno: fotoPerVerbale,
+      disegnaFotoGriglia: disegnaFotoGriglia, disegnaDocumenti: disegnaDocumenti, altezzaFoto: altezzaFoto, altezzaDoc: altezzaDoc,
+      fotoPerGiorno: fotoPerVerbale, docPerGiorno: docPerVerbale,
       giu: function (n) { y -= n; },
       linea: function () { spazio(14); y -= 6; pagina.drawLine({ start: { x: M, y: y }, end: { x: L - M, y: y }, thickness: 0.8, color: PDF.rgb(0.2, 0.2, 0.2) }); y -= 12; }
     });
@@ -3723,6 +3890,14 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       stampate++;
     });
     if (!stampate) scrivi(soloSezione ? '(sezione vuota)' : '(nessuna sezione compilata)', 11, normale, PDF.rgb(0.45, 0.45, 0.45));
+    const docQui = docPerVerbale[v.id] || [];
+    if (docQui.length) {
+      y -= 6;
+      // Il titolo resta sulla stessa pagina del primo documento.
+      spazio(Math.min(30 + altezzaDoc(docQui[0]), A - 2 * M));
+      scrivi('DOCUMENTI ALLEGATI', 11, grassetto);
+      disegnaDocumenti(docQui, c);
+    }
   });
   return await doc.save();
 }
@@ -3736,7 +3911,7 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
   for (const v of verbali) {
     const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
     if (!s) continue;
-    for (const f of fotoDi(s)) {
+    for (const f of fotoNormali(s)) {
       if (!f.nelPdf) continue;
       const k = sezioneFoto(f);
       if (soloSezione && k !== soloSezione) continue;
@@ -3752,6 +3927,32 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
       }
       per[v.id] = per[v.id] || {};
       (per[v.id][k] = per[v.id][k] || []).push({ foto: f, img: img });
+    }
+  }
+  return per;
+}
+
+/* Le bolle e i moduli firme marcati, pronti da stampare: { idVerbale: [ { foto, img } ] }.
+   Si riducono meno delle foto, perché di un documento conta quello che c'è scritto. */
+async function preparaDocumentiPdf(doc, verbali) {
+  const per = {};
+  const sops = valori(leggiTutto().sopralluoghi);
+  for (const v of verbali) {
+    const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
+    if (!s) continue;
+    for (const f of documentiDi(s)) {
+      if (!f.nelPdf) continue;
+      let img = null;
+      if (f.file) {
+        const blob = await leggiMedia(f.file);
+        if (blob) {
+          try {
+            const ridotta = await riduciFoto(blob, LATO_DOC_PDF, QUALITA_DOC_PDF);
+            img = await doc.embedJpg(await ridotta.blob.arrayBuffer());
+          } catch (e) { img = null; }
+        }
+      }
+      (per[v.id] = per[v.id] || []).push({ foto: f, img: img });
     }
   }
   return per;
@@ -3776,7 +3977,7 @@ function disegnaRelazionePdf(rel, a) {
   a.linea();
   // I numeri in una riga, e il totale sotto in grassetto
   const conta = function (q, uno, tanti) { return (q || 0) + ' ' + ((q || 0) === 1 ? uno : tanti); };
-  a.scrivi(conta(n.giorni, 'giorno di sopralluogo', 'giorni di sopralluogo') + ', ' + conta(n.verbali, 'verbale chiuso', 'verbali chiusi') + ', ' + conta(n.aperte, 'giornata non chiusa', 'giornate non chiuse') + ', ' + (n.foto || 0) + ' foto, ' + durataLunga(n.parlato) + ' di parlato', 11, a.normale);
+  a.scrivi(conta(n.giorni, 'giorno di sopralluogo', 'giorni di sopralluogo') + ', ' + conta(n.verbali, 'verbale chiuso', 'verbali chiusi') + ', ' + conta(n.aperte, 'giornata non chiusa', 'giornate non chiuse') + ', ' + (n.foto || 0) + ' foto, ' + (n.documenti || 0) + ' documenti, ' + durataLunga(n.parlato) + ' di parlato', 11, a.normale);
   a.scrivi('Contabilità: ' + euro(n.totale), 12, a.grassetto);
   if (String(rel.inBreve || '').trim()) { titolo('IN BREVE'); a.scrivi(rel.inBreve, 11, a.normale); }
   // Il riepilogo per sezione: le sezioni vuote non si stampano
@@ -3817,8 +4018,18 @@ function disegnaRelazionePdf(rel, a) {
   titolo('ELENCO DEI GIORNI');
   if (!rel.giorni.length) a.scrivi('(nessun giorno di sopralluogo)', 11, a.normale, grigio);
   rel.giorni.forEach(function (g) {
-    a.scrivi('• ' + dataEstesa(g.giorno) + ', ' + (g.ora || '') + '  -  ' + (g.chiuso ? (g.verbale || 'chiusa') : g.sopralluogo + ' (NON CHIUSA)') + '  -  ' + g.sezioni + ' sezioni, ' + g.audio + ' audio, ' + g.foto + ' foto', 11, a.normale, g.chiuso ? null : giallo, 6);
+    a.scrivi('• ' + dataEstesa(g.giorno) + ', ' + (g.ora || '') + '  -  ' + (g.chiuso ? (g.verbale || 'chiusa') : g.sopralluogo + ' (NON CHIUSA)') + '  -  ' + g.sezioni + ' sezioni, ' + g.audio + ' audio, ' + g.foto + ' foto' + (g.documenti ? ', ' + g.documenti + ' documenti' : ''), 11, a.normale, g.chiuso ? null : giallo, 6);
   });
+  // I documenti allegati, giorno per giorno: bolle e moduli firme, larghi quanto la pagina
+  const conDoc = rel.giorni.filter(function (g) { return (a.docPerGiorno[g.sop] || []).length; });
+  if (conDoc.length) {
+    titolo('DOCUMENTI ALLEGATI');
+    conDoc.forEach(function (g) {
+      a.spazio(30 + a.altezzaDoc((a.docPerGiorno[g.sop] || [])[0]));
+      a.scrivi(dataEstesa(g.giorno).toUpperCase() + ' - ' + (g.verbale || g.sopralluogo), 11, a.grassetto);
+      a.disegnaDocumenti(a.docPerGiorno[g.sop], c);
+    });
+  }
   // Le foto marcate, giorno per giorno, con il referto: come nel PDF del verbale
   const conFoto = rel.giorni.filter(function (g) { return a.fotoPerGiorno[g.sop]; });
   if (conFoto.length) {
@@ -3956,6 +4167,19 @@ const AZIONI = {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
     avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
+  },
+  'doc-scansiona': function (el) {
+    DOC_GENERE = el.dataset.genere;
+    const f = document.getElementById('file-doc-scatta'); if (f) f.click();
+  },
+  'doc-rullino': function (el) {
+    DOC_GENERE = el.dataset.genere;
+    const f = document.getElementById('file-doc-rullino'); if (f) f.click();
+  },
+  'detta-rilievo': function (el) {
+    const s = sopralluogo(el.dataset.id);
+    if (!s) return;
+    avviaRegistrazione({ tipo: 'rilievo', sop: s.id, sezione: el.dataset.sezione });
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
   'esporta-pdf': function (el) { apriEsportaPdf(el.dataset.id); },
@@ -4430,6 +4654,18 @@ function suCampo(el, evento) {
     (async function () {
       for (const f of scelte) await aggiungiFoto(f, sopId, origine, scelte.length === 1);
       if (scelte.length > 1) { avvisa(scelte.length + ' foto salvate', 'ok'); aggiornaVista(); }
+    })().catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
+    return;
+  }
+  if (campo === 'file-documento' && evento === 'change') {
+    const scelte = Array.prototype.slice.call(el.files || []);
+    const sopId = el.dataset.id, origine = el.dataset.origine, genere = GENERI[DOC_GENERE] ? DOC_GENERE : 'bolla';
+    el.value = '';
+    if (!scelte.length) return;
+    (async function () {
+      for (const f of scelte) await aggiungiFoto(f, sopId, origine, false, genere);
+      if (scelte.length > 1) avvisa(scelte.length + ' scansioni salvate', 'ok');
+      aggiornaVista();
     })().catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
     return;
   }
