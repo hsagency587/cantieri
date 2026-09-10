@@ -114,6 +114,7 @@ Scrivi ore, misure e quantità in cifre. I nomi propri che trovi nell'elenco all
 Dai anche un titolo alla registrazione: tre o quattro parole prese da quello che è stato detto, la cosa più importante. Non un riassunto, un'etichetta: "Getto solaio primo piano", "Ponteggio senza fermapiede".
 
 Rispondi soltanto con un oggetto JSON con queste chiavi: titolo, lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, sicurezza, problemi, osservazioni, note, da_smistare. Ogni valore è una stringa; negli elenchi separa le voci con un a capo. Niente altro testo.
+Le chiavi rimaste vuote non si scrivono. Nel JSON ci va il titolo piu' soltanto le sezioni che hanno davvero del testo. Una sezione che manca vale come vuota: l'app la lascia com'era. Questo non cambia niente su dove va una frase: le regole di smistamento valgono tutte uguali, e niente si perde.
 
 === COME SI DECIDE DOVE VA UNA FRASE ===
 
@@ -279,7 +280,7 @@ Esempio 1. Dettatura grezza:
 Nomi noti: Edil Rossi, Mario Rossi, Luca Bianchi, Impianti Bianchi
 
 Risposta:
-{"titolo":"Getto solaio primo piano","lavorazioni_eseguite":"Finito il getto del solaio del primo piano entro le 12. Ripresa delle tracce degli impianti sul lato est.","lavorazioni_non_eseguite":"","operai":"Mario Rossi (Edil Rossi) — capo squadra\n2 muratori (Edil Rossi) — getto solaio\nLuca Bianchi (Impianti Bianchi) — tracce impianti","attrezzature_presenti":"","attrezzature_necessarie":"","materiali_impiegati":"","materiali_necessari":"20 q di ferro Ø12, per giovedì\n3 bancali di blocchi da 30, per giovedì","sicurezza":"Il ponteggio sul lato nord non ha il fermapiede sul terzo impalcato. Detto al capo squadra.","problemi":"","osservazioni":"","note":"","da_smistare":""}
+{"titolo":"Getto solaio primo piano","lavorazioni_eseguite":"Finito il getto del solaio del primo piano entro le 12. Ripresa delle tracce degli impianti sul lato est.","operai":"Mario Rossi (Edil Rossi) — capo squadra\n2 muratori (Edil Rossi) — getto solaio\nLuca Bianchi (Impianti Bianchi) — tracce impianti","materiali_necessari":"20 q di ferro Ø12, per giovedì\n3 bancali di blocchi da 30, per giovedì","sicurezza":"Il ponteggio sul lato nord non ha il fermapiede sul terzo impalcato. Detto al capo squadra."}
 
 Esempio 2. Dettatura grezza:
 "i casseri sono arrivati alle undici invece che alle otto quindi si è persa mezza giornata sulla terza campata non hanno gettato il cordolo lato ovest perché mancava il ferro in cantiere c'è la gru la betoniera e il trabattello per la settimana prossima ci vuole l'autopompa per il getto della platea appunto chiamare il geometra ferrari per le quote"
@@ -287,7 +288,7 @@ Esempio 2. Dettatura grezza:
 Nomi noti: geom. Ferrari
 
 Risposta:
-{"titolo":"Ritardo consegna casseri","lavorazioni_eseguite":"","lavorazioni_non_eseguite":"Non hanno gettato il cordolo lato ovest perché mancava il ferro.","operai":"","attrezzature_presenti":"Gru\nBetoniera\nTrabattello","attrezzature_necessarie":"Autopompa per il getto della platea, per la settimana prossima","materiali_impiegati":"","materiali_necessari":"","sicurezza":"","problemi":"I casseri sono arrivati alle 11 invece che alle 8: si è persa mezza giornata sulla terza campata.","osservazioni":"","note":"Chiamare il geom. Ferrari per le quote.","da_smistare":""}
+{"titolo":"Ritardo consegna casseri","lavorazioni_non_eseguite":"Non hanno gettato il cordolo lato ovest perché mancava il ferro.","attrezzature_presenti":"Gru\nBetoniera\nTrabattello","attrezzature_necessarie":"Autopompa per il getto della platea, per la settimana prossima","problemi":"I casseri sono arrivati alle 11 invece che alle 8: si è persa mezza giornata sulla terza campata.","note":"Chiamare il geom. Ferrari per le quote."}
 
 Esempio 3. Dettatura grezza:
 "oggi hanno posato quaranta metri quadri di guaina sul terrazzo e usato dodici sacchi di cemento per il massetto della scala quattro anzi cinque operai della impresa colombo due sul terrazzo due sulla scala e uno che faceva il rinzaffo nel vano ascensore pioveva fino alle dieci poi si è potuto lavorare il committente è passato alle quindici e vuole cambiare le piastrelle del bagno al piano terra lo sentiamo lunedì da smistare non so se va bene la cosa del citofono"
@@ -295,7 +296,7 @@ Esempio 3. Dettatura grezza:
 Nomi noti: Impresa Colombo
 
 Risposta:
-{"titolo":"Guaina terrazzo e massetto scala","lavorazioni_eseguite":"Posati 40 m² di guaina sul terrazzo. Massetto della scala. Rinzaffo nel vano ascensore.","lavorazioni_non_eseguite":"","operai":"2 operai (Impresa Colombo) — guaina terrazzo\n2 operai (Impresa Colombo) — massetto scala\n1 operaio (Impresa Colombo) — rinzaffo vano ascensore","attrezzature_presenti":"","attrezzature_necessarie":"","materiali_impiegati":"40 m² di guaina\n12 sacchi di cemento per il massetto della scala","materiali_necessari":"","sicurezza":"","problemi":"","osservazioni":"Pioveva fino alle 10, poi si è potuto lavorare. Il committente è passato alle 15 e vuole cambiare le piastrelle del bagno al piano terra: lo sentiamo lunedì.","note":"","da_smistare":"Non so se va bene la cosa del citofono."}
+{"titolo":"Guaina terrazzo e massetto scala","lavorazioni_eseguite":"Posati 40 m² di guaina sul terrazzo. Massetto della scala. Rinzaffo nel vano ascensore.","operai":"2 operai (Impresa Colombo) — guaina terrazzo\n2 operai (Impresa Colombo) — massetto scala\n1 operaio (Impresa Colombo) — rinzaffo vano ascensore","materiali_impiegati":"40 m² di guaina\n12 sacchi di cemento per il massetto della scala","osservazioni":"Pioveva fino alle 10, poi si è potuto lavorare. Il committente è passato alle 15 e vuole cambiare le piastrelle del bagno al piano terra: lo sentiamo lunedì.","da_smistare":"Non so se va bene la cosa del citofono."}
 
 Nota sull'esempio 3: "quattro anzi cinque" è una correzione a voce e vale cinque; i cinque operai si dividono nelle voci per compito perché il tecnico li ha divisi così; la guaina compare sia in lavorazioni_eseguite (il lavoro) sia in materiali_impiegati (il materiale con la quantità) perché sono due informazioni diverse; "da smistare" detto a voce manda la frase in da_smistare.
 
@@ -309,7 +310,8 @@ Nota sull'esempio 3: "quattro anzi cinque" è una correzione a voce e vale cinqu
 6. I numeri, le ore, le unità sono in cifre e nella forma breve?
 7. I nomi noti sono scritti come nell'elenco?
 8. Il titolo è di tre o quattro parole prese dal dettato?
-9. La risposta è un solo oggetto JSON, senza testo prima o dopo, senza spazi di rientro?`;
+9. La risposta è un solo oggetto JSON, senza testo prima o dopo, senza spazi di rientro?
+10. Hai tolto dal JSON le chiavi rimaste vuote?`;
 
 const REGOLE_CONTABILITA = `Sei l'assistente di un tecnico di cantiere italiano. Ricevi una frase dettata che descrive una o più lavorazioni da mettere in contabilità, e la trasformi in righe.
 
