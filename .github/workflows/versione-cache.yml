@@ -1,0 +1,32 @@
+# Alza da solo il numero della cache in sw.js a ogni caricamento su main.
+# Serve perche' senza un numero nuovo il telefono continua a servire la versione vecchia.
+name: Numero cache del service worker
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  aggiorna:
+    # Il commit fatto da questo lavoro porta [cache] nel messaggio: cosi' non si richiama da solo.
+    if: "!contains(github.event.head_commit.message, '[cache]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Metti il numero nuovo e salva
+        run: |
+          NUOVO="cantieri-${GITHUB_SHA::7}"
+          sed -i "s/^const VERSIONE = .*/const VERSIONE = '$NUOVO';/" sw.js
+          if git diff --quiet sw.js; then
+            echo "Il numero era gia' quello giusto."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sw.js
+          git commit -m "[cache] numero cache $NUOVO"
+          git push
