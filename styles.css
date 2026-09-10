@@ -1,0 +1,323 @@
+/* CANTIERI — foglio di stile
+   Nasce da CANTIERI-DESIGN.md e da CANTIERI-MOCKUP.html.
+   Regola dura: niente testo sotto i 16px dove c'è informazione,
+   niente cosa da toccare sotto i 52px, bottoni principali 64px. */
+
+:root{
+  --bg:#0d0f12;
+  --surface:#151920;
+  --surface-2:#1c212a;
+  --line:#272d38;
+  --text:#e8eaed;
+  --text-2:#c6ccd6;
+  --muted:#98a1ae;
+  --accent:#3ddc84;   /* verde: il lavoro — fare e fatto */
+  --azione:#38bdf8;   /* azzurro: il materiale da consultare */
+  --danger:#ff453a;   /* rosso: registrazione in corso, errore */
+  --gold:#e3b341;     /* giallo: da sistemare */
+  --radius:14px;
+  --radius-p:10px;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;
+  --riga:52px;
+  --testo:18px;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{height:100%;scroll-padding-bottom:140px}
+body{
+  min-height:100%;
+  background:var(--bg);
+  color:var(--text);
+  font:var(--testo)/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior-y:contain;
+}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-appearance:none;appearance:none}
+input,select,textarea{font:inherit;color:inherit}
+p{margin:0}
+
+/* Il contenuto lascia aria sotto, se no la barra fissa copre l'ultima card */
+#vista{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+
+/* ---------- testata ---------- */
+.top{display:flex;align-items:flex-start;gap:var(--s3);
+  padding:calc(var(--s4) + env(safe-area-inset-top)) var(--s4) var(--s2)}
+.top h1{margin:0;font-size:23px;letter-spacing:.05em;font-weight:800;line-height:1.2}
+.top h1.pic{font-size:20px;letter-spacing:.02em}
+.top .sub{font-size:16px;color:var(--muted);margin-top:3px}
+.top .indietro{flex:0 0 auto;min-width:52px;min-height:var(--riga);margin:-10px 0 0 -10px;
+  background:none;border:0;color:var(--azione);font-size:30px;line-height:1;padding:0 8px;text-align:left}
+.top .destra{margin-left:auto;display:flex;align-items:center;gap:var(--s2);padding-top:2px;flex:0 0 auto}
+.top .tit{flex:1;min-width:0}
+.top .tit h1{overflow-wrap:anywhere}
+.top .tocca{background:none;border:0;padding:0;text-align:left;width:100%}
+
+/* ---------- pastiglie ---------- */
+.pill{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;
+  font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;border:0}
+.pill.ok{background:rgba(61,220,132,.16);color:var(--accent)}
+.pill.att{background:rgba(227,179,65,.16);color:var(--gold)}
+.pill.reg{background:rgba(255,69,58,.18);color:var(--danger)}
+.pill.grigia{background:var(--surface-2);color:var(--muted)}
+.pill.blu{background:rgba(56,189,248,.16);color:var(--azione)}
+.pill.cod{background:transparent;color:var(--muted);border:1px solid var(--line);letter-spacing:.1em}
+button.pill{min-height:var(--riga);padding:0 16px;font-size:14px}
+
+/* ---------- riga di numeri ---------- */
+.numeri{display:flex;gap:var(--s2);margin:0 var(--s4) var(--s3)}
+.numeri .n{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px;text-align:center}
+.numeri .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.numeri .v.fatto{color:var(--accent)}
+.numeri .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:1px}
+
+/* ---------- card ---------- */
+.card{margin:0 var(--s4) var(--s3);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card.tocca{cursor:pointer}
+.card.tocca:active{background:var(--surface-2)}
+.card-in{padding:var(--s4)}
+.card .titolo{font-size:19px;font-weight:700;margin:0 0 3px}
+.card .sotto{font-size:16px;color:var(--muted)}
+.card .fila{display:flex;align-items:center;gap:var(--s2);margin-top:10px;flex-wrap:wrap}
+.card-capo{display:flex;align-items:center;gap:var(--s2);padding:10px var(--s4);
+  background:var(--surface-2);color:var(--text);font-size:13px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  border-bottom:1px solid var(--line)}
+/* Il colore lo porta il pallino, non la banda: verde se piena, grigio se vuota */
+.card-capo::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+.card-capo.spenta{color:var(--muted)}
+.card-capo.spenta::before{background:var(--line)}
+.card-capo.gialla{color:var(--gold)}
+.card-capo.gialla::before{background:var(--gold)}
+.card-capo.senza::before{display:none}
+.card-capo .dx{margin-left:auto;font-weight:600;letter-spacing:0;text-transform:none;font-size:14px;color:var(--azione);background:none;border:0;padding:0}
+.card-corpo{padding:var(--s3) var(--s4);font-size:var(--testo);white-space:pre-wrap;word-break:break-word}
+.card-corpo.vuoto{color:var(--line)}
+.card-piede{display:flex;align-items:center;gap:var(--s2);padding:10px var(--s4);
+  border-top:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-size:16px}
+.card.gialla{border-color:rgba(227,179,65,.5);box-shadow:inset 3px 0 0 var(--gold)}
+.card.piu{border-style:dashed;border-color:rgba(61,220,132,.5)}
+.card.piu .titolo{color:var(--accent)}
+.card.evidenzia{border-color:var(--accent)}
+
+/* Il testo di una sezione si scrive direttamente nel corpo della card */
+textarea.corpo{display:block;width:100%;min-height:60px;padding:var(--s3) var(--s4);margin:0;
+  background:transparent;color:var(--text);border:0;resize:none;line-height:1.45;font-size:var(--testo);overflow:hidden}
+textarea.corpo:focus{outline:none;background:rgba(61,220,132,.04)}
+textarea.corpo::placeholder{color:var(--line)}
+
+/* elenchi dentro un testo: segno piccolo e verde, testo grande */
+.voce{display:flex;align-items:flex-start;gap:6px;margin:0}
+.voce .segno{flex:0 0 auto;min-width:14px;font-size:12px;font-weight:700;color:var(--accent);line-height:calc(var(--testo) * 1.45)}
+
+/* ---------- etichette di gruppo ---------- */
+.eti{margin:var(--s4) var(--s4) var(--s2);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center}
+.eti .n{margin-left:auto;color:var(--muted)}
+
+/* ---------- ricerca ---------- */
+.cerca{margin:0 var(--s4) var(--s3);padding:0 var(--s3);min-height:52px;display:flex;align-items:center;gap:var(--s2);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);color:var(--muted);font-size:17px}
+.cerca input{flex:1;min-width:0;min-height:52px;background:transparent;border:0;color:var(--text);font-size:17px;padding:0}
+.cerca input:focus{outline:none}
+.cerca input::placeholder{color:var(--muted)}
+
+/* ---------- tendina azzurra (apre un elenco: materiale da consultare) ---------- */
+.tend{display:flex;align-items:center;gap:var(--s2);width:calc(100% - 2 * var(--s4));margin:0 var(--s4) var(--s3);padding:0 var(--s4);
+  min-height:var(--riga);background:var(--surface-2);border:1px solid var(--line);border-radius:12px;color:var(--azione);font-size:17px;font-weight:600;text-align:left}
+.tend .frec{font-size:14px;transition:transform .2s}
+.tend[aria-expanded="true"] .frec{transform:rotate(90deg)}
+.tend .n{margin-left:auto;color:var(--muted);font-weight:400}
+.tend:active{filter:brightness(1.2)}
+
+/* link piccolo azzurro */
+.link{background:none;border:0;padding:0;color:var(--azione);font-size:16px;font-weight:600;min-height:var(--riga);display:inline-flex;align-items:center;gap:6px}
+.link.blocco{margin:0 var(--s4) var(--s3);min-height:var(--riga)}
+
+/* ---------- riga da toccare ---------- */
+.riga{display:flex;align-items:center;gap:var(--s3);width:100%;
+  min-height:60px;padding:0 var(--s4);text-align:left;
+  background:var(--surface);border:0;border-bottom:1px solid var(--line);color:var(--text);font-size:var(--testo)}
+.riga:last-child{border-bottom:0}
+.riga:active{background:var(--surface-2)}
+.riga .dx{margin-left:auto;color:var(--muted);font-size:16px;flex:0 0 auto}
+.riga .frec{color:var(--azione);font-size:22px;flex:0 0 auto}
+.riga .desc{flex:1;min-width:0}
+.riga .desc small{display:block;font-size:16px;color:var(--muted)}
+
+/* ---------- i giorni ---------- */
+.giorno{display:flex;gap:var(--s3);align-items:flex-start;padding:var(--s3) var(--s4);width:100%;text-align:left;
+  background:transparent;border:0;color:var(--text)}
+.giorno + .giorno{border-top:1px solid var(--line)}
+.giorno:active{background:var(--surface-2)}
+.giorno .data{flex:0 0 48px;text-align:center}
+.giorno .dnum{font-size:26px;font-weight:800;line-height:1}
+.giorno .dset{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+.giorno .n{flex:1;min-width:0}
+.giorno .titolo{font-size:17px;font-weight:700;margin:0}
+.giorno .prima{font-size:16px;color:var(--muted);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.giorno .stat{display:flex;gap:var(--s2);align-items:center;margin-top:8px;flex-wrap:wrap}
+.giorno.oggi{background:rgba(227,179,65,.06);box-shadow:inset 3px 0 0 var(--gold)}
+.mini{font-size:16px;color:var(--muted)}
+
+/* ---------- avanzamento ---------- */
+.avanz{margin:0 var(--s4) var(--s3)}
+.avanz .r{display:flex;align-items:baseline;font-size:16px;color:var(--muted);margin-bottom:6px;gap:var(--s2)}
+.avanz .r b{color:var(--text);font-size:18px}
+.avanz .r .dx{margin-left:auto;text-align:right}
+.barra-av{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.barra-av i{display:block;height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .3s}
+
+/* ---------- audio ---------- */
+.audio{display:flex;align-items:center;gap:var(--s3);padding:9px var(--s4);min-height:var(--riga);width:100%;background:transparent;border:0;color:var(--text);text-align:left}
+.audio + .audio{border-top:1px solid var(--line)}
+.audio .play{flex:0 0 52px;height:52px;border-radius:50%;background:rgba(56,189,248,.16);color:var(--azione);border:0;
+  display:flex;align-items:center;justify-content:center;font-size:16px;padding:0}
+.audio .play.spento{color:var(--muted);background:var(--surface-2)}
+.audio .play.suona{background:rgba(56,189,248,.3)}
+.audio .n{flex:1;min-width:0;background:none;border:0;padding:0;text-align:left;color:inherit;min-height:var(--riga)}
+.audio .t{font-size:17px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audio .s{font-size:16px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audio .s.err{color:var(--danger)}
+.audio .s.att{color:var(--gold)}
+.audio .d{font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.audio.sotto{padding-left:var(--s4);background:var(--surface-2);border-top:1px solid var(--line)}
+
+/* ---------- barra in fondo ---------- */
+.barra{position:fixed;left:0;right:0;bottom:0;z-index:5;
+  padding:var(--s2) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));
+  background:linear-gradient(to top,var(--bg) 72%,transparent);display:flex;gap:var(--s2)}
+.az{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-height:64px;padding:0 var(--s3);
+  background:var(--surface-2);color:var(--text);border:1px solid var(--line);border-radius:12px;font-size:17px;font-weight:600}
+.az.verde{background:var(--accent);color:var(--bg);border:0;font-weight:800;font-size:18px;
+  box-shadow:0 8px 24px rgba(61,220,132,.22)}
+.az.stretta{flex:0 0 118px}
+.az:active{filter:brightness(1.2)}
+.az:disabled{opacity:.45;filter:none}
+
+/* ---------- striscia di registrazione (sostituisce la barra) ---------- */
+.reg{position:fixed;left:0;right:0;bottom:0;z-index:6;height:calc(60px + env(safe-area-inset-bottom));
+  padding:0 var(--s4) env(safe-area-inset-bottom);
+  background:var(--surface);border-top:1px solid var(--danger);display:flex;align-items:center;gap:var(--s3)}
+.reg .dot{width:12px;height:12px;border-radius:50%;background:var(--danger);animation:batte 1.4s ease-in-out infinite;flex:0 0 auto}
+.reg .t{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;flex:0 0 auto}
+.onda{display:flex;gap:3px;align-items:center;height:26px;flex:1;min-width:0;overflow:hidden}
+.onda i{width:3px;height:4px;background:var(--danger);border-radius:2px;opacity:.85;flex:0 0 auto;transition:height .08s}
+.reg .stop{flex:0 0 auto;padding:0 18px;min-height:52px;display:flex;align-items:center;
+  background:var(--danger);color:#fff;border:0;border-radius:10px;font-size:16px;font-weight:800;letter-spacing:.04em}
+@keyframes batte{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.6}}
+
+/* ---------- campi ---------- */
+.campo{display:block;width:100%;min-height:var(--riga);padding:var(--s3);
+  background:var(--surface-2);color:var(--text);
+  border:1px solid var(--line);border-radius:var(--radius-p);font-size:var(--testo)}
+.campo:focus{outline:none;border-color:var(--accent)}
+textarea.campo{min-height:120px;resize:vertical;line-height:1.45}
+select.campo{-webkit-appearance:none;appearance:none;padding-right:36px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--azione) 50%),linear-gradient(135deg,var(--azione) 50%,transparent 50%);
+  background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat}
+.eticampo{display:block;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:var(--s3) 0 6px}
+.modulo{padding:0 var(--s4)}
+.modulo .due{display:flex;gap:var(--s2)}
+.modulo .due > *{flex:1;min-width:0}
+
+/* ---------- bottone grande ---------- */
+.btn{display:flex;align-items:center;justify-content:center;gap:var(--s2);
+  width:100%;min-height:64px;padding:0 var(--s4);
+  background:var(--surface-2);color:var(--text);
+  border:1px solid var(--line);border-radius:var(--radius-p);
+  font-size:19px;font-weight:600}
+.btn-ok{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.btn-rosso{color:var(--danger);border-color:rgba(255,69,58,.4)}
+.btn:active{filter:brightness(1.25)}
+.btn:disabled{opacity:.45;filter:none}
+.btn.medio{min-height:var(--riga);font-size:17px}
+.griglia{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);padding:var(--s3) var(--s4)}
+.griglia .btn{min-height:var(--riga);font-size:16px;padding:0 var(--s2);text-align:center}
+
+/* ---------- contabilità ---------- */
+.voceriga{display:block;width:100%;text-align:left;padding:var(--s3) var(--s4);background:var(--surface);border:0;border-bottom:1px solid var(--line);color:var(--text)}
+.voceriga:last-child{border-bottom:0}
+.voceriga:active{background:var(--surface-2)}
+.voceriga .desc{font-size:var(--testo);margin-bottom:4px}
+.voceriga .conti{display:flex;gap:var(--s3);align-items:baseline;font-size:16px;color:var(--muted);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+/* gli importi restano bianchi: verde è solo il totale */
+.voceriga .importo{margin-left:auto;font-size:18px;font-weight:700;color:var(--text)}
+.voceriga .codice{font-size:12px;color:var(--muted);letter-spacing:.06em}
+.voceriga.dacompletare{box-shadow:inset 3px 0 0 var(--gold)}
+.voceriga.dacompletare .importo{color:var(--gold)}
+.totale{display:flex;align-items:baseline;gap:var(--s3);margin:0 var(--s4) var(--s3);
+  padding:var(--s4);background:var(--surface-2);border:1px solid var(--line);border-top:2px solid var(--accent);border-radius:var(--radius)}
+.totale .eti{margin:0;font-size:14px}
+.totale .cifra{margin-left:auto;font-size:28px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.targa{font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--muted)}
+
+/* ---------- listino: scelta delle colonne ---------- */
+.colonna{display:flex;align-items:center;gap:var(--s3);min-height:var(--riga);padding:var(--s2) var(--s4);border-bottom:1px solid var(--line)}
+.colonna .nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.colonna select{flex:0 0 150px;min-height:var(--riga)}
+.anteprima{padding:var(--s3) var(--s4);background:var(--surface-2);font-size:14px;color:var(--muted);overflow-x:auto;white-space:pre;line-height:1.5}
+
+/* ---------- foglio dal basso (finestre) ---------- */
+.velo{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center}
+.foglio{width:100%;max-width:640px;max-height:92vh;overflow-y:auto;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0;
+  padding:var(--s4) var(--s4) calc(var(--s5) + env(safe-area-inset-bottom))}
+.foglio h2{margin:0 0 var(--s3);font-size:19px;font-weight:800;letter-spacing:.02em}
+.foglio p{color:var(--text-2);margin:0 0 var(--s3)}
+.foglio .btn{margin-top:var(--s2)}
+.foglio .lista{max-height:50vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-p);margin-bottom:var(--s2)}
+.foglio .righe{display:flex;gap:var(--s2);margin-top:var(--s2)}
+.foglio .righe .btn{flex:1;margin-top:0}
+.foglio .pin{font-size:32px;letter-spacing:.3em;text-align:center;min-height:64px}
+
+/* la finestra a tutto schermo per leggere una cosa lunga */
+.pieno{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;
+  padding:calc(var(--s4) + env(safe-area-inset-top)) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom))}
+.pieno-tit{margin:0 0 var(--s3);padding-bottom:var(--s2);text-align:center;
+  font-size:17px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text);border-bottom:1px solid var(--line)}
+.pieno-testo{flex:1;overflow-y:auto;font-size:19px;line-height:1.5;white-space:pre-wrap}
+
+/* ---------- avviso di una parola ---------- */
+.toast{position:fixed;left:50%;bottom:calc(112px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:30;
+  padding:12px 22px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+  font-size:17px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+.toast.su{opacity:1}
+.toast.ok{border-color:var(--accent);color:var(--accent)}
+.toast.att{border-color:var(--gold);color:var(--gold)}
+.toast.err{border-color:var(--danger);color:var(--danger)}
+
+/* ---------- avviso in dashboard ---------- */
+.avviso{margin:0 var(--s4) var(--s3);padding:var(--s3) var(--s4);border-radius:var(--radius);font-size:17px;
+  background:rgba(227,179,65,.12);border:1px solid rgba(227,179,65,.5);color:var(--gold)}
+.avviso.rosso{background:rgba(255,69,58,.1);border-color:rgba(255,69,58,.5);color:var(--danger)}
+
+/* ---------- vuoto ---------- */
+.vuoto-stato{margin:var(--s5) var(--s4);text-align:center;color:var(--muted);font-size:17px;line-height:1.5}
+
+/* ---------- modo sviluppatore ---------- */
+.dev .card-corpo{font-size:16px}
+.dev .k{color:var(--muted)}
+.dev small{font-size:15px}
+.dev .coda-riga{display:flex;gap:var(--s2);align-items:center;padding:8px var(--s4);border-top:1px solid var(--line);font-size:16px}
+.dev .coda-riga .stato{margin-left:auto;font-size:14px;text-transform:uppercase;letter-spacing:.05em}
+.dev .stato.err{color:var(--danger)}
+.dev .stato.att{color:var(--gold)}
+.dev .stato.ok{color:var(--accent)}
+.card.attenzione{border-color:var(--gold)}
+.card.attenzione .card-capo{color:var(--gold)}
+.card.attenzione .card-capo::before{background:var(--gold)}
+
+/* evidenziazione di una sezione raggiunta da un audio */
+@keyframes lampeggia{0%{box-shadow:0 0 0 2px var(--azione)}100%{box-shadow:0 0 0 0 transparent}}
+.card.lampeggia{animation:lampeggia 1.2s ease-out}
+
+/* ---------- schermi larghi: la colonna resta stretta come un telefono ---------- */
+@media (min-width:700px){
+  #vista,.barra,.reg{max-width:640px;margin-left:auto;margin-right:auto}
+  .barra,.reg{left:50%;right:auto;width:100%;transform:translateX(-50%)}
+}
+@media (prefers-reduced-motion:reduce){
+  .reg .dot,.onda i{animation:none;transition:none}
+}
