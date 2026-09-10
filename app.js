@@ -3395,7 +3395,30 @@ function avvio() {
     if (ev.key === 'Escape' && foglioAperto()) AZIONI['chiudi-foglio']();
   });
 
-  // Cinque tocchi di fila sul titolo: il modo sviluppatore
+  /* Il modo sviluppatore si apre in due modi. Il primo è tenere premuto il titolo
+     due secondi: è un gesto solo, non si sbaglia, e non fa zoomare la pagina.
+     Il secondo, cinque tocchi di fila, resta per chi lo conosce già. */
+  let premutoTitolo = null;
+  const iniziaPressione = function (ev) {
+    if (!ev.target.closest('#titolo-app')) return;
+    clearTimeout(premutoTitolo);
+    premutoTitolo = setTimeout(function () {
+      premutoTitolo = null;
+      tocchiTitolo = 0;
+      devSbloccato = false;
+      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) { /* niente vibrazione, pazienza */ } }
+      vai('#/dev');
+    }, 2000);
+  };
+  const fermaPressione = function () { clearTimeout(premutoTitolo); premutoTitolo = null; };
+  document.addEventListener('touchstart', iniziaPressione, { passive: true });
+  document.addEventListener('touchend', fermaPressione);
+  document.addEventListener('touchmove', fermaPressione, { passive: true });
+  document.addEventListener('touchcancel', fermaPressione);
+  document.addEventListener('mousedown', iniziaPressione);
+  document.addEventListener('mouseup', fermaPressione);
+  document.addEventListener('mouseleave', fermaPressione);
+
   document.addEventListener('click', function (ev) {
     if (!ev.target.closest('#titolo-app')) return;
     tocchiTitolo++;
