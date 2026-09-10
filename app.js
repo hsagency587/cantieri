@@ -750,10 +750,26 @@ function leggiTutto() {
     try { DB = JSON.parse(grezzo); } catch (e) { DB = null; }
   }
   if (!DB || !DB.contatori) DB = archivioVuoto();
-  if (!DB.cancellati) DB.cancellati = {};
-  // Le relazioni sono arrivate dopo: un archivio scritto prima non ha la collezione.
-  if (!DB.relazioni) DB.relazioni = {};
+  completaArchivio(DB);
   return DB;
+}
+
+/* Un archivio scritto da una versione più vecchia non ha le collezioni nate
+   dopo — le relazioni, le aziende. Senza questa riparazione il primo salvataggio
+   scrive dentro il vuoto e l'app non parte più. Vale per quello che c'è sul
+   telefono e per quello che arriva da GitHub. */
+function completaArchivio(db) {
+  if (!db) return db;
+  const modello = archivioVuoto();
+  Object.keys(modello).forEach(function (k) {
+    if (modello[k] && typeof modello[k] === 'object' && !Array.isArray(modello[k])) {
+      if (!db[k] || typeof db[k] !== 'object') db[k] = {};
+      if (k === 'contatori') Object.keys(modello.contatori).forEach(function (c) {
+        if (typeof db.contatori[c] !== 'number') db.contatori[c] = 0;
+      });
+    }
+  });
+  return db;
 }
 // Dice se nel telefono c'è già un archivio: la prima volta si parte con gli esempi.
 function archivioEsiste() {
@@ -788,7 +804,7 @@ function ricaricaSeFresco() {
   let sulTelefono = null;
   try { sulTelefono = JSON.parse(grezzo); } catch (e) { return; }
   if (sulTelefono && sulTelefono.aggiornato && DB && DB.aggiornato && sulTelefono.aggiornato > DB.aggiornato) {
-    DB = sulTelefono;
+    DB = completaArchivio(sulTelefono);
     if (!DB.cancellati) DB.cancellati = {};
     if (!DB.relazioni) DB.relazioni = {};
   }
@@ -1215,7 +1231,7 @@ async function scaricaGitHub() {
   let cambiato;
   if (db.soloEsempio && conta(remoto.cantieri)) {
     // Nel telefono ci sono solo gli esempi e online c'è roba vera: gli esempi si buttano, senza mescolarli.
-    DB = remoto;
+    DB = completaArchivio(remoto);
     if (!DB.cancellati) DB.cancellati = {};
     if (!DB.relazioni) DB.relazioni = {};
     DB.soloEsempio = false;
