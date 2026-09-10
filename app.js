@@ -2556,6 +2556,16 @@ async function riapriGiornata(sopId) {
   aggiornaVista();
 }
 
+/* Si detta su una giornata chiusa: la giornata si riapre da sola e si detta lì. Di quella
+   data ce n'è una sola, e a chi ha già cominciato a parlare non si sbarra la strada. Il
+   verbale non si perde: si riscrive quando la giornata si richiude. */
+function riapriPerDettare(s) {
+  if (!s || !s.chiuso) return;
+  s.chiuso = null;
+  salva('sopralluogo', s);
+  avvisa('Giornata riaperta', 'ok');
+}
+
 /* ---------------- VERBALE: modifica ---------------- */
 function vistaVerbaleModifica(id) {
   const v = verbale(id);
@@ -3984,8 +3994,7 @@ const AZIONI = {
   'detta': function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
-    // Non se ne apre una seconda per la stessa data: si riapre questa.
-    if (s.chiuso) { avvisa('Giornata chiusa: riaprila per dettare', 'att'); return; }
+    riapriPerDettare(s);
     avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
@@ -4365,9 +4374,9 @@ const AZIONI = {
 
 async function dettaSu(c) {
   const s = sopralluogoPerDettare(c);
+  // Se era chiusa si riapre prima di andarci, così la giornata si apre già "in corso".
+  riapriPerDettare(s);
   vai('#/giorno/' + s.id);
-  // La giornata di oggi è già chiusa: non se ne crea una seconda, si porta lì e si dice.
-  if (s.chiuso) { avvisa('La giornata di oggi è chiusa: riaprila per dettare', 'att'); return; }
   await avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
 }
 
