@@ -1,0 +1,61 @@
+# Anteprima di ogni ramo che non sia main.
+# Copia i file del ramo dentro  anteprime/<nome del ramo>/  su main,
+# cosi' GitHub Pages li pubblica a
+#   https://hsagency587.github.io/cantieri/anteprime/<nome del ramo>/
+# L'app vera, che sta nella radice, non viene toccata da questo lavoro.
+name: Anteprime dei rami
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - gh-pages
+
+permissions:
+  contents: write
+
+concurrency:
+  group: anteprime
+  cancel-in-progress: false
+
+jobs:
+  pubblica:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prendo i file del ramo
+        uses: actions/checkout@v4
+        with:
+          path: ramo
+
+      - name: Prendo main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: principale
+
+      - name: Copio il ramo dentro anteprime
+        run: |
+          RAMO=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
+          echo "RAMO=$RAMO" >> "$GITHUB_ENV"
+          DEST="principale/anteprime/$RAMO"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'anteprime' ramo/ "$DEST/"
+
+      - name: Salvo su main
+        run: |
+          cd principale
+          git config user.name "anteprime"
+          git config user.email "anteprime@users.noreply.github.com"
+          git add -A anteprime
+          if git diff --cached --quiet; then
+            echo "Niente di nuovo da pubblicare."
+            exit 0
+          fi
+          git commit -m "[anteprima] $RAMO"
+          for i in 1 2 3; do
+            git pull --rebase --autostash && git push && exit 0
+            sleep 7
+          done
+          echo "Non sono riuscito a pubblicare: main si muove troppo."
+          exit 1
