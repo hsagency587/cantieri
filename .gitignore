@@ -7,3 +7,20 @@
 /versione-cache.yml
 /pdf-lib-prova.js
 *.bak
+
+# --- Documenti di lavoro: vivono sul PC, non vanno online ---
+# Regola: nel repository entra solo quello che il browser carica per far
+# funzionare l'app. Ogni file nuovo che non e' codice, foglio di stile,
+# icona o font va aggiunto qui nello stesso momento in cui viene creato.
+/KIT-PRIVACY.md
+/PIANO-PRODOTTO.md
+/LAVORO-GROSSO.md
+/LAVORO-GROSSO-PRODOTTO.md
+/STILE.md
+/STILE-COSA-C-E-DI-NUOVO.md
+/PROCEDURA-anteprima-e-rilascio.md
+/PROCEDURA-dati-fuori-dal-repo-pubblico.md
+/PROCEDURA-FASE-1-SERVER.md
+/prova-foto.html
+/pubblica.ps1
+/Claude outputs/
