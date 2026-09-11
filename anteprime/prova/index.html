@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>CANTIERI</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f12">
+<meta name="description" content="Verbali di sopralluogo dettati a voce, contabilità e listino prezzi per il cantiere.">
+<!-- Installata sulla schermata home di iPhone: senza barra di Safari, con lo stato scuro -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CANTIERI">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<!-- Lo strato visivo sta in un foglio a parte, caricato dopo: corregge styles.css
+     per sovrapposizione senza che nessuno debba aprirlo. Le regole a parole
+     stanno in STILE.md. Per tornare indietro basta togliere questa riga. -->
+<link rel="stylesheet" href="stile.css">
+<!-- pdf-lib è l'unica libreria esterna: serve soltanto a scrivere il PDF.
+     Sta in un file a parte perché il service worker la tiene in cache dopo il primo giro:
+     così il PDF esce anche senza rete. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" defer></script>
+</head>
+<body>
+<!-- Ogni schermata si disegna qui dentro -->
+<main id="vista" aria-live="polite"></main>
+
+<!-- La striscia di registrazione vive fuori dalle schermate: si può cambiare pagina
+     mentre il microfono resta acceso, e il bottone Ferma non sparisce mai -->
+<div id="striscia" class="reg" hidden>
+  <span class="dot"></span>
+  <span class="t" id="reg-tempo">0:00</span>
+  <div class="onda" id="reg-onda" aria-hidden="true"></div>
+  <button class="stop" id="reg-ferma" type="button">FERMA</button>
+</div>
+
+<!-- Le finestre (fogli dal basso) e l'avviso di una parola -->
+<div id="finestra" hidden></div>
+<div id="toast" class="toast" role="status"></div>
+
+<!-- Lettore unico per riascoltare gli audio -->
+<audio id="lettore" hidden></audio>
+
+<noscript><p style="padding:24px">CANTIERI ha bisogno di JavaScript per funzionare.</p></noscript>
+<script src="app.js" defer></script>
+</body>
+</html>
