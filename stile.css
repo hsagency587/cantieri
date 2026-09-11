@@ -987,3 +987,12 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 /* La card con il menu aperto si stacca dalle altre. */
 .doc-mini.menu{border-color:var(--azione)}
 .doc-mini .punti.on{color:var(--azione);background:var(--surface)}
+
+/* Una scansione PDF non ha miniatura: nella striscia c'è l'icona del documento
+   con il numero di pagine sotto, e nella schermata grande la stessa cosa. */
+.foto-mini .q.scan{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s1);padding-bottom:var(--s5);background:var(--surface);color:var(--muted)}
+.foto-mini .q.scan .ico{width:30px;height:30px}
+.foto-mini .q.scan small{font-size:var(--t1);line-height:1.2;text-align:center;padding:0 var(--s1)}
+.foto-grande .foto-vuota.scan{display:flex;flex-direction:column;align-items:center;gap:var(--s2);padding:var(--s7) var(--s4);color:var(--text);font-weight:600}
+.foto-grande .foto-vuota.scan .ico{width:44px;height:44px;color:var(--muted)}
+.foto-grande .foto-vuota.scan small{font-size:var(--t2);font-weight:400;color:var(--muted)}

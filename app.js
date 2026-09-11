@@ -800,6 +800,7 @@ function leggiLocale() {
   if (!LOCALE.github) LOCALE.github = base.github;
   if (!Array.isArray(LOCALE.coda)) LOCALE.coda = [];
   if (!Array.isArray(LOCALE.proposte)) LOCALE.proposte = [];
+  if (!Array.isArray(LOCALE.rilieviNuovi)) LOCALE.rilieviNuovi = [];
   return LOCALE;
 }
 function salvaLocale() {
@@ -976,6 +977,8 @@ function titoloVerbale(v, senzaCantiere) {
 function verbalePerCodice(codice) { return valori(leggiTutto().verbali).find(function (v) { return v.codice === codice; }) || null; }
 // Una foto si chiama con l'ora, un documento con il suo genere: "Foto delle 9:40", "Bolla delle 14:05".
 function nomeFoto(f) { return (GENERI[f.genere] || 'Foto') + ' delle ' + oraCorta(f.ora); }
+// "PDF · 3 pagine", o solo "PDF" se le pagine non si sono potute contare.
+function paginePdf(f) { return 'PDF' + (f.pagine ? ' · ' + f.pagine + (f.pagine === 1 ? ' pagina' : ' pagine') : ''); }
 function sopralluoghiDi(codiceCantiere) {
   return valori(leggiTutto().sopralluoghi).filter(function (s) { return s.cantiere === codiceCantiere; })
     .sort(function (a, b) { return (b.giorno + b.ora).localeCompare(a.giorno + a.ora); });
@@ -1969,7 +1972,61 @@ async function lavoroRilievo(l) {
   pezzo.errore = null;
   salva('sopralluogo', sop);
   allineaVerbale(sop, [l.sezione]);
+  /* Il testo è già al sicuro nella sezione. In più si fa vedere subito, in una
+     scheda con "Va bene" e "Correggi": resta finché non si preme uno dei due,
+     anche cambiando schermata. Vive nel telefono, non nei dati. */
+  if (testo) {
+    const loc = leggiLocale();
+    loc.rilieviNuovi.push({ id: nuovoId(), sop: sop.id, cantiere: sop.cantiere, sezione: l.sezione, testo: testo, ora: pezzo.ora || oraAdesso() });
+    salvaLocale();
+  }
   avvisa('Rilievo pronto', 'ok');
+  aggiornaVista();
+}
+
+/* La scheda del rilievo appena arrivato. Si mostra nella giornata (per sopralluogo)
+   e nel cantiere (per cantiere): dove uno si trova. "Correggi" apre il testo lì
+   dentro; salvando si sostituisce solo il pezzo aggiunto, non tutta la sezione. */
+function cardRilieviNuovi(filtro) {
+  const lista = leggiLocale().rilieviNuovi.filter(function (r) { return filtro.sop ? r.sop === filtro.sop : r.cantiere === filtro.cantiere; });
+  if (!lista.length) return '';
+  return lista.map(function (r) {
+    return '<div class="card gialla"><div class="card-capo gialla">' + h(nomeSezione(r.sezione)) + ' · rilievo delle ' + h(oraCorta(r.ora)) + '</div>' +
+      (r.modifica
+        ? '<textarea class="corpo" id="ril-' + h(r.id) + '">' + h(r.testo) + '</textarea>' +
+          '<div class="griglia"><button class="btn btn-ok" data-az="rilievo-salva" data-id="' + h(r.id) + '">Salva</button>' +
+          '<button class="btn" data-az="rilievo-annulla" data-id="' + h(r.id) + '">Annulla</button></div>'
+        : '<div class="card-corpo">' + testoElenco(r.testo, true) + '</div>' +
+          '<div class="griglia"><button class="btn btn-ok" data-az="rilievo-ok" data-id="' + h(r.id) + '">Va bene</button>' +
+          '<button class="btn" data-az="rilievo-correggi" data-id="' + h(r.id) + '">Correggi</button></div>') +
+      '</div>';
+  }).join('');
+}
+function rilievoNuovo(id) { return leggiLocale().rilieviNuovi.find(function (r) { return r.id === id; }) || null; }
+function togliRilievoNuovo(id) {
+  const loc = leggiLocale();
+  loc.rilieviNuovi = loc.rilieviNuovi.filter(function (r) { return r.id !== id; });
+  salvaLocale();
+}
+/* Il pezzo aggiunto si cerca tale e quale nella sezione e si sostituisce. Se nel
+   frattempo la sezione è stata cambiata a mano e il pezzo non c'è più uguale, il
+   testo corretto si aggiunge in fondo: non si perde niente in nessun caso. */
+function correggiRilievo(id, nuovo) {
+  const r = rilievoNuovo(id);
+  const s = r && sopralluogo(r.sop);
+  if (!s) { togliRilievoNuovo(id); return; }
+  nuovo = String(nuovo || '').trim();
+  const attuale = String(s.sezioni[r.sezione] || '');
+  const dove = attuale.lastIndexOf(r.testo);
+  if (dove !== -1) {
+    s.sezioni[r.sezione] = (attuale.slice(0, dove) + nuovo + attuale.slice(dove + r.testo.length)).replace(/\n{3,}/g, '\n\n').trim();
+  } else {
+    s.sezioni[r.sezione] = aggiungiTesto(attuale, nuovo);
+    avvisa('La sezione era cambiata: il testo corretto è in fondo', 'att');
+  }
+  salva('sopralluogo', s);
+  allineaVerbale(s, [r.sezione]);
+  togliRilievoNuovo(id);
 }
 
 // Il dettato di una foto diventa una didascalia. Senza chiave resta il testo grezzo: non si perde niente.
@@ -2470,6 +2527,18 @@ async function apriImmagine(file) {
   });
 }
 
+/* Un documento può essere un PDF fatto dallo scanner del telefono. Si riconosce dal
+   tipo o dal nome; si contano le pagine con pdf-lib quando c'è (null se non si riesce). */
+function ePdf(file) { return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''); }
+async function contaPaginePdf(blob) {
+  if (!window.PDFLib) return null;
+  try { return (await window.PDFLib.PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true })).getPageCount(); }
+  catch (e) { return null; }
+}
+// L'estensione con cui un file esce dal telefono: le scansioni PDF non sono jpg.
+function estensioneMedia(f) { return f.formato === 'pdf' ? '.pdf' : '.jpg'; }
+function tipoMedia(f, blob) { return blob.type || (f.formato === 'pdf' ? 'application/pdf' : 'image/jpeg'); }
+
 // Lato lungo a latoMax, JPEG alla qualità detta. Torna il blob e le misure, che servono al PDF.
 async function riduciFoto(file, latoMax, qualita) {
   const im = await apriImmagine(file);
@@ -2495,10 +2564,17 @@ async function aggiungiFoto(file, sopId, origine, genere) {
   const s = sopralluogo(sopId);
   if (!s || !file) return;
   const doc = !!GENERI[genere];
+  /* Lo scanner del telefono restituisce un PDF: si salva com'è, senza disegnarlo.
+     Le pagine si contano con pdf-lib, se c'è; se non si riesce restano ignote. */
+  const pdf = doc && ePdf(file);
   avvisa(doc ? 'Preparo la scansione…' : 'Preparo la foto…');
   let ridotta;
-  try { ridotta = await riduciFoto(file, doc ? LATO_DOC : LATO_FOTO, doc ? QUALITA_DOC : QUALITA_FOTO); }
-  catch (e) { avvisa(e.message || 'Foto non leggibile', 'err'); return; }
+  if (pdf) {
+    ridotta = { blob: file, larghezza: 0, altezza: 0, pagine: await contaPaginePdf(file) };
+  } else {
+    try { ridotta = await riduciFoto(file, doc ? LATO_DOC : LATO_FOTO, doc ? QUALITA_DOC : QUALITA_FOTO); }
+    catch (e) { avvisa(e.message || 'Foto non leggibile', 'err'); return; }
+  }
   const id = nuovoId();
   let rif;
   try { rif = await salvaMedia(id, ridotta.blob); }
@@ -2516,6 +2592,8 @@ async function aggiungiFoto(file, sopId, origine, genere) {
     peso: ridotta.blob.size, larghezza: ridotta.larghezza, altezza: ridotta.altezza,
     stato: '', audio: null
   };
+  // Campi in più solo per il PDF scansionato: una foto normale non li ha, e non cambia.
+  if (pdf) { f.formato = 'pdf'; f.pagine = ridotta.pagine; }
   s.media.push(f);
   salva('sopralluogo', s);
   /* Dopo uno scatto non si cambia schermata: in cantiere le foto si fanno in fila, e
@@ -2616,8 +2694,9 @@ function filaFoto(s, lista, opzioni) {
     const st = statoLavoroFoto(f);
     const eti = opzioni.doc ? (GENERI_BREVI[f.genere] || 'documento') : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
-      '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
-      (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') + '</button>' +
+      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
+      // Una scansione PDF non ha miniatura: l'icona del documento e il numero di pagine.
+      (f.file ? (f.formato === 'pdf' ? '<span class="ico ico-documento"></span><small>' + (f.pagine ? f.pagine + ' pag.' : 'PDF') + '</small>' : '<img data-foto="' + h(f.file) + '" alt="">') : '') + '</button>' +
       // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
       '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(nomeFoto(f)) + '">✕</button>' +
       /* Il bollino del PDF sta nell'angolo basso della foto. Dove serve scegliere si tocca,
@@ -3051,6 +3130,8 @@ function vistaCantiere(id) {
   /* Del cantiere: quello che vale per tutto il lavoro, non per una giornata sola.
      I rilievi in un blocco e le scansioni sotto: la categoria con cui sono stati
      presi non conta più, una volta che sono qui. */
+  // Un rilievo appena dettato da qui si fa vedere qui, prima del resto.
+  html += cardRilieviNuovi({ cantiere: c.codice });
   const rilCant = String(c.rilievi || '').trim();
   const docCant = documentiDelCantiere(c.codice);
   if (rilCant || docCant.length) {
@@ -3059,7 +3140,7 @@ function vistaCantiere(id) {
       (rilCant ? '<div class="card-corpo">' + testoElenco(c.rilievi, true) + '</div>' : '');
     docCant.forEach(function (v) {
       html += '<button class="riga" data-az="vai" data-a="#/foto/' + h(v.sop.id) + '/' + h(v.f.id) + '">' +
-        '<span class="desc">' + h(GENERI[v.f.genere] || 'Documento') + '<small>' + h(dataSenzaAnno(v.f.giorno)) + ', ' + h(oraCorta(v.f.ora)) + '</small></span>' +
+        '<span class="desc">' + h(GENERI[v.f.genere] || 'Documento') + '<small>' + h(dataSenzaAnno(v.f.giorno)) + ', ' + h(oraCorta(v.f.ora)) + (v.f.formato === 'pdf' ? ' · ' + h(paginePdf(v.f)) : '') + '</small></span>' +
         '<span class="frec">›</span></button>';
     });
     html += '</div>';
@@ -3197,6 +3278,7 @@ function vistaGiornoInCorso(s, c) {
      di lato e si salta da un passaggio all'altro senza tornare al cantiere. */
   html += strisciaSopralluoghi(s);
   html += cardDaAssegnare(s);
+  html += cardRilieviNuovi({ sop: s.id });
   // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
   // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
   html += cardFotoGiorno(s, !!s.chiuso);
@@ -3438,7 +3520,9 @@ function ingressiDocumento(s) {
   /* Un ingresso solo, senza "capture": il telefono apre il suo menu con dentro
      la fotocamera e il rullino. Prima c'erano due tasti e una riga di testo per
      dire la stessa cosa. */
-  return '<input type="file" accept="image/*" multiple id="file-doc-scatta" hidden data-campo="file-documento" data-id="' + id + '" data-origine="rullino">';
+  /* Con anche i PDF fra i tipi accettati l'iPhone mette nel menu "Scansiona documenti":
+     ritaglia il foglio, lo raddrizza, mette più pagine in un file. È del telefono. */
+  return '<input type="file" accept="image/*,application/pdf" multiple id="file-doc-scatta" hidden data-campo="file-documento" data-id="' + id + '" data-origine="rullino">';
 }
 
 /* Un tasto di rilievo o di scansione può stare in una giornata o in un cantiere.
@@ -3883,7 +3967,11 @@ function vistaFoto(sopId, fotoId) {
   let html = testata({ indietro: '#/giorno/' + s.id, titolo: nomeFoto(f), sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)),
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' : (f.nelPdf ? '<span class="pill ok">nel PDF</span>' : '<span class="pill grigia">non nel PDF</span>') });
   html += '<div class="foto-grande' + (f.file ? '' : ' manca') + '">' +
-    (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '<div class="foto-vuota">Foto archiviata' + (f.archiviato ? ' il ' + h(dataSenzaAnno(f.archiviato)) : '') + ': è nei File del telefono.</div>') +
+    (f.file
+      ? (f.formato === 'pdf'
+        ? '<div class="foto-vuota scan"><span class="ico ico-documento"></span>' + h(paginePdf(f)) + '<small>scansione del telefono: entra nel verbale com\'è</small></div>'
+        : '<img data-foto="' + h(f.file) + '" alt="">')
+      : '<div class="foto-vuota">Foto archiviata' + (f.archiviato ? ' il ' + h(dataSenzaAnno(f.archiviato)) : '') + ': è nei File del telefono.</div>') +
     '<div class="foto-dati">' + h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(titoloSopralluogo(s)) + '</div></div>';
   html += '<div class="card"><div class="card-capo' + (String(f.referto || '').trim() ? '' : ' spenta') + '">Referto' + (st.testo ? '<span class="dx ' + st.classe + '">' + h(st.testo) + '</span>' : '') + '</div>' +
     '<textarea class="corpo" data-campo="referto-foto" data-id="' + h(f.id) + '" data-sop="' + h(s.id) + '" placeholder="' + (doc ? 'Detta o scrivi cosa c\'è su questo documento' : 'Detta o scrivi cosa si vede') + '">' + h(f.referto || '') + '</textarea>' +
@@ -4608,8 +4696,8 @@ async function scaricaFotoMese(mese) {
       const blob = await leggiMedia(f.file);
       if (!blob) continue;
       const referto = primaRiga(f.referto);
-      const nome = s.codice + '_' + f.giorno + '_' + String(f.ora || '').replace(':', '-') + '_' + f.codice + (referto ? '_' + nomeFile(referto) : '') + '.jpg';
-      file.push(new File([blob], nome, { type: blob.type || 'image/jpeg' }));
+      const nome = s.codice + '_' + f.giorno + '_' + String(f.ora || '').replace(':', '-') + '_' + f.codice + (referto ? '_' + nomeFile(referto) : '') + estensioneMedia(f);
+      file.push(new File([blob], nome, { type: tipoMedia(f, blob) }));
       fotoDelMese.push({ sop: s, foto: f });
     }
   }
@@ -4931,6 +5019,18 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     lista.forEach(function (voce) {
       const f = voce.foto;
       const eti = (GENERI[f.genere] || 'Documento') + ' - ' + f.codice + ' - ' + dataEstesa(f.giorno) + ', ' + (f.ora || '') + ' - ' + (c.nome || '');
+      if (voce.pagine && voce.pagine.length) {
+        /* Scansione PDF: l'etichetta e il referto stanno qui, poi le sue pagine
+           entrano intere una dopo l'altra, e quello che segue riparte su una
+           pagina nuova. Le pagine copiate contano nella numerazione. */
+        spazio(40);
+        scrivi(eti, 9, normale, PDF.rgb(0.45, 0.45, 0.45));
+        if (String(f.referto || '').trim()) scrivi(f.referto, 10, normale);
+        scrivi('(' + voce.pagine.length + (voce.pagine.length === 1 ? ' pagina allegata' : ' pagine allegate') + ')', 9, normale, PDF.rgb(0.45, 0.45, 0.45));
+        voce.pagine.forEach(function (p) { doc.addPage(p); numero++; });
+        pagina = null;
+        return;
+      }
       if (voce.img) {
         const scala = Math.min(larghezza / voce.img.width, ALT_DOC / voce.img.height, 1);
         const lo = voce.img.width * scala, la = voce.img.height * scala;
@@ -4940,7 +5040,7 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
         y -= la + 6;
       } else {
         spazio(40);
-        scrivi('[' + (f.file ? 'documento non leggibile' : 'documento archiviato') + ']', 10, normale, PDF.rgb(0.45, 0.45, 0.45));
+        scrivi('[' + (voce.fallito ? 'scansione PDF non copiabile: saltata' : (f.file ? 'documento non leggibile' : 'documento archiviato')) + ']', 10, normale, PDF.rgb(0.45, 0.45, 0.45));
       }
       if (String(f.referto || '').trim()) scrivi(f.referto, 10, normale);
       scrivi(eti, 9, normale, PDF.rgb(0.45, 0.45, 0.45));
@@ -5160,17 +5260,25 @@ async function preparaDocumentiPdf(doc, verbali) {
     if (!s) continue;
     for (const f of documentiDi(s)) {
       if (!f.nelPdf) continue;
-      let img = null;
+      let img = null, pagine = null, fallito = false;
       if (f.file) {
         const blob = await leggiMedia(f.file);
         if (blob) {
           try {
-            const ridotta = await riduciFoto(blob, LATO_DOC_PDF, QUALITA_DOC_PDF);
-            img = await doc.embedJpg(await ridotta.blob.arrayBuffer());
-          } catch (e) { img = null; }
+            if (f.formato === 'pdf') {
+              /* Una scansione PDF si copia dentro pagina per pagina. Se non si
+                 riesce (file rovinato, cifrato), il documento si salta e nel PDF
+                 resta una riga che lo dice: l'esportazione non si ferma. */
+              const src = await window.PDFLib.PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
+              pagine = await doc.copyPages(src, src.getPageIndices());
+            } else {
+              const ridotta = await riduciFoto(blob, LATO_DOC_PDF, QUALITA_DOC_PDF);
+              img = await doc.embedJpg(await ridotta.blob.arrayBuffer());
+            }
+          } catch (e) { img = null; pagine = null; fallito = true; }
         }
       }
-      (per[v.id] = per[v.id] || []).push({ foto: f, img: img });
+      (per[v.id] = per[v.id] || []).push({ foto: f, img: img, pagine: pagine, fallito: fallito });
     }
   }
   return per;
@@ -5350,7 +5458,7 @@ async function mandaSettimana(inizio, fine) {
     const blob = await leggiMedia(f.foto.file);
     if (!blob) continue;
     const referto = primaRiga(f.foto.referto);
-    file.push(new File([blob], f.sop.codice + '_' + f.foto.giorno + '_' + String(f.foto.ora || '').replace(':', '-') + '_' + f.foto.codice + (referto ? '_' + nomeFile(referto) : '') + '.jpg', { type: blob.type || 'image/jpeg' }));
+    file.push(new File([blob], f.sop.codice + '_' + f.foto.giorno + '_' + String(f.foto.ora || '').replace(':', '-') + '_' + f.foto.codice + (referto ? '_' + nomeFile(referto) : '') + estensioneMedia(f.foto), { type: tipoMedia(f.foto, blob) }));
   }
   if (!file.length) { segnaSettimanaFatta(inizio, 'vuota'); avvisa('Niente da mandare', 'att'); aggiornaVista(); return; }
   if (!(await portaFuori(file, 'CANTIERI · settimana del ' + dataSenzaAnno(inizio)))) return;
@@ -5734,6 +5842,16 @@ const AZIONI = {
     const s = giornoDelTasto(el);
     if (!s) return;
     avviaRegistrazione({ tipo: 'rilievo', sop: s.id, sezione: el.dataset.sezione });
+  },
+  // La scheda del rilievo appena arrivato: si accetta, si corregge, si salva.
+  'rilievo-ok': function (el) { togliRilievoNuovo(el.dataset.id); aggiornaVista(); },
+  'rilievo-correggi': function (el) { const r = rilievoNuovo(el.dataset.id); if (r) { r.modifica = true; salvaLocale(); aggiornaVista(); } },
+  'rilievo-annulla': function (el) { const r = rilievoNuovo(el.dataset.id); if (r) { r.modifica = false; salvaLocale(); aggiornaVista(); } },
+  'rilievo-salva': function (el) {
+    const campo = document.getElementById('ril-' + el.dataset.id);
+    correggiRilievo(el.dataset.id, campo ? campo.value : '');
+    avvisa('Rilievo corretto', 'ok');
+    aggiornaVista();
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
   /* Un altro passaggio nello stesso giorno: nasce con l'ora di adesso e si apre subito. */
