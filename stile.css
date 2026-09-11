@@ -765,13 +765,11 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 }
 .az-banda .btn{min-height:38px;font-size:var(--t2)}
 
-/* --- l'app installata: la barra di stato del telefono non copre il titolo --- */
-/* Su iPhone, aperta dalla schermata home, in cima c'è l'ora e il segnale.
-   Se il telefono non dichiara quanto spazio serve, se lo prende comunque. */
-@media (display-mode:standalone){
-  .top{padding-top:calc(var(--s2) + max(env(safe-area-inset-top), 42px))}
-  .top:has(.indietro){padding-top:calc(var(--s1) + max(env(safe-area-inset-top), 42px))}
-}
+/* L'app installata non ha bisogno di un minimo fisso sopra la testata:
+   con viewport-fit=cover il telefono dichiara da solo quanto è alta la
+   barra di stato (env(safe-area-inset-top)), e dove non la copre — Android —
+   il minimo era solo vuoto. Il padding in cima sta in §16, uguale per le
+   due forme della testata. */
 
 /* ============ 24. LA RIGA SOTTO LA RICERCA ============
    Il cantiere nuovo e la ricerca nei documenti su una riga sola: prima erano
@@ -924,7 +922,10 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    troppo vuoto sopra il titolo, i tasti che cadevano sotto invece di stare
    in linea, e tutto più largo del necessario. Qui si stringe. */
 
-.top{
+/* Le due forme della testata — con e senza tasto indietro — partono dalla
+   stessa altezza: la seconda va nominata a parte perché `.top:has(.indietro)`
+   pesa di più di `.top` e altrimenti si tiene il padding di §5. */
+.top,.top:has(.indietro){
   padding-top:calc(2px + env(safe-area-inset-top));
   padding-bottom:var(--s2);
   column-gap:var(--s2);
