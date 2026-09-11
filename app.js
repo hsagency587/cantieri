@@ -2425,6 +2425,7 @@ function disegna() {
       case 'listino': html = vistaListino(ROTTA.parametri[0], ROTTA.parametri[1]); break;
       case 'note': html = vistaNote(ROTTA.parametri[0]); break;
       case 'pdf': html = vistaPdf(ROTTA.parametri[0]); break;
+      case 'leggi': html = vistaLeggiPdf(ROTTA.parametri[0]); break;
       case 'cerca': html = vistaCerca(); break;
       case 'impostazioni':
         html = ROTTA.parametri[0] === 'aspetto' ? vistaImpostazioniAspetto()
@@ -2442,6 +2443,8 @@ function disegna() {
   vista.querySelectorAll('textarea.corpo, textarea.campo.auto').forEach(cresciTextarea);
   // Le foto arrivano da IndexedDB dopo: la schermata è già disegnata.
   caricaImmagini(vista);
+  // Le pagine del PDF si disegnano dopo, quando il contenitore ha una larghezza.
+  if (ROTTA.nome === 'leggi') mostraPdfDentro(ROTTA.parametri[0]);
 }
 function cresciTextarea(t) {
   t.style.height = 'auto';
@@ -4196,7 +4199,7 @@ async function creaPdf(idVerbale) {
   const c = cantierePerCodice(v.cantiere);
   const nome = (modo === 'questo' ? v.codice : (modo === 'periodo' ? (c ? c.codice : 'cantiere') + '_' + dal + '_' + al : v.codice + '_' + quale)) + '.pdf';
   // Prima resta nell'app, poi esce: se la condivisione la annulli, il documento c'è lo stesso.
-  await archiviaPdf(byte, nome, {
+  const archiviato = await archiviaPdf(byte, nome, {
     chiave: modo === 'questo' ? 'verbale:' + v.codice : (modo === 'periodo' ? 'periodo:' + v.cantiere + ':' + dal + ':' + al : 'sezione:' + v.codice + ':' + quale),
     tipo: modo === 'questo' ? 'verbale' : (modo === 'periodo' ? 'periodo' : 'sezione'),
     cantiere: v.cantiere, sopralluogo: modo === 'questo' ? v.sopralluogo : '', giorno: modo === 'periodo' ? al : v.giorno
@@ -4213,7 +4216,21 @@ async function creaPdf(idVerbale) {
     });
     if (svuotato) salva('sopralluogo', sop);
   });
-  await condividiFile(new Blob([byte], { type: 'application/pdf' }), nome, 'Verbale di sopralluogo');
+  /* Il PDF è fatto e archiviato. Adesso si sceglie cosa farne: mandarlo fuori,
+     guardarlo qui dentro, o tornare a correggere il verbale da cui nasce. */
+  apriFoglioPdfFatto(archiviato, v.id);
+}
+
+/* Le tre strade dopo "Crea il PDF". */
+function apriFoglioPdfFatto(p, idVerbale) {
+  if (!p) return;
+  apriFoglio(
+    '<h2>PDF pronto</h2><p>' + h(p.nome || 'documento.pdf') + ' · ' + h(pesoFile(p.peso || 0)) + '</p>' +
+    '<button class="btn btn-ok" data-az="pdf-manda" data-id="' + h(p.id) + '">Esporta</button>' +
+    '<button class="btn" data-az="pdf-leggi" data-id="' + h(p.id) + '">Visualizza</button>' +
+    (idVerbale ? '<button class="btn" data-az="pdf-modifica" data-id="' + h(idVerbale) + '">Modifica il verbale</button>' : '') +
+    '<button class="btn" data-az="chiudi-foglio">Chiudi</button>'
+  );
 }
 
 // Le lettere che il carattere standard non sa scrivere si sostituiscono, se no pdf-lib si ferma.
@@ -4851,13 +4868,84 @@ async function archiviaPdf(byte, nome, meta) {
     if (vecchio.file) await cancellaMedia(vecchio.file);
     loc.pdf = loc.pdf.filter(function (p) { return p !== vecchio; });
   }
-  loc.pdf.push({
+  const scheda = {
     id: id, chiave: meta.chiave, tipo: meta.tipo, nome: nome,
     cantiere: meta.cantiere || '', sopralluogo: meta.sopralluogo || '', giorno: meta.giorno || oggiISO(),
     quando: adessoISO(), peso: byte.length || byte.byteLength || 0, file: rif
-  });
+  };
+  loc.pdf.push(scheda);
   salvaLocale();
-  return rif;
+  return scheda;
+}
+
+/* pdf.js serve solo a guardare un PDF dentro l'app: si scarica la prima volta
+   che si tocca "Visualizza", non all'avvio. Sta su cdnjs, l'unico posto esterno
+   che il service worker mette in cache, quindi dalla seconda volta c'è anche
+   senza linea. */
+let PDFJS = null;
+function caricaPdfJs() {
+  if (PDFJS) return PDFJS;
+  PDFJS = new Promise(function (ok, no) {
+    if (window.pdfjsLib) return ok(window.pdfjsLib);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = function () {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      ok(window.pdfjsLib);
+    };
+    s.onerror = function () { PDFJS = null; no(new Error('serve la rete la prima volta')); };
+    document.head.appendChild(s);
+  });
+  return PDFJS;
+}
+
+/* Disegna le pagine del PDF una sotto l'altra, dentro la schermata. */
+async function mostraPdfDentro(idPdf) {
+  const box = document.getElementById('pdf-pagine');
+  if (!box) return;
+  const p = pdfArchiviati().find(function (x) { return x.id === idPdf; });
+  if (!p) { box.innerHTML = '<div class="vuoto-stato">Questo PDF non c\'è più.</div>'; return; }
+  try {
+    const lib = await caricaPdfJs();
+    const blob = p.file ? await leggiMedia(p.file) : null;
+    if (!blob) { box.innerHTML = '<div class="vuoto-stato">Il file non c\'è più.</div>'; return; }
+    const doc = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
+    box.innerHTML = '';
+    const largo = Math.min(box.clientWidth || 360, 900);
+    for (let n = 1; n <= doc.numPages; n++) {
+      const pagina = await doc.getPage(n);
+      const base = pagina.getViewport({ scale: 1 });
+      // Si disegna al doppio per non vedere i pixel sugli schermi fitti.
+      const scala = (largo / base.width) * Math.min(window.devicePixelRatio || 1, 2);
+      const vista = pagina.getViewport({ scale: scala });
+      const tela = document.createElement('canvas');
+      tela.width = vista.width; tela.height = vista.height;
+      tela.className = 'pdf-pagina';
+      tela.style.width = largo + 'px';
+      box.appendChild(tela);
+      await pagina.render({ canvasContext: tela.getContext('2d'), viewport: vista }).promise;
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="vuoto-stato">Non riesco a mostrarlo qui: ' + h(e.message) + '.<br>Usa Esporta per aprirlo fuori.</div>';
+  }
+}
+
+/* La schermata che mostra un PDF archiviato. */
+function vistaLeggiPdf(idPdf) {
+  const p = pdfArchiviati().find(function (x) { return x.id === idPdf; });
+  if (!p) return vistaDashboard();
+  const c = p.cantiere ? cantierePerCodice(p.cantiere) : null;
+  const sop = p.sopralluogo ? valori(leggiTutto().sopralluoghi).find(function (z) { return z.codice === p.sopralluogo; }) : null;
+  const v = sop ? verbaleDiSopralluogo(sop.codice) : null;
+  let html = testata({
+    indietro: c ? '#/pdf/' + c.id : '#/',
+    titolo: p.nome || 'documento.pdf',
+    sotto: h(dataBreve(p.giorno)) + ' · ' + h(pesoFile(p.peso || 0))
+  });
+  html += '<div id="pdf-pagine" class="pdf-pagine"><div class="vuoto-stato">Apro il documento…</div></div>';
+  html += '<div class="barra"><button class="az verde" data-az="pdf-manda" data-id="' + h(p.id) + '"><span class="ico ico-invio"></span> Esporta</button>' +
+    (v ? '<button class="az" data-az="pdf-modifica" data-id="' + h(v.id) + '">Modifica</button>' : '') + '</div>';
+  return html;
 }
 
 async function apriPdf(id) {
@@ -5501,7 +5589,10 @@ const AZIONI = {
     SETT_CONTO.inizio = null;
     contaSettimana().then(aggiornaVista);
   },
-  'pdf-apri': function (el) { apriPdf(el.dataset.id); },
+  'pdf-apri': function (el) { vai('#/leggi/' + el.dataset.id); },
+  'pdf-leggi': function (el) { chiudiFoglio(); vai('#/leggi/' + el.dataset.id); },
+  'pdf-modifica': function (el) { chiudiFoglio(); vai('#/verbale/' + el.dataset.id); },
+  'pdf-fuori': function (el) { apriPdf(el.dataset.id); },
   'pdf-manda': function (el) { mandaFuoriPdf(el.dataset.id); },
   'pdf-elimina': async function (el) {
     const p = pdfArchiviati().find(function (x) { return x.id === el.dataset.id; });

@@ -51,9 +51,19 @@ self.addEventListener('fetch', function (e) {
 
   /* Network-first: si prova la rete, e se risponde si aggiorna la cache.
      Se la rete manca, si serve la copia. Per le navigazioni la copia è index.html:
-     l'app è una pagina sola e le sue rotte stanno nell'hash. */
+     l'app è una pagina sola e le sue rotte stanno nell'hash.
+
+     I file dell'app si chiedono con "reload": GitHub Pages dice al browser di
+     tenersi la copia per dieci minuti, e senza questo, dopo una pubblicazione,
+     il telefono continuava a far girare la versione di prima anche con la rete
+     attaccata. Gli altri — pdf-lib, che ha il numero di versione nell'indirizzo —
+     restano come sono. */
+  const dallOrigine = url.origin === self.location.origin;
+  const chiedi = dallOrigine
+    ? fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
+    : fetch(richiesta);
   e.respondWith(
-    fetch(richiesta).then(function (risposta) {
+    chiedi.then(function (risposta) {
       if (risposta && risposta.ok && (url.origin === self.location.origin || url.hostname === 'cdnjs.cloudflare.com')) {
         const copia = risposta.clone();
         caches.open(VERSIONE).then(function (cache) { cache.put(richiesta, copia); }).catch(function () {});
