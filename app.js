@@ -2319,7 +2319,9 @@ function mostraTestoPieno(titolo, testo) {
 
 const REG = {
   attiva: false, recorder: null, stream: null, pezzi: [], inizio: 0, inizioPezzo: 0,
-  timer: null, contesto: null, audioCtx: null, analizzatore: null, rafOnda: null, spezzaTimer: null, destinazione: null
+  timer: null, contesto: null, audioCtx: null, analizzatore: null, rafOnda: null, spezzaTimer: null, destinazione: null,
+  // Chi ha fermato (la persona o il telefono), se c'è da riprendere, e il blocco dello schermo.
+  fermataUtente: false, daRiprendere: false, sveglia: null
 };
 
 function registrazioneAttiva() { return REG.attiva; }
@@ -2341,14 +2343,70 @@ async function avviaRegistrazione(destinazione) {
   REG.stream = stream;
   REG.destinazione = destinazione;
   REG.attiva = true;
+  REG.fermataUtente = false;
+  REG.daRiprendere = false;
   REG.inizio = Date.now();
+  sorvegliaTraccia(stream);
   avviaPezzo();
   avviaOnda(stream);
+  tieniSveglio();
   document.getElementById('striscia').hidden = false;
   document.getElementById('reg-tempo').textContent = '0:00';
   REG.timer = setInterval(aggiornaTempoRegistrazione, 500);
   avvisa('Registrando', 'err');
   aggiornaVista();
+}
+
+/* Lo schermo non si spegne da solo finché si registra: in stand-by il telefono
+   toglie il microfono all'app. Il blocco cade da solo quando la pagina va sotto
+   (una chiamata, un'altra app) e si richiede quando torna. */
+async function tieniSveglio() {
+  if (!REG.attiva || !navigator.wakeLock) return;
+  try {
+    REG.sveglia = await navigator.wakeLock.request('screen');
+    REG.sveglia.addEventListener('release', function () { REG.sveglia = null; });
+  } catch (e) { REG.sveglia = null; }
+}
+function lasciaDormire() {
+  if (REG.sveglia) { try { REG.sveglia.release(); } catch (e) { /* già rilasciato */ } REG.sveglia = null; }
+}
+
+/* Una chiamata in arrivo, o il telefono che va in stand-by, chiude la traccia
+   del microfono senza che nessuno abbia premuto Stop. Quando succede si chiude
+   il pezzo — così l'audio fatto fin lì è al sicuro — e si riprende con un
+   pezzo nuovo appena il microfono torna, da solo. */
+function sorvegliaTraccia(stream) {
+  const traccia = stream.getAudioTracks()[0];
+  if (!traccia) return;
+  const interrotta = function () {
+    if (!REG.attiva || REG.fermataUtente || REG.stream !== stream) return;
+    if (REG.recorder && REG.recorder.state === 'recording') { try { REG.recorder.stop(); } catch (e) { riprendiRegistrazione(); } }
+    else riprendiRegistrazione();
+  };
+  traccia.addEventListener('ended', interrotta);
+  traccia.addEventListener('mute', interrotta);
+}
+async function riprendiRegistrazione() {
+  if (!REG.attiva || REG.fermataUtente) return;
+  if (REG.recorder && REG.recorder.state === 'recording') return;
+  chiudiStream();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) {
+    // Sotto una chiamata il microfono non si dà: si riprova quando l'app torna davanti.
+    REG.daRiprendere = true;
+    avvisa('Registrazione in pausa: riprende da sola', 'att');
+    return;
+  }
+  if (!REG.attiva || REG.fermataUtente) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+  REG.stream = stream;
+  REG.daRiprendere = false;
+  sorvegliaTraccia(stream);
+  avviaPezzo();
+  fermaOnda();
+  avviaOnda(stream);
+  tieniSveglio();
+  avvisa('Registrazione ripresa', 'ok');
 }
 
 function avviaPezzo() {
@@ -2360,6 +2418,8 @@ function avviaPezzo() {
   REG.pezzi = [];
   REG.inizioPezzo = Date.now();
   recorder.ondataavailable = function (e) { if (e.data && e.data.size) REG.pezzi.push(e.data); };
+  // Un errore del registratore non è uno Stop: si riprende con un pezzo nuovo.
+  recorder.onerror = function () { if (REG.attiva && !REG.fermataUtente && recorder.state !== 'recording') riprendiRegistrazione(); };
   recorder.onstop = function () {
     const durata = Math.round((Date.now() - REG.inizioPezzo) / 1000);
     const blob = new Blob(REG.pezzi, { type: recorder.mimeType || 'audio/mp4' });
@@ -2367,6 +2427,8 @@ function avviaPezzo() {
     REG.pezzi = [];
     if (blob.size > 0) salvaPezzoRegistrato(blob, durata, ora, REG.destinazione);
     if (REG.continua) { REG.continua = false; avviaPezzo(); }
+    // Fermato non da chi registra ma dal telefono (chiamata, stand-by): si riprende.
+    else if (REG.attiva && !REG.fermataUtente) riprendiRegistrazione();
     else chiudiStream();
   };
   recorder.start(1000);
@@ -2380,6 +2442,9 @@ function avviaPezzo() {
 function fermaRegistrazione() {
   if (!REG.attiva) return;
   REG.attiva = false;
+  REG.fermataUtente = true;
+  REG.daRiprendere = false;
+  lasciaDormire();
   clearInterval(REG.timer);
   clearTimeout(REG.spezzaTimer);
   fermaOnda();
@@ -2761,7 +2826,25 @@ let devSbloccato = false;
    Una sola card per volta, e cambiando schermata si richiude da sola. */
 let PUNTI_APERTI = null;
 function apriPunti(id) { PUNTI_APERTI = (PUNTI_APERTI === id ? null : id); aggiornaVista(); }
-function vai(hash) { PUNTI_APERTI = null; location.hash = hash; }
+function vai(hash) { PUNTI_APERTI = null; ESPORTA_APERTO = null; location.hash = hash; }
+
+/* Il tasto "Esporta" di una card con Visualizza · Esporta · Correggi: toccato,
+   scende una tendina con le due strade — Esporta (condividi) e Scarica (nel
+   telefono). Una tendina aperta alla volta, e si chiude cambiando schermata. */
+let ESPORTA_APERTO = null;
+// Scelta una voce, la tendina si richiude subito, prima che parta il lavoro.
+function chiudiEsporta() { if (ESPORTA_APERTO) { ESPORTA_APERTO = null; aggiornaVista(); } }
+function tastoEsporta(chiave) {
+  const aperto = ESPORTA_APERTO === chiave;
+  return '<button class="btn' + (aperto ? ' on' : '') + '" data-az="esporta-tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperto + '">Esporta<span class="fr">' + (aperto ? '▴' : '▾') + '</span></button>';
+}
+// Le due voci scendono sotto la fila dei tasti, dentro la card: la fila scorre di lato e non può far uscire niente.
+function vociEsporta(chiave, azEsporta, idEsporta, azScarica, idScarica) {
+  if (ESPORTA_APERTO !== chiave) return '';
+  return '<div class="esp-voci">' +
+    '<button class="voce-m" data-az="' + azEsporta + '" data-id="' + h(idEsporta) + '"><b>Esporta</b><small>manda a qualcuno: mail, WhatsApp, stampa</small></button>' +
+    '<button class="voce-m" data-az="' + azScarica + '" data-id="' + h(idScarica) + '"><b>Scarica</b><small>salva il PDF nel telefono</small></button></div>';
+}
 function leggiRotta() {
   const p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   ROTTA = { nome: p[0] || 'dashboard', parametri: p.slice(1).map(decodeURIComponent) };
@@ -2976,6 +3059,11 @@ function vistaAziendaForm(id) {
     '<label class="eticampo">Nome breve</label><input class="campo" id="a-nome" value="' + h(v.nome) + '" placeholder="es. Edil Rossi" autocomplete="off"' + (a ? '' : ' autofocus') + '>' +
     '<label class="eticampo">Ragione sociale</label><input class="campo" id="a-ragione" value="' + h(v.ragione || '') + '" placeholder="es. Edil Rossi S.r.l." autocomplete="off">' +
     '<label class="eticampo">Tecnico</label><input class="campo" id="a-tecnico" value="' + h(v.tecnico || '') + '" placeholder="es. Geom. Mario Rossi" autocomplete="off">' +
+    /* La firma del tecnico sta con il suo nome: è quella che va in fondo a ogni
+       verbale. Si scansiona da qui (foglio bianco, fotocamera o file). */
+    (a ? '<label class="eticampo">Firma del tecnico</label><div class="az-firma">' +
+      (a.firma ? '<img data-foto="' + h(a.firma) + '" alt="">' : '<div class="vuoto">niente</div>') +
+      '<button class="btn" data-az="az-immagine" data-id="' + h(a.id) + '" data-quale="firma"><span class="ico ico-firma"></span> ' + (a.firma ? 'Cambia la firma' : 'Scansiona la firma') + '</button></div>' : '') +
     '<label class="eticampo">Partita IVA</label><input class="campo" id="a-piva" value="' + h(v.piva || '') + '" autocomplete="off">' +
     '<label class="eticampo">Indirizzo</label><input class="campo" id="a-ind" value="' + h(v.indirizzo || '') + '" autocomplete="off">' +
     '<div class="due"><div><label class="eticampo">Telefono</label><input class="campo" id="a-tel" type="tel" value="' + h(v.telefono || '') + '" autocomplete="off"></div>' +
@@ -3001,10 +3089,7 @@ function vistaAziendaForm(id) {
       '<div class="az-slot"><div class="et">Logo</div>' +
       (a.logo ? '<img data-foto="' + h(a.logo) + '" alt="">' : '<div class="vuoto">niente</div>') +
       '<button class="btn medio" data-az="az-immagine" data-id="' + h(a.id) + '" data-quale="logo">' + (a.logo ? 'Cambia' : 'Metti') + '</button></div>' +
-      '<div class="az-slot"><div class="et">Firma</div>' +
-      (a.firma ? '<img data-foto="' + h(a.firma) + '" alt="">' : '<div class="vuoto">niente</div>') +
-      '<button class="btn medio" data-az="az-immagine" data-id="' + h(a.id) + '" data-quale="firma">' + (a.firma ? 'Cambia' : 'Metti') + '</button></div>' +
-      '</div><div class="card-piede">Fotografa la firma su un foglio bianco, o carica un file. Va in fondo al PDF.</div></div>' +
+      '</div><div class="card-piede">Il logo va in cima al PDF, la firma del tecnico (qui sopra) in fondo.</div></div>' +
       '<input type="file" accept="image/*" id="file-azienda" hidden data-campo="file-azienda" data-id="' + h(a.id) + '">' +
       '<div class="modulo"><button class="btn btn-rosso" data-az="azienda-elimina" data-id="' + h(a.id) + '">Elimina l\'azienda</button></div>';
   }
@@ -3080,6 +3165,8 @@ function vistaDashboard(idAzienda) {
   if (daFare.length) html += '<div class="eti">Da fare oggi <span class="n">' + daFare.length + '</span></div>' + daFare.map(cardCantiere).join('');
   if (fatti.length) html += '<div class="eti">Già fatti <span class="n">' + fatti.length + '</span></div>' + fatti.map(cardCantiere).join('');
   if (chiusi.length) html += tendina('chiusi', 'Cantieri chiusi (' + chiusi.length + ')', chiusi.map(cardCantiere).join(''));
+  // Dentro un'azienda, in fondo: si può buttare via l'azienda (i cantieri restano, senza azienda).
+  if (az) html += '<div class="modulo"><button class="btn btn-rosso" data-az="azienda-elimina" data-id="' + h(az.id) + '">Elimina l\'azienda</button></div>';
   if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="parla-dashboard"><span class="ico ico-microfono"></span> Detta un sopralluogo</button></div>';
   return html;
 }
@@ -3114,8 +3201,8 @@ function vistaCantiere(id) {
         '<div class="fila"><span class="pill ok">chiuso</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div>' +
         '<div class="griglia tre">' +
         '<button class="btn" data-az="vai" data-a="' + (pdfRel ? '#/leggi/' + h(pdfRel.id) : '#/relazione/' + h(rel.id)) + '">Visualizza</button>' +
-        '<button class="btn" data-az="esporta-pdf-relazione" data-id="' + h(rel.id) + '">Esporta</button>' +
-        '<button class="btn" data-az="vai" data-a="#/modifica-relazione/' + h(rel.id) + '">Correggi</button></div></div>';
+        tastoEsporta('rel-' + rel.id) +
+        '<button class="btn" data-az="vai" data-a="#/modifica-relazione/' + h(rel.id) + '">Correggi</button></div>' + vociEsporta('rel-' + rel.id, 'esporta-pdf-relazione', rel.id, 'relazione-scarica', rel.id) + '</div>';
     }
     else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni, con i conti</div></div></div>';
   }
@@ -3151,7 +3238,6 @@ function vistaCantiere(id) {
       '<button class="btn" data-az="detta-rilievo" data-cantiere="' + h(c.id) + '" data-sezione="rilievi_ordine"><span class="ico ico-righello"></span> Rilievo d\'ordine</button>' +
       '<button class="btn" data-az="detta-rilievo" data-cantiere="' + h(c.id) + '" data-sezione="rilievi_contabilita"><span class="ico ico-calcolatrice"></span> Rilievo da contabilità</button>' +
       '<button class="btn" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla"><span class="ico ico-documento"></span> Bolla</button>' +
-      '<button class="btn" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="firme"><span class="ico ico-firma"></span> Modulo firme</button>' +
       '</div></div>' + ingressiDocumento(null);
   }
 
@@ -3196,6 +3282,8 @@ function vistaCantiere(id) {
     '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listino prezzi<small>' + listinoTutto().length + ' voci</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/pdf/' + h(c.id) + '"><span class="desc">PDF archiviati<small>' + (pdfDi(c.codice).length ? pdfDi(c.codice).length + ' documenti · ' + h(pesoFile(pdfDi(c.codice).reduce(function (t, p) { return t + (p.peso || 0); }, 0))) : 'ancora nessuno') + '</small></span><span class="frec">›</span></button>' +
     '</div>');
+  // In fondo a tutto, dove non si preme per sbaglio: buttare via il cantiere intero.
+  html += '<div class="modulo"><button class="btn btn-rosso" data-az="cantiere-elimina" data-id="' + h(c.id) + '">Elimina il cantiere</button></div>';
   // In fondo, come nel giorno: l'azione grande a sinistra, "Chiudi" stretto a destra. Chiuso, al posto di Detta c'è la relazione, e Riapri.
   if (!REG.attiva) {
     if (c.stato === 'chiuso') {
@@ -3247,7 +3335,6 @@ function vistaGiorno(id) {
 }
 
 function vistaGiornoInCorso(s, c) {
-  const piene = sezioniPiene(s.sezioni);
   const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
   const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id) ||
     (REG.destinazione.tipo === 'rilievo' && REG.destinazione.sop === s.id));
@@ -3255,9 +3342,9 @@ function vistaGiornoInCorso(s, c) {
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' · ' + h(oraCorta(s.ora)) : ''), tocca: 'modifica-testata', id: s.id,
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
       (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
-  html += '<div class="avanz"><div class="r"><span><b>' + piene.length + '</b> sezioni su ' + CHIAVI_SEZIONI.length + '</span><span class="dx">' +
-    (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div>' +
-    '<div class="barra-av"><i style="width:' + Math.round(piene.length / CHIAVI_SEZIONI.length * 100) + '%"></i></div></div>';
+  // Solo la riga con audio, parlato e foto: niente barra di avanzamento né conteggio delle sezioni.
+  html += '<div class="avanz"><div class="r"><span class="dx">' +
+    (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div></div>';
 
   /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
      e ogni correzione passa da sola nel verbale. Da qui si esce col PDF o si va a correggere il verbale. */
@@ -3269,8 +3356,8 @@ function vistaGiornoInCorso(s, c) {
     html += '<div class="card"><div class="card-capo">' + h(vb && vb.nome ? vb.nome : 'Verbale' + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' delle ' + oraCorta(s.ora) : '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
       '<div class="griglia tre">' +
       (vb ? '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' : '') +
-      '<button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>' +
-      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi</button>' : '') + '</div></div>';
+      (vb ? tastoEsporta('vb-' + vb.id) : '<button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>') +
+      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi</button>' : '') + '</div>' + (vb ? vociEsporta('vb-' + vb.id, 'esporta-pdf', s.id, 'verbale-scarica', vb.id) : '') + '</div>';
   }
 
   if (String(s.sezioni.da_smistare || '').trim()) {
@@ -3388,14 +3475,21 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
 function vociMenuVerbale(v) {
   return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(v.id) + '">Modifica</button>' +
     '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(v.id) + '">Esporta</button>' +
-    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(v.id) + '">Scarica</button>';
+    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(v.id) + '">Scarica</button>' +
+    '<button class="voce-m rossa" data-az="verbale-elimina" data-id="' + h(v.id) + '">Elimina</button>';
 }
+/* Sul sopralluogo: prima del verbale si scrive o si modifica la giornata; dopo,
+   le stesse voci del verbale. Elimina c'è sempre, e porta via anche il verbale. */
 function vociMenuSopralluogo(x) {
   const vb = verbaleDiSopralluogo(x.codice);
-  if (!vb) return '<button class="voce-m" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">Scrivi il verbale</button>';
+  const elimina = '<button class="voce-m rossa" data-az="sopralluogo-elimina" data-id="' + h(x.id) + '">Elimina</button>';
+  if (!vb) {
+    return '<button class="voce-m" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">Scrivi il verbale</button>' +
+      '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Modifica</button>' + elimina;
+  }
   return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button>' +
     '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(vb.id) + '">Esporta</button>' +
-    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(vb.id) + '">Scarica</button>';
+    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(vb.id) + '">Scarica</button>' + elimina;
 }
 
 /* I tre puntini: le quattro cose che si fanno a un verbale senza aprirlo. */
@@ -3572,7 +3666,6 @@ function cardStrumenti(s) {
       '<button class="btn" data-az="detta-rilievo" data-id="' + h(s.id) + '" data-sezione="rilievi_ordine"><span class="ico ico-righello"></span> Rilievo d\'ordine' + n(nOrd) + '</button>' +
       '<button class="btn" data-az="detta-rilievo" data-id="' + h(s.id) + '" data-sezione="rilievi_contabilita"><span class="ico ico-calcolatrice"></span> Rilievo da contabilità' + n(nCont) + '</button>') +
     '<button class="btn" data-az="doc-scansiona" data-id="' + h(s.id) + '" data-genere="bolla"><span class="ico ico-documento"></span> Bolla' + n(doc.filter(function (f) { return f.genere === 'bolla'; }).length) + '</button>' +
-    '<button class="btn" data-az="doc-scansiona" data-id="' + h(s.id) + '" data-genere="firme"><span class="ico ico-firma"></span> Modulo firme' + n(doc.filter(function (f) { return f.genere === 'firme'; }).length) + '</button>' +
     '</div>';
   const daPortare = (nOrd || nCont || doc.length);
   html += (daPortare ? '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="al-cantiere" data-id="' + h(s.id) + '">porta nel cantiere</button></div>' : '') +
@@ -4866,9 +4959,13 @@ async function scaricaVerbale(idVerbale) {
   if (!p) { apriEsportaPdf(null, v.id); return; }
   const blob = p.file ? await leggiMedia(p.file) : null;
   if (!blob) { avvisa('Il file non c\'è più', 'err'); return; }
+  scaricaBlob(blob, p.nome || 'verbale.pdf');
+}
+// Un file che scende nel telefono: un link di download, premuto e buttato.
+function scaricaBlob(blob, nome) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = p.nome || 'verbale.pdf'; a.rel = 'noopener';
+  a.href = url; a.download = nome; a.rel = 'noopener';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   avvisa('Scaricato', 'ok');
@@ -5385,7 +5482,7 @@ function disegnaRelazionePdf(rel, a) {
   a.disegnaFirma();
 }
 
-async function creaPdfRelazione(relId) {
+async function creaPdfRelazione(relId, soloScarica) {
   if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
   const rel = relazione(relId);
   if (!rel) return;
@@ -5396,7 +5493,19 @@ async function creaPdfRelazione(relId) {
   try { byte = await costruisciPdf(giorni.length ? giorni : [{ cantiere: rel.cantiere }], null, rel.inBreve, { modo: 'relazione', relazione: rel }); }
   catch (e) { avvisa('PDF non riuscito', 'err'); return; }
   await archiviaPdf(byte, rel.codice + '.pdf', { chiave: 'relazione:' + rel.codice, tipo: 'relazione', cantiere: rel.cantiere, giorno: rel.chiusura });
-  await condividiFile(new Blob([byte], { type: 'application/pdf' }), rel.codice + '.pdf', 'Relazione di fine cantiere');
+  const blob = new Blob([byte], { type: 'application/pdf' });
+  // "Scarica" salva il file nel telefono; "Esporta" apre la condivisione.
+  if (soloScarica) scaricaBlob(blob, rel.codice + '.pdf');
+  else await condividiFile(blob, rel.codice + '.pdf', 'Relazione di fine cantiere');
+}
+/* Scarica la relazione: il PDF archiviato se c'è, se no lo si fa adesso. */
+async function scaricaRelazione(relId) {
+  const rel = relazione(relId);
+  if (!rel) return;
+  const p = pdfConChiave('relazione:' + rel.codice);
+  const blob = p && p.file ? await leggiMedia(p.file) : null;
+  if (blob) { scaricaBlob(blob, p.nome || rel.codice + '.pdf'); return; }
+  await creaPdfRelazione(relId, true);
 }
 
 /* ---------------- LA SETTIMANA ----------------
@@ -5892,8 +6001,24 @@ const AZIONI = {
     chiudiFoglio();
     if (p) mandaFuoriPdf(p.id); else apriEsportaPdf(null, v.id);
   },
-  'verbale-scarica': function (el) { const id = el.dataset.id; PUNTI_APERTI = null; chiudiFoglio(); scaricaVerbale(id); },
-  'esporta-pdf': function (el) { apriEsportaPdf(el.dataset.id); },
+  'verbale-scarica': function (el) { const id = el.dataset.id; PUNTI_APERTI = null; chiudiEsporta(); chiudiFoglio(); scaricaVerbale(id); },
+  /* Si butta il verbale, non la giornata: il sopralluogo resta con i suoi audio e
+     le sue sezioni, e torna "da chiudere". Un verbale di giornata si butta e basta. */
+  'verbale-elimina': async function (el) {
+    const v = verbale(el.dataset.id);
+    PUNTI_APERTI = null;
+    if (!v) return;
+    chiudiFoglio();
+    const ok = await chiedi('Eliminare il verbale?', titoloVerbale(v, true) + (v.giornata ? '' : ': la giornata resta com\'è, con audio e sezioni.'), 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    const s = valori(leggiTutto().sopralluoghi).find(function (x) { return x.codice === v.sopralluogo; });
+    cancella('verbale', v.id);
+    if (s && !v.giornata) { s.verbale = null; s.chiuso = null; salva('sopralluogo', s); }
+    avvisa('Verbale eliminato', 'ok');
+    if (ROTTA.nome === 'verbale') vai(s ? '#/giorno/' + s.id : '#/'); else aggiornaVista();
+  },
+  'esporta-pdf': function (el) { chiudiEsporta(); apriEsportaPdf(el.dataset.id); },
   'pdf-crea': function (el) { creaPdf(el.dataset.id); },
   /* Le scorciatoie del periodo: riempiono le due date al posto tuo. Fine
      settimana e fine mese sono i due momenti in cui i verbali si mandano. */
@@ -5916,7 +6041,9 @@ const AZIONI = {
     vai('#/relazione/' + rel.id);
   },
   'relazione-rigenera': function (el) { rigeneraRelazione(el.dataset.id); },
-  'esporta-pdf-relazione': function (el) { creaPdfRelazione(el.dataset.id); },
+  'esporta-pdf-relazione': function (el) { chiudiEsporta(); creaPdfRelazione(el.dataset.id); },
+  'relazione-scarica': function (el) { chiudiEsporta(); scaricaRelazione(el.dataset.id); },
+  'esporta-tendina': function (el) { ESPORTA_APERTO = (ESPORTA_APERTO === el.dataset.chiave ? null : el.dataset.chiave); aggiornaVista(); },
   'salva-relazione': function (el) {
     const rel = relazione(el.dataset.id);
     if (!rel) return;
@@ -5978,6 +6105,7 @@ const AZIONI = {
   },
   'sopralluogo-elimina': async function (el) {
     const s = sopralluogo(el.dataset.id);
+    PUNTI_APERTI = null;
     if (!s) return;
     chiudiFoglio();
     const ok = await chiedi('Eliminare il sopralluogo?', titoloSopralluogo(s) + ': si cancellano il sopralluogo, i suoi audio' + (s.verbale ? ' e il suo verbale' : '') + '.', 'Elimina', 'rosso');
@@ -6236,6 +6364,8 @@ const AZIONI = {
     }
     const cont = contabilitaDi(c.codice);
     if (cont) cancella('contabilita', cont.id);
+    // Anche i verbali di giornata: non hanno un sopralluogo, e resterebbero orfani.
+    verbaliDiGiornata(c.codice).forEach(function (v) { cancella('verbale', v.id); });
     cancella('cantiere', c.id);
     avvisa('Eliminato', 'ok');
     vai('#/');
@@ -6633,7 +6763,11 @@ function avvio() {
   window.addEventListener('pagehide', function () { salvaSubitoTutto(); salvagenteGitHub(); });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') { salvaSubitoTutto(); salvagenteGitHub(); }
-    else { ricaricaSeFresco(); controllaCambioGiorno(); aggiornaVista(); elaboraCoda(); controllaPromemoria(); contaSettimana().then(function () { if (SETT_CONTO.inizio) aggiornaVista(); }); }
+    else {
+      // Tornati davanti con il microfono acceso: si riprende se era in pausa, e lo schermo resta sveglio.
+      if (REG.attiva) { if (REG.daRiprendere || !REG.recorder || REG.recorder.state !== 'recording') riprendiRegistrazione(); else tieniSveglio(); }
+      ricaricaSeFresco(); controllaCambioGiorno(); aggiornaVista(); elaboraCoda(); controllaPromemoria(); contaSettimana().then(function () { if (SETT_CONTO.inizio) aggiornaVista(); });
+    }
   });
 
   if ('serviceWorker' in navigator) {
