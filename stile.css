@@ -877,33 +877,112 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .doc-fila::after{content:'';flex:0 0 1px}
 .doc-fila .doc-mini{scroll-snap-align:start}
 
-.doc-mini{position:relative;width:138px;flex:0 0 auto}
-.doc-mini .q{
-  display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;
-  width:100%;min-height:92px;padding:10px 34px 10px 12px;
+.doc-mini{position:relative;width:126px;flex:0 0 auto;
+  display:flex;flex-direction:column;
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-p);
-  color:var(--text);
+  overflow:hidden}
+.doc-mini .q{
+  display:flex;flex-direction:column;gap:1px;align-items:flex-start;text-align:left;
+  padding:8px 30px 7px 11px;color:var(--text);
 }
-.doc-mini .q:active{filter:brightness(1.15)}
-.doc-mini .ora{font-size:var(--t2);font-weight:700;letter-spacing:.01em}
-.doc-mini .nm{font-size:var(--t1);color:var(--text-2);line-height:1.25;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.doc-mini .st{font-size:var(--t1);color:var(--muted);margin-top:auto}
+/* Il nome è il titolo, l'ora è la riga di servizio sotto. */
+/* Il tastino che si preme sempre: sta sulla card, non dentro un menu. */
+.doc-mini .vedi{
+  margin-top:auto;width:100%;min-height:32px;padding:0 8px;
+  background:transparent;border:0;border-top:1px solid var(--line);
+  color:var(--azione);font-size:var(--t1);font-weight:600;text-align:center;
+}
+.doc-mini .vedi:active{background:var(--surface);}
+.doc-mini .q.vuota:active{filter:brightness(1.15)}
+.doc-mini .ora{font-size:var(--t2);font-weight:700;letter-spacing:-.01em;line-height:1.2;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.doc-mini .nm{font-size:var(--t1);color:var(--muted);line-height:1.2;font-variant-numeric:tabular-nums}
 /* Il sopralluogo che si sta guardando si riconosce senza leggere. */
-.doc-mini.qui .q{border-color:var(--azione);border-width:2px;padding:9px 33px 9px 11px}
+.doc-mini.qui{border-color:var(--azione);border-width:2px}
 /* La card che apre un passaggio nuovo: stessa forma, ma vuota. */
+.doc-mini.piu{border-style:dashed;background:transparent}
 .doc-mini.piu .q{
-  align-items:center;justify-content:center;gap:6px;
-  padding:10px 12px;border-style:dashed;color:var(--muted);
+  align-items:center;justify-content:center;gap:4px;
+  padding:10px 12px;color:var(--muted);width:100%;height:100%;
+  background:transparent;border:0;
 }
 .doc-mini.piu .ora{font-size:20px;font-weight:400}
 .doc-mini.piu .nm{text-align:center;color:var(--muted)}
 
 /* I tre puntini nell'angolo: area di tocco piena, segno piccolo. */
 .doc-mini .punti{
-  position:absolute;top:0;right:0;width:32px;height:40px;
+  position:absolute;top:0;right:0;width:28px;height:32px;
   display:flex;align-items:center;justify-content:center;
   background:transparent;border:0;color:var(--muted);
   font-size:18px;line-height:1;border-radius:0 var(--radius-p) 0 var(--radius-p);
 }
 .doc-mini .punti:active{background:var(--surface);color:var(--text)}
+
+
+/* ============ 16. LA TESTATA SUL TELEFONO ============
+   Tre cose non andavano, e si vedevano solo con il telefono in mano:
+   troppo vuoto sopra il titolo, i tasti che cadevano sotto invece di stare
+   in linea, e tutto più largo del necessario. Qui si stringe. */
+
+.top{
+  padding-top:calc(2px + env(safe-area-inset-top));
+  padding-bottom:var(--s2);
+  column-gap:var(--s2);
+}
+/* Titolo e tasti su una riga sola: i tasti non vanno mai a capo. */
+.top .destra{flex:0 0 auto;flex-wrap:nowrap;gap:6px}
+.top .tit{flex:1 1 0;min-width:0}
+/* Il titolo grande della prima schermata non ha bisogno di tanto respiro. */
+.top h1,.top h1.pic{line-height:1.1}
+.top .sub{margin-top:2px}
+
+/* I tasti della testata: area di tocco piena, ingombro piccolo. */
+.top .destra button.pill,.top .destra .pill{min-height:36px;padding:0 11px;white-space:nowrap}
+.top .destra .ingranaggio{min-height:36px;min-width:36px;padding:0}
+
+/* Sotto i 430px il titolo lungo si accorcia da solo invece di spingere fuori i tasti. */
+@media (max-width:430px){
+  .top h1{font-size:var(--t4)}
+  .top h1.pic{font-size:var(--t3)}
+  .top .sub{font-size:var(--t1)}
+  .top .destra button.pill,.top .destra .pill{font-size:var(--t1);padding:0 9px}
+}
+
+/* La riga dell'azienda e quella del cantiere: due righe di testo bastano,
+   la terza è quasi sempre una parola sola che casca sotto. */
+.riga .desc small,.riga small{display:block;overflow:hidden;text-overflow:ellipsis;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* Nella schermata di partenza, che il tasto indietro non ce l'ha, i tasti non
+   scendono mai sotto il titolo: è il titolo che si stringe, e la data gli va
+   a capo sotto. Con il tasto indietro resta tutto com'era. */
+.top:not(:has(.indietro)){flex-wrap:nowrap;align-items:center}
+.top:not(:has(.indietro)) .tit{flex:1 1 0;min-width:0}
+.top:not(:has(.indietro)) .tit .sub{flex:1 0 100%}
+
+/* Sul telefono il secondo rigo di una riga d'elenco deve starci in una riga:
+   "AZ-001 · 2 cantieri · 1 da fare" non deve lasciare "fare" da sola sotto. */
+@media (max-width:430px){
+  .riga small,.riga .desc small,.az-riga small,.cant small{font-size:var(--t1);line-height:1.3}
+}
+
+/* Tre tasti in fila stanno su una riga sola: con due colonne il terzo cadeva
+   sotto da solo e la card sembrava rotta. */
+.griglia.tre{grid-template-columns:repeat(3,1fr)}
+.griglia.tre .btn{padding:0 6px;font-size:var(--t2)}
+@media (max-width:380px){ .griglia.tre .btn{font-size:var(--t1)} }
+
+
+/* Le tre voci dei puntini: scendono dentro la card, al posto di Visualizza.
+   Niente finestra che copre lo schermo per una cosa da un tocco solo. */
+.doc-mini .voci{display:flex;flex-direction:column;margin-top:auto;border-top:1px solid var(--line)}
+.doc-mini .voce-m{
+  width:100%;min-height:32px;padding:0 8px;
+  background:transparent;border:0;border-bottom:1px solid var(--line);
+  color:var(--text);font-size:var(--t1);text-align:left;
+}
+.doc-mini .voce-m:last-child{border-bottom:0}
+.doc-mini .voce-m:active{background:var(--surface)}
+/* La card con il menu aperto si stacca dalle altre. */
+.doc-mini.menu{border-color:var(--azione)}
+.doc-mini .punti.on{color:var(--azione);background:var(--surface)}
