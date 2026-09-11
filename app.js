@@ -3100,7 +3100,8 @@ function vistaCantiere(id) {
   let html = testata({ indietro: '#/', titolo: c.nome,
     sotto: h(c.committente) + (c.indirizzo ? ' · ' + h(c.indirizzo) : ''),
     destra: '<button class="pill ' + (c.stato === 'chiuso' ? 'grigia' : 'cod') + '" data-az="vai" data-a="#/modifica-cantiere/' + h(c.id) + '">' + (c.stato === 'chiuso' ? 'chiuso' : 'modifica') + '</button>' });
-  html += '<div class="numeri"><div class="n"><div class="v">' + sops.length + '</div><div class="k">giorni</div></div>' +
+  // "giorni" conta le giornate, non i passaggi: tre sopralluoghi in un giorno sono un giorno.
+  html += '<div class="numeri"><div class="n"><div class="v">' + giornateDi(c.codice).length + '</div><div class="k">giorni</div></div>' +
     '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">verbali</div></div>' +
     '<div class="n"><div class="v fatto">' + h(compatto(totale)) + '</div><div class="k">contabilità €</div></div></div>';
   // Un cantiere chiuso ha la sua relazione in testa, prima dei giorni: è la cosa che si va a leggere.
@@ -3157,10 +3158,13 @@ function vistaCantiere(id) {
   /* I verbali di giornata in prima linea: sono i documenti che si vanno a cercare,
      e stanno prima dei giorni perché sono quelli che si mandano fuori. */
   html += strisciaVerbaliGiornata(c);
-  // I giorni, dal più recente, raggruppati per mese
+  /* Le giornate, dalla più recente, raggruppate per mese. Una riga per data: i
+     passaggi di un giorno stanno dentro la giornata, non nell'elenco — se no
+     "Oggi" compariva tre volte. La riga si apre sul primo passaggio del giorno,
+     che ha già la striscia con gli altri. */
   let meseCorrente = null;
-  sops.forEach(function (s) {
-    const mese = s.giorno.slice(0, 7);
+  giornateDi(c.codice).forEach(function (g) {
+    const mese = g.giorno.slice(0, 7);
     if (mese !== meseCorrente) {
       if (meseCorrente) html += '</div>';
       /* Niente più intestazione del mese: la data sta già davanti a ogni riga.
@@ -3168,18 +3172,20 @@ function vistaCantiere(id) {
       html += '<div class="card mese">';
       meseCorrente = mese;
     }
-    const d = daISO(s.giorno);
-    const piene = sezioniPiene(s.sezioni).length;
-    const anteprima = CHIAVI_SEZIONI.map(function (k) { return primaRiga(s.sezioni[k]); }).filter(Boolean)[0] || (s.sezioni.da_smistare ? primaRiga(s.sezioni.da_smistare) : '') || (s.pezzi.length ? 'trascrizione in arrivo…' : 'ancora niente');
+    // Una sezione piena in un passaggio qualsiasi conta una volta sola per la giornata.
+    const piene = CHIAVI_SEZIONI.filter(function (k) { return g.sops.some(function (s) { return String(s.sezioni[k] || '').trim(); }); }).length;
+    const audio = g.sops.reduce(function (t, s) { return t + s.pezzi.length; }, 0);
+    const anteprima = g.sops.map(function (s) {
+      return CHIAVI_SEZIONI.map(function (k) { return primaRiga(s.sezioni[k]); }).filter(Boolean)[0] || (s.sezioni.da_smistare ? primaRiga(s.sezioni.da_smistare) : '');
+    }).filter(Boolean)[0] || (audio ? 'trascrizione in arrivo…' : 'ancora niente');
     let pill;
-    if (s.chiuso) { const vb = verbaleDiSopralluogo(s.codice); pill = '<span class="pill ok">' + h(vb && vb.nome ? vb.nome : 'verbale fatto') + '</span>'; }
-    else if (s.giorno === oggi) pill = '<span class="pill att">in corso</span>';
+    if (g.verbale) pill = '<span class="pill ok">' + h(g.verbale.nome || 'verbale di giornata') + '</span>';
+    else if (g.giorno === oggi) pill = '<span class="pill att">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
-    const quanti = sopralluoghiDelGiorno(s.cantiere, s.giorno).length;
-    html += '<button class="giorno' + (s.giorno === oggi && !s.chiuso ? ' oggi' : '') + '" data-az="vai" data-a="#/giorno/' + h(s.id) + '">' +
-      '<div class="n"><div class="titolo"><span class="gm">' + h(giornoMese(s.giorno)) + '</span> ' + h(nomeGiornoRelativo(s.giorno)) + ' · ' + h(s.ora) + h(quanti > 1 ? ' · ' + quanti + ' passaggi' : '') + '</div>' +
+    html += '<button class="giorno' + (g.giorno === oggi && !g.verbale ? ' oggi' : '') + '" data-az="vai" data-a="#/giorno/' + h(g.sops[0].id) + '">' +
+      '<div class="n"><div class="titolo"><span class="gm">' + h(giornoMese(g.giorno)) + '</span> ' + h(nomeGiornoRelativo(g.giorno)) + ' · ' + g.sops.length + (g.sops.length === 1 ? ' sopralluogo' : ' sopralluoghi') + '</div>' +
       '<div class="prima">' + h(anteprima) + '</div>' +
-      '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + s.pezzi.length + ' audio</span></div></div></button>';
+      '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + audio + ' audio</span></div></div></button>';
   });
   if (meseCorrente) html += '</div>';
   if (!sops.length) html += '<div class="vuoto-stato">' + (c.stato === 'chiuso' ? 'Nessun sopralluogo in questo cantiere.' : 'Nessun sopralluogo ancora. Premi il bottone verde e parla.') + '</div>';
@@ -3345,12 +3351,13 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
   if (!c) return;
   const sops = sopralluoghiDelGiorno(codiceCantiere, giorno);
   if (!sops.length) { avvisa('Nessun sopralluogo in questa giornata', 'att'); return; }
-  const aperti = sops.filter(function (x) { return !x.chiuso; });
+  // Senza verbale vuol dire senza verbale: non "non chiuso".
+  const senza = sops.filter(function (x) { return !verbaleDiSopralluogo(x.codice); }).length;
   const gia = verbaleDiGiornata(codiceCantiere, giorno);
-  let testo = gia
-    ? 'Il verbale di giornata si rifà con i verbali di adesso. Le correzioni fatte a mano su di lui si perdono.'
-    : 'Si mette insieme un documento solo con i ' + sops.length + ' sopralluoghi di questa giornata.';
-  if (aperti.length) testo = aperti.length + (aperti.length === 1 ? ' sopralluogo non ha ancora il suo verbale: entra con quello che ha adesso. ' : ' sopralluoghi non hanno ancora il loro verbale: entrano con quello che hanno adesso. ') + testo;
+  // Una riga sola, e solo se serve: chi non ha il verbale entra con i suoi appunti.
+  const testo = !senza ? '' : (senza === 1
+    ? 'Un sopralluogo non ha ancora il suo verbale. I suoi appunti entrano lo stesso.'
+    : senza + ' sopralluoghi non hanno ancora il loro verbale. I loro appunti entrano lo stesso.');
   const ok = await chiedi(gia ? 'Aggiornare il verbale di giornata?' : 'Scrivere il verbale di giornata?', testo, gia ? 'Aggiorna' : 'Scrivi', '',
     '<label class="eticampo">Nome del verbale</label><input class="campo" id="vg-nome" maxlength="80" placeholder="facoltativo" value="' + h(gia ? (gia.nome || '') : '') + '">');
   const campo = document.getElementById('vg-nome');
@@ -3449,7 +3456,6 @@ async function rinominaSopralluogo(idSop) {
 function strisciaSopralluoghi(s) {
   const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
   const vg = verbaleDiGiornata(s.cantiere, s.giorno);
-  const tuttiChiusi = fratelli.length && fratelli.every(function (x) { return !!x.chiuso; });
   let html = '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">' + fratelli.length + (fratelli.length === 1 ? ' passaggio' : ' passaggi') + '</span></div>' +
     '<div class="doc-fila">';
   fratelli.forEach(function (x) {
@@ -3461,8 +3467,9 @@ function strisciaSopralluoghi(s) {
     const suoNome = String(x.nome || '').trim();
     const aperto = PUNTI_APERTI === x.id;
     /* Il bordo azzurro dice "sei qui", e vale solo per un sopralluogo ancora
-       aperto: su uno che ha già il verbale non c'è niente da segnare. */
-    html += '<div class="doc-mini' + (qui && !x.chiuso ? ' qui' : '') + (aperto ? ' menu' : '') + '">' +
+       aperto: su uno che ha già il verbale non c'è niente da segnare.
+       Verde chi ha il verbale, grigio chi non ce l'ha: lo dice il verbale, non "chiuso". */
+    html += '<div class="doc-mini' + (vb ? ' fatto' : ' spento') + (qui && !x.chiuso ? ' qui' : '') + (aperto ? ' menu' : '') + '">' +
       '<div class="q">' +
       '<span class="ora">' + h(suoNome || x.ora) + '</span>' +
       (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '') + '</div>' +
@@ -3474,15 +3481,13 @@ function strisciaSopralluoghi(s) {
   });
   html += '<div class="doc-mini piu"><button class="q vuota" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '"><span class="ora">＋</span><span class="nm">un altro</span></button></div>';
   html += '</div>';
-  /* Il verbale di giornata si fa quando i passaggi sono tutti chiusi: mette insieme
-     i loro verbali in un documento solo, quello che si manda fuori. */
+  /* Il verbale di giornata mette insieme i passaggi in un documento solo, quello che
+     si manda fuori. Si scrive sempre: chi non ha ancora il verbale entra con i suoi appunti. */
   if (vg) {
     html += '<div class="griglia"><button class="btn btn-ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
       '<button class="btn" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button></div>';
-  } else if (tuttiChiusi) {
-    html += '<div class="griglia"><button class="btn btn-ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button></div>';
   } else {
-    html += '<div class="card-corpo" style="color:var(--muted)">Il verbale di giornata si scrive quando tutti i passaggi hanno il loro verbale.</div>';
+    html += '<div class="griglia"><button class="btn btn-ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button></div>';
   }
   return html + '</div>';
 }
@@ -3587,9 +3592,9 @@ function cardFotoGiorno(s, conVerbale) {
     // Fatto il verbale, sotto ogni miniatura compare la spunta "nel PDF": è il momento in cui serve scegliere.
     html += '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
       filaFoto(s, foto, { segna: conVerbale }) +
-      '<div class="card-piede"><span style="flex:1">' + (conVerbale ? (tutte ? 'Vanno tutte nel PDF.' : 'Nel PDF vanno solo le foto marcate.') : 'Tocca una foto per dettare il referto.') + '</span>' +
-      (conVerbale || foto.length > 1 ? '<button class="btn medio" style="width:auto;flex:0 0 auto;padding:0 14px" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button>' : '') +
-      '</div></div>';
+      // Solo il tasto piccolo, a destra: il conteggio in testa dice già com'è messa.
+      (conVerbale || foto.length > 1 ? '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' : '') +
+      '</div>';
   }
   html += ingressiFoto(s);
   return html;

@@ -996,3 +996,14 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .foto-grande .foto-vuota.scan{display:flex;flex-direction:column;align-items:center;gap:var(--s2);padding:var(--s7) var(--s4);color:var(--text);font-weight:600}
 .foto-grande .foto-vuota.scan .ico{width:44px;height:44px;color:var(--muted)}
 .foto-grande .foto-vuota.scan small{font-size:var(--t2);font-weight:400;color:var(--muted)}
+
+/* Nella striscia dei sopralluoghi: verde chi ha il verbale (il colore del lavoro
+   fatto), grigio chi non ce l'ha (il colore dello spento). Bordo e riempimento,
+   non solo il colore del testo. Il bordo azzurro "sei qui" vince sempre. */
+.doc-mini.fatto:not(.qui){border-color:color-mix(in srgb, var(--accent) 45%, transparent)}
+.doc-mini.fatto{background:color-mix(in srgb, var(--accent) 9%, var(--surface-2))}
+.doc-mini.fatto .ora{color:var(--accent)}
+.doc-mini.spento .ora{color:var(--muted)}
+
+/* Il piede della card foto ha solo il tasto piccolo, a destra. */
+.card-piede.dx{justify-content:flex-end}
