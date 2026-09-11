@@ -664,9 +664,12 @@ function nomeFile(s) {
    L'audio sta in IndexedDB, che regge i file grossi; localStorage no.
    ============================================================ */
 
-const CHIAVE_DATI = 'cantieri.dati';
-const CHIAVE_LOCALE = 'cantieri.locale';
-const NOME_IDB = 'cantieri-audio';
+// Sull'anteprima le chiavi cambiano nome, cosi' non si pesca
+// nell'archivio dell'app vera: stesso dominio, cassetti diversi.
+const PREFISSO = location.pathname.includes('/anteprime/') ? 'anteprima.' : '';
+const CHIAVE_DATI = PREFISSO + 'cantieri.dati';
+const CHIAVE_LOCALE = PREFISSO + 'cantieri.locale';
+const NOME_IDB = PREFISSO + 'cantieri-audio';
 const STORE_IDB = 'audio';
 
 let DB = null;       // i documenti, in memoria

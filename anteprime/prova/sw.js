@@ -2,6 +2,9 @@
    Il numero qui sotto va alzato a ogni rilascio: è l'unico modo per far
    buttare via al telefono la versione vecchia dei file. */
 const VERSIONE = 'cantieri-f015df0';
+// Il nome della cache porta dentro l'indirizzo: senza, l'anteprima
+// e l'app vera si cancellano la cache a vicenda.
+const CACHE = VERSIONE + '|' + self.registration.scope;
 
 /* Quello che serve per aprire l'app senza rete. pdf-lib sta qui perché il PDF
    deve uscire anche in cantiere, dove la linea non c'è. */
@@ -23,7 +26,7 @@ const NON_TOCCARE = ['api.groq.com', 'api.anthropic.com', 'api.github.com', 'raw
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
-    caches.open(VERSIONE).then(function (cache) {
+    caches.open(CACHE).then(function (cache) {
       // Un file che manca (per esempio un'icona non ancora caricata) non deve
       // impedire l'installazione: si aggiungono uno per uno e si ignora chi fallisce.
       return Promise.all(FILE_BASE.map(function (url) {
@@ -36,7 +39,7 @@ self.addEventListener('install', function (e) {
 self.addEventListener('activate', function (e) {
   e.waitUntil(
     caches.keys().then(function (chiavi) {
-      return Promise.all(chiavi.filter(function (k) { return k !== VERSIONE; })
+      return Promise.all(chiavi.filter(function (k) { return k !== CACHE; })
         .map(function (k) { return caches.delete(k); }));
     }).then(function () { return self.clients.claim(); })
   );
@@ -66,7 +69,7 @@ self.addEventListener('fetch', function (e) {
     chiedi.then(function (risposta) {
       if (risposta && risposta.ok && (url.origin === self.location.origin || url.hostname === 'cdnjs.cloudflare.com')) {
         const copia = risposta.clone();
-        caches.open(VERSIONE).then(function (cache) { cache.put(richiesta, copia); }).catch(function () {});
+        caches.open(CACHE).then(function (cache) { cache.put(richiesta, copia); }).catch(function () {});
       }
       return risposta;
     }).catch(function () {
