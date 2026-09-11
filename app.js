@@ -945,6 +945,37 @@ function sopralluogo(id) { return leggiTutto().sopralluoghi[id] || null; }
 function verbale(id) { return leggiTutto().verbali[id] || null; }
 // Un verbale si può chiamare come si vuole; se non ha un nome vale il codice.
 function nomeVerbale(v) { return v ? (String(v.nome || '').trim() || v.codice) : ''; }
+/* ---- Come si chiamano le cose sullo schermo ----
+   I codici (AZ-001, SOP-012, VER-004…) restano nei dati e nel PDF: tengono unico
+   ogni elemento. Sullo schermo si mostra un nome che una persona riconosce. */
+// "dell'11 settembre", "del 12 settembre": l'apostrofo va davanti a 1, 8 e 11.
+function delGiorno(iso) {
+  const d = daISO(iso), n = d.getDate();
+  return (n === 1 || n === 8 || n === 11 ? "dell'" : 'del ') + n + ' ' + MESI[d.getMonth()];
+}
+function oraCorta(ora) { return String(ora || '').replace(/^0/, ''); }
+// L'ora si aggiunge solo quando in quel giorno di sopralluoghi ce n'è più d'uno.
+function quandoSopralluogo(s) {
+  const piu = sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1;
+  return dataSenzaAnno(s.giorno) + (piu ? ', ' + oraCorta(s.ora) : '');
+}
+// Cantiere + data: "Via Mazzini 14 · 11 settembre". Dentro il suo cantiere, la data basta.
+function titoloSopralluogo(s, senzaCantiere) {
+  const c = senzaCantiere ? null : cantierePerCodice(s.cantiere);
+  return (c ? c.nome + ' · ' : '') + quandoSopralluogo(s);
+}
+// Il nome dato a mano vince; se no "Verbale dell'11 settembre · Via Mazzini 14".
+function titoloVerbale(v, senzaCantiere) {
+  const nome = String(v.nome || '').trim();
+  if (nome) return nome;
+  const c = senzaCantiere ? null : cantierePerCodice(v.cantiere);
+  const s = v.giornata ? null : sopralluogoPerCodice(v.sopralluogo);
+  const ora = s && sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ', ' + oraCorta(s.ora) : '';
+  return (v.giornata ? 'Giornata ' : 'Verbale ') + delGiorno(v.giorno) + ora + (c ? ' · ' + c.nome : '');
+}
+function verbalePerCodice(codice) { return valori(leggiTutto().verbali).find(function (v) { return v.codice === codice; }) || null; }
+// Una foto si chiama con l'ora, un documento con il suo genere: "Foto delle 9:40", "Bolla delle 14:05".
+function nomeFoto(f) { return (GENERI[f.genere] || 'Foto') + ' delle ' + oraCorta(f.ora); }
 function sopralluoghiDi(codiceCantiere) {
   return valori(leggiTutto().sopralluoghi).filter(function (s) { return s.cantiere === codiceCantiere; })
     .sort(function (a, b) { return (b.giorno + b.ora).localeCompare(a.giorno + a.ora); });
@@ -2389,7 +2420,7 @@ async function salvaPezzoRegistrato(blob, durata, ora, destinazione) {
     f.audio = rif; f.stato = 'in_coda'; f.errore = null;
     salva('sopralluogo', sop);
     avvisa('Salvato', 'ok');
-    accoda({ tipo: 'trascrizione', per: 'foto', sop: sop.id, foto: f.id, audio: rif, etichetta: f.codice });
+    accoda({ tipo: 'trascrizione', per: 'foto', sop: sop.id, foto: f.id, audio: rif, etichetta: nomeFoto(f) });
   }
   aggiornaVista();
 }
@@ -2585,10 +2616,10 @@ function filaFoto(s, lista, opzioni) {
     const st = statoLavoroFoto(f);
     const eti = opzioni.doc ? (GENERI_BREVI[f.genere] || 'documento') : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
-      '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(f.codice) + '">' +
+      '<button class="q' + (f.file ? '' : ' manca') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
       (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '') + '</button>' +
       // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
-      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(f.codice) + '">✕</button>' +
+      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(nomeFoto(f)) + '">✕</button>' +
       /* Il bollino del PDF sta nell'angolo basso della foto. Dove serve scegliere si tocca,
          e non ruba una riga sotto la miniatura; altrove dice soltanto com'è messa. */
       (opzioni.segna
@@ -2633,7 +2664,7 @@ function controllaPromemoria() {
   loc.promemoriaGiorno = oggi;
   salvaLocale();
   valori(leggiTutto().cantieri).filter(function (c) { return c.stato === 'attivo'; }).forEach(function (c) {
-    if (!sopralluogoDiOggi(c.codice)) mostraNotifica('Manca il sopralluogo di ' + c.codice, c.nome, '#/cantiere/' + c.id);
+    if (!sopralluogoDiOggi(c.codice)) mostraNotifica('Manca il sopralluogo di oggi', c.nome, '#/cantiere/' + c.id);
   });
 }
 
@@ -2838,7 +2869,7 @@ function vistaAziende() {
       '<div class="riga az-capo">' +
       '<button class="apre" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
       (a.logo ? '<img class="az-logo" data-foto="' + h(a.logo) + '" alt="">' : '<div class="az-logo vuoto">' + h((a.nome || '?').slice(0, 2).toUpperCase()) + '</div>') +
-      '<span class="desc"><b>' + h(a.nome) + '</b><small>' + h(a.codice) + ' · ' + attivi.length + (attivi.length === 1 ? ' cantiere' : ' cantieri') + (daFare ? ' · ' + daFare + ' da fare' : '') + '</small></span>' +
+      '<span class="desc"><b>' + h(a.nome) + '</b><small>' + attivi.length + (attivi.length === 1 ? ' cantiere' : ' cantieri') + (daFare ? ' · ' + daFare + ' da fare' : '') + '</small></span>' +
       '<span class="frec">▶</span></button>' +
       '<button class="pill cod" data-az="vai" data-a="#/azienda/' + h(a.id) + '">apri</button>' +
       '</div>' +
@@ -2861,7 +2892,7 @@ function vistaAziendaForm(id) {
   const a = id ? azienda(id) : null;
   if (id && !a) return vistaAziende();
   const v = a || { nome: '', ragione: '', tecnico: '', piva: '', indirizzo: '', telefono: '', mail: '', pec: '', sito: '', note: '' };
-  let html = testata({ indietro: a ? '#/azienda/' + a.id : '#/', titolo: a ? 'Scheda ' + a.codice : 'Nuova azienda', sotto: a ? h(a.nome) : 'il codice arriva da solo' });
+  let html = testata({ indietro: a ? '#/azienda/' + a.id : '#/', titolo: a ? 'Scheda azienda' : 'Nuova azienda', sotto: a ? h(a.nome) : '' });
   html += '<div class="modulo">' +
     '<label class="eticampo">Nome breve</label><input class="campo" id="a-nome" value="' + h(v.nome) + '" placeholder="es. Edil Rossi" autocomplete="off"' + (a ? '' : ' autofocus') + '>' +
     '<label class="eticampo">Ragione sociale</label><input class="campo" id="a-ragione" value="' + h(v.ragione || '') + '" placeholder="es. Edil Rossi S.r.l." autocomplete="off">' +
@@ -2923,7 +2954,7 @@ function vistaDashboard(idAzienda) {
   const senza = idAzienda === 'senza';
   let html;
   if (az || senza) {
-    html = testata({ indietro: '#/', titolo: az ? az.nome : 'Senza azienda', sotto: az ? h(az.codice) + (az.ragione ? ' · ' + h(az.ragione) : '') : 'cantieri non ancora assegnati',
+    html = testata({ indietro: '#/', titolo: az ? az.nome : 'Senza azienda', sotto: az ? h(az.ragione || '') : 'cantieri non ancora assegnati',
       destra: az ? '<button class="pill cod" data-az="vai" data-a="#/modifica-azienda/' + h(az.id) + '">scheda</button>' : '' });
   } else {
     html = testata({ titolo: 'CANTIERI', grande: true, idTitolo: 'titolo-app', sotto: h(GIORNI_SETT[new Date().getDay()] + ' ' + new Date().getDate() + ' ' + MESI[new Date().getMonth()]),
@@ -2931,7 +2962,7 @@ function vistaDashboard(idAzienda) {
     // Chi ha scelto di saltare le aziende trova qui il modo di tornarci: piccolo, senza colore.
     if (aziendeTutte().length) html += '<button class="link blocco" data-az="vai" data-a="#/aziende" style="text-align:left"><span class="ico ico-edificio"></span> Aziende</button>';
   }
-  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca cantiere, committente, codice" value="' + h(filtroCantieri) + '" data-campo="filtro-cantieri" autocomplete="off"></div>';
+  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca cantiere, committente, indirizzo" value="' + h(filtroCantieri) + '" data-campo="filtro-cantieri" autocomplete="off"></div>';
 
   if (SPAZIO.avviso) html += '<div class="avviso">Spazio quasi pieno: scarica audio e foto vecchi. <button class="link" data-az="vai" data-a="#/dev" style="min-height:auto">Apri</button></div>';
   if (!navigator.onLine) html += '<div class="avviso">Manca la rete: si registra e si salva lo stesso, la trascrizione parte quando torna.</div>';
@@ -2954,7 +2985,7 @@ function vistaDashboard(idAzienda) {
        e sotto tutto il resto in una frase sola. A destra non resta vuoto. */
     return '<div class="card tocca" data-az="vai" data-a="#/cantiere/' + h(c.id) + '"><div class="card-in cant">' +
       '<p class="titolo">' + h(c.nome) + '</p>' + stato +
-      '<div class="sotto">' + [h(c.committente), c.indirizzo ? h(c.indirizzo) : '', h(c.codice), h(mini)].filter(Boolean).join(' · ') + '</div>' +
+      '<div class="sotto">' + [h(c.committente), c.indirizzo ? h(c.indirizzo) : '', h(mini)].filter(Boolean).join(' · ') + '</div>' +
       '</div></div>';
   }
   /* Sotto la ricerca, una riga sola: il cantiere nuovo si prende tre quarti,
@@ -2985,10 +3016,10 @@ function vistaCantiere(id) {
   const cont = contabilitaDi(c.codice);
   const totale = totaleContabilita(cont);
   const oggi = oggiISO();
-  /* Committente, codice e indirizzo stanno su una riga sola sotto il titolo:
+  /* Committente e indirizzo stanno su una riga sola sotto il titolo:
      erano due righe corte incolonnate a sinistra con mezzo schermo vuoto a destra. */
   let html = testata({ indietro: '#/', titolo: c.nome,
-    sotto: h(c.committente) + ' · ' + h(c.codice) + (c.indirizzo ? ' · ' + h(c.indirizzo) : ''),
+    sotto: h(c.committente) + (c.indirizzo ? ' · ' + h(c.indirizzo) : ''),
     destra: '<button class="pill ' + (c.stato === 'chiuso' ? 'grigia' : 'cod') + '" data-az="vai" data-a="#/modifica-cantiere/' + h(c.id) + '">' + (c.stato === 'chiuso' ? 'chiuso' : 'modifica') + '</button>' });
   html += '<div class="numeri"><div class="n"><div class="v">' + sops.length + '</div><div class="k">giorni</div></div>' +
     '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">verbali</div></div>' +
@@ -3000,7 +3031,7 @@ function vistaCantiere(id) {
       // La card si tocca per leggere la relazione; i tre tasti sotto fanno il resto.
       const pdfRel = pdfConChiave('relazione:' + rel.codice);
       html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
-        '<div class="fila"><span class="pill ok">' + h(rel.codice) + '</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div>' +
+        '<div class="fila"><span class="pill ok">chiuso</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div>' +
         '<div class="griglia tre">' +
         '<button class="btn" data-az="vai" data-a="' + (pdfRel ? '#/leggi/' + h(pdfRel.id) : '#/relazione/' + h(rel.id)) + '">Visualizza</button>' +
         '<button class="btn" data-az="esporta-pdf-relazione" data-id="' + h(rel.id) + '">Esporta</button>' +
@@ -3028,7 +3059,7 @@ function vistaCantiere(id) {
       (rilCant ? '<div class="card-corpo">' + testoElenco(c.rilievi, true) + '</div>' : '');
     docCant.forEach(function (v) {
       html += '<button class="riga" data-az="vai" data-a="#/foto/' + h(v.sop.id) + '/' + h(v.f.id) + '">' +
-        '<span class="desc">' + h(GENERI[v.f.genere] || 'Documento') + '<small>' + h(v.f.codice) + ' · ' + h(dataSenzaAnno(v.f.giorno)) + '</small></span>' +
+        '<span class="desc">' + h(GENERI[v.f.genere] || 'Documento') + '<small>' + h(dataSenzaAnno(v.f.giorno)) + ', ' + h(oraCorta(v.f.ora)) + '</small></span>' +
         '<span class="frec">›</span></button>';
     });
     html += '</div>';
@@ -3060,7 +3091,7 @@ function vistaCantiere(id) {
     const piene = sezioniPiene(s.sezioni).length;
     const anteprima = CHIAVI_SEZIONI.map(function (k) { return primaRiga(s.sezioni[k]); }).filter(Boolean)[0] || (s.sezioni.da_smistare ? primaRiga(s.sezioni.da_smistare) : '') || (s.pezzi.length ? 'trascrizione in arrivo…' : 'ancora niente');
     let pill;
-    if (s.chiuso) { const vb = verbaleDiSopralluogo(s.codice); pill = '<span class="pill ok">' + h(vb ? nomeVerbale(vb) : (s.verbale || 'chiuso')) + '</span>'; }
+    if (s.chiuso) { const vb = verbaleDiSopralluogo(s.codice); pill = '<span class="pill ok">' + h(vb && vb.nome ? vb.nome : 'verbale fatto') + '</span>'; }
     else if (s.giorno === oggi) pill = '<span class="pill att">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
     const quanti = sopralluoghiDelGiorno(s.cantiere, s.giorno).length;
@@ -3073,7 +3104,7 @@ function vistaCantiere(id) {
   if (!sops.length) html += '<div class="vuoto-stato">' + (c.stato === 'chiuso' ? 'Nessun sopralluogo in questo cantiere.' : 'Nessun sopralluogo ancora. Premi il bottone verde e parla.') + '</div>';
   html += tendina('voci-' + c.id, 'Contabilità · Note · Listino',
     '<div class="card">' +
-    '<button class="riga" data-az="vai" data-a="#/contabilita/' + h(c.id) + '"><span class="desc">Contabilità<small>' + (cont ? h(cont.codice) + ' · ' + cont.righe.length + ' righe · ' + h(euro(totale)) : 'ancora vuota') + '</small></span><span class="frec">›</span></button>' +
+    '<button class="riga" data-az="vai" data-a="#/contabilita/' + h(c.id) + '"><span class="desc">Contabilità<small>' + (cont ? cont.righe.length + ' righe · ' + h(euro(totale)) : 'ancora vuota') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/note/' + h(c.id) + '"><span class="desc">Note del cantiere<small>' + h(primaRiga(c.note) || 'nessuna nota') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listino prezzi<small>' + listinoTutto().length + ' voci</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/pdf/' + h(c.id) + '"><span class="desc">PDF archiviati<small>' + (pdfDi(c.codice).length ? pdfDi(c.codice).length + ' documenti · ' + h(pesoFile(pdfDi(c.codice).reduce(function (t, p) { return t + (p.peso || 0); }, 0))) : 'ancora nessuno') + '</small></span><span class="frec">›</span></button>' +
@@ -3134,7 +3165,7 @@ function vistaGiornoInCorso(s, c) {
   const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id) ||
     (REG.destinazione.tipo === 'rilievo' && REG.destinazione.sop === s.id));
   const quanteFoto = fotoNormali(s).length;
-  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + ' · ' + h(s.codice), tocca: 'modifica-testata', id: s.id,
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' · ' + h(oraCorta(s.ora)) : ''), tocca: 'modifica-testata', id: s.id,
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
       (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
   html += '<div class="avanz"><div class="r"><span><b>' + piene.length + '</b> sezioni su ' + CHIAVI_SEZIONI.length + '</span><span class="dx">' +
@@ -3147,7 +3178,8 @@ function vistaGiornoInCorso(s, c) {
     const vb = verbaleDiSopralluogo(s.codice);
     /* Visualizza c'è sempre, e sta per primo: è il tasto che si preme di più.
        Se il PDF esiste apre quello, se no apre il verbale. */
-    html += '<div class="card"><div class="card-capo">Verbale ' + h(vb ? nomeVerbale(vb) : (s.verbale || '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
+    // Siamo già nel giorno: il nome dato a mano, se no "Verbale", con l'ora quando i passaggi sono più d'uno.
+    html += '<div class="card"><div class="card-capo">' + h(vb && vb.nome ? vb.nome : 'Verbale' + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' delle ' + oraCorta(s.ora) : '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
       '<div class="griglia tre">' +
       (vb ? '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' : '') +
       '<button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>' +
@@ -3212,7 +3244,7 @@ function strisciaVerbaliGiornata(c) {
       const aperto = PUNTI_APERTI === v.id;
       return '<div class="doc-mini' + (aperto ? ' menu' : '') + '">' +
         '<div class="q">' +
-        '<span class="ora">' + h(suoNome || v.codice) + '</span>' +
+        '<span class="ora">' + h(suoNome || 'Giornata ' + delGiorno(v.giorno)) + '</span>' +
         '<span class="nm">' + h(giornoMese(v.giorno)) + '</span></div>' +
         (aperto
           ? '<div class="voci">' + vociMenuVerbale(v) + '</div>'
@@ -3234,11 +3266,11 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
   const aperti = sops.filter(function (x) { return !x.chiuso; });
   const gia = verbaleDiGiornata(codiceCantiere, giorno);
   let testo = gia
-    ? 'Il verbale di giornata ' + gia.codice + ' si rifà con i verbali di adesso. Le correzioni fatte a mano su di lui si perdono.'
+    ? 'Il verbale di giornata si rifà con i verbali di adesso. Le correzioni fatte a mano su di lui si perdono.'
     : 'Si mette insieme un documento solo con i ' + sops.length + ' sopralluoghi di questa giornata.';
   if (aperti.length) testo = aperti.length + (aperti.length === 1 ? ' sopralluogo non ha ancora il suo verbale: entra con quello che ha adesso. ' : ' sopralluoghi non hanno ancora il loro verbale: entrano con quello che hanno adesso. ') + testo;
   const ok = await chiedi(gia ? 'Aggiornare il verbale di giornata?' : 'Scrivere il verbale di giornata?', testo, gia ? 'Aggiorna' : 'Scrivi', '',
-    '<label class="eticampo">Nome del verbale</label><input class="campo" id="vg-nome" maxlength="80" placeholder="' + h(gia ? gia.codice : 'facoltativo, se no vale il codice') + '" value="' + h(gia ? (gia.nome || '') : '') + '">');
+    '<label class="eticampo">Nome del verbale</label><input class="campo" id="vg-nome" maxlength="80" placeholder="facoltativo" value="' + h(gia ? (gia.nome || '') : '') + '">');
   const campo = document.getElementById('vg-nome');
   const nomeScelto = campo ? campo.value.trim() : '';
   chiudiFoglio();
@@ -3259,7 +3291,7 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
     sopralluoghi: sops.map(function (x) { return x.codice; }), nome: nomeScelto, sezioni: sezioni };
   if (v) { Object.assign(v, campi); v = salva('verbale', v); }
   else v = salva('verbale', campi);
-  avvisa(gia ? 'Verbale di giornata aggiornato' : 'Verbale di giornata ' + nomeVerbale(v), 'ok');
+  avvisa(gia ? 'Verbale di giornata aggiornato' : 'Verbale di giornata scritto', 'ok');
   aggiornaVista();
 }
 
@@ -3282,7 +3314,7 @@ function menuVerbale(idVerbale) {
   const v = verbale(idVerbale);
   if (!v) return;
   apriFoglio(
-    '<h2>' + h(nomeVerbale(v)) + '</h2><p>' + h(dataBreve(v.giorno)) + (v.giornata ? ' · verbale di giornata' : ' · ore ' + h(v.ora)) + '</p>' +
+    '<h2>' + h(titoloVerbale(v, true)) + '</h2><p>' + h(dataBreve(v.giorno)) + (v.giornata ? ' · verbale di giornata' : ' · ore ' + h(v.ora)) + '</p>' +
     '<button class="btn btn-ok" data-az="pdf-modifica" data-id="' + h(v.id) + '">Modifica</button>' +
     '<button class="btn" data-az="verbale-esporta" data-id="' + h(v.id) + '">Esporta</button>' +
     '<button class="btn" data-az="verbale-scarica" data-id="' + h(v.id) + '">Scarica</button>' +
@@ -3363,7 +3395,7 @@ function strisciaSopralluoghi(s) {
   /* Il verbale di giornata si fa quando i passaggi sono tutti chiusi: mette insieme
      i loro verbali in un documento solo, quello che si manda fuori. */
   if (vg) {
-    html += '<div class="griglia"><button class="btn btn-ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">Verbale di giornata ' + h(nomeVerbale(vg)) + '</button>' +
+    html += '<div class="griglia"><button class="btn btn-ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
       '<button class="btn" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button></div>';
   } else if (tuttiChiusi) {
     html += '<div class="griglia"><button class="btn btn-ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button></div>';
@@ -3508,12 +3540,12 @@ async function chiudiGiornata(sopId) {
   const inCoda = leggiLocale().coda.some(function (l) { return l.sop === s.id && l.stato !== 'fallito'; });
   const giaFatto = verbaleDiSopralluogo(s.codice);
   let testo = giaFatto
-    ? 'Il verbale ' + giaFatto.codice + ' si rifà con quello che hai cambiato. Le correzioni fatte a mano sul verbale si perdono. La giornata resta modificabile.'
+    ? 'Il verbale si rifà con quello che hai cambiato. Le correzioni fatte a mano sul verbale si perdono. La giornata resta modificabile.'
     : 'Si scrive il verbale della giornata. La giornata resta modificabile: se cambi qualcosa, il verbale si aggiorna da solo.';
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
   const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale', '',
-    '<label class="eticampo">Nome del verbale</label><input class="campo" id="v-nome" maxlength="80" placeholder="' + h(giaFatto ? giaFatto.codice : 'facoltativo, se no vale il codice') + '" value="' + h(giaFatto ? (giaFatto.nome || '') : '') + '">');
+    '<label class="eticampo">Nome del verbale</label><input class="campo" id="v-nome" maxlength="80" placeholder="facoltativo" value="' + h(giaFatto ? (giaFatto.nome || '') : '') + '">');
   // Il campo si legge prima di chiudere il foglio: dopo non c'è più.
   const campoNome = document.getElementById('v-nome');
   const nomeScelto = campoNome ? campoNome.value.trim() : '';
@@ -3543,7 +3575,7 @@ async function chiudiGiornata(sopId) {
   s.chiuso = adessoISO();
   s.verbale = v.codice;
   salva('sopralluogo', s);
-  avvisa(giaFatto ? 'Verbale ' + nomeVerbale(v) + ' aggiornato' : 'Verbale ' + nomeVerbale(v), 'ok');
+  avvisa(giaFatto ? 'Verbale aggiornato' : 'Verbale scritto', 'ok');
   aggiornaVista();
 }
 
@@ -3554,14 +3586,14 @@ function vistaVerbaleModifica(id) {
   const s = valori(leggiTutto().sopralluoghi).find(function (x) { return x.codice === v.sopralluogo; });
   const c = cantierePerCodice(v.cantiere) || { nome: '?', id: '' };
   const indietro = v.giornata ? ('#/cantiere/' + (cantiere(c.id) ? c.id : '')) : (s ? '#/giorno/' + s.id : '#/');
-  let html = testata({ indietro: indietro || '#/', titolo: 'Modifica ' + nomeVerbale(v), sotto: h(c.nome) + ' · ' + h(v.codice) + ' · ' + h(dataBreve(v.giorno)) + (v.giornata ? '' : ' · ' + h(v.ora)),
+  let html = testata({ indietro: indietro || '#/', titolo: 'Modifica ' + (v.nome ? v.nome : (v.giornata ? 'giornata' : 'verbale')), sotto: h(c.nome) + ' · ' + h(dataBreve(v.giorno)) + (v.giornata ? '' : ' · ' + h(v.ora)),
     destra: '<span class="pill ok">' + (v.giornata ? 'giornata' : 'verbale') + '</span>' });
   html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">' +
     (v.giornata
       ? 'È il verbale di tutta la giornata: mette insieme i ' + ((v.sopralluoghi || []).length || 'vari') + ' sopralluoghi di quel giorno. Se lo rifai da capo, le correzioni fatte qui si perdono.'
       : 'Correggere il verbale non tocca il sopralluogo: la dettatura originale resta com\'era.') + '</div>';
   html += '<div class="card"><div class="card-capo">Nome del verbale</div>' +
-    '<input class="campo" data-campo="nome-verbale" data-id="' + h(v.id) + '" maxlength="80" placeholder="' + h(v.codice) + '" value="' + h(v.nome || '') + '"></div>';
+    '<input class="campo" data-campo="nome-verbale" data-id="' + h(v.id) + '" maxlength="80" placeholder="facoltativo" value="' + h(v.nome || '') + '"></div>';
   SEZIONI.forEach(function (z) {
     const testo = v.sezioni[z.chiave] || '';
     html += '<div class="card"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
@@ -3603,10 +3635,13 @@ function riepilogoPerSezione(sops) {
   return per;
 }
 
-// L'etichetta di un pezzo del riepilogo: la data davanti, poi il codice del documento da cui viene.
+/* L'etichetta di un pezzo del riepilogo. Nel PDF (esteso): la data, poi il codice del
+   documento da cui viene. Sullo schermo: la data, e l'ora se quel giorno ha più passaggi. */
 function etichettaBlocco(b, esteso) {
   const data = b.giorno ? (esteso ? dataEstesa(b.giorno) : dataBreve(b.giorno)) : 'aggiunto a mano';
-  return data + (b.codice ? (esteso ? ' - ' : ' · ') + b.codice : '') + (esteso && b.aperta ? ' - giornata non chiusa' : '');
+  if (esteso) return data + (b.codice ? ' - ' + b.codice : '') + (b.aperta ? ' - giornata non chiusa' : '');
+  const s = b.codice ? (sopralluogoPerCodice(b.codice) || sopralluogoPerCodice((verbalePerCodice(b.codice) || {}).sopralluogo)) : null;
+  return data + (s && sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' · ' + oraCorta(s.ora) : '');
 }
 
 /* Scrive la relazione dai documenti di adesso, o la riscrive se esiste già (stesso codice).
@@ -3687,7 +3722,7 @@ async function chiudiCantiere(id) {
   let testo = 'Si scrive la relazione di fine cantiere: il riepilogo di tutti i giorni e i conti. Il cantiere va fra quelli chiusi, e si potrà riaprire.';
   if (aperte) testo = (aperte === 1 ? 'Una giornata è ancora aperta' : aperte + ' giornate sono ancora aperte') + ': nella relazione compaiono come non chiuse. ' + testo;
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nella relazione. ' + testo;
-  if (esistente) testo += ' La relazione ' + esistente.codice + ' si riscrive: le correzioni fatte a mano si perdono.';
+  if (esistente) testo += ' La relazione si riscrive: le correzioni fatte a mano si perdono.';
   const ok = await chiedi('Chiudere il cantiere?', testo, 'Chiudi il cantiere');
   chiudiFoglio();
   if (!ok) return;
@@ -3695,7 +3730,7 @@ async function chiudiCantiere(id) {
   c.chiuso = oggiISO();
   salva('cantiere', c);
   const rel = generaRelazione(c, esistente);
-  avvisa('Relazione ' + rel.codice, 'ok');
+  avvisa('Relazione scritta', 'ok');
   vai('#/relazione/' + rel.id);
 }
 
@@ -3703,7 +3738,7 @@ async function riapriCantiere(id) {
   const c = cantiere(id);
   if (!c || c.stato !== 'chiuso') return;
   const rel = relazioneDi(c.codice);
-  const ok = await chiedi('Riaprire ' + c.codice + '?', c.nome + ' torna fra i cantieri attivi. Non si perde niente' + (rel ? ': la relazione ' + rel.codice + ' resta, e si riscrive quando lo richiudi.' : '.'), 'Riapri il cantiere');
+  const ok = await chiedi('Riaprire il cantiere?', c.nome + ' torna fra i cantieri attivi. Non si perde niente' + (rel ? ': la relazione resta, e si riscrive quando lo richiudi.' : '.'), 'Riapri il cantiere');
   chiudiFoglio();
   if (!ok) return;
   c.stato = 'attivo';
@@ -3717,7 +3752,7 @@ async function rigeneraRelazione(relId) {
   const rel = relazione(relId);
   const c = rel && cantierePerCodice(rel.cantiere);
   if (!c) return;
-  const ok = await chiedi('Rigenerare ' + rel.codice + '?', 'Si riscrive dai verbali e dalla contabilità di adesso. Le correzioni fatte a mano sulla relazione si perdono.', 'Rigenera');
+  const ok = await chiedi('Rigenerare la relazione?', 'Si riscrive dai verbali e dalla contabilità di adesso. Le correzioni fatte a mano sulla relazione si perdono.', 'Rigenera');
   chiudiFoglio();
   if (!ok) return;
   generaRelazione(c, rel);
@@ -3734,11 +3769,11 @@ function vistaRelazione(id) {
   const n = rel.numeri || {};
   const scrivendo = !!RELAZIONI_IN_SCRITTURA[rel.id];
   const inBreve = String(rel.inBreve || '').trim();
-  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Relazione di fine cantiere', sotto: h(c.nome) + ' · ' + h(rel.codice),
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Relazione di fine cantiere', sotto: h(c.nome),
     // La pastiglia dice una parola: la data di chiusura sta nella card sotto. Una pastiglia lunga schiaccia il titolo.
     destra: c.stato === 'chiuso' ? '<span class="pill ok">chiuso</span>' : '<span class="pill att">riaperto</span>' });
   // L'intestazione
-  html += '<div class="card"><div class="card-capo">Cantiere<span class="dx">' + h(c.codice) + '</span></div><div class="card-corpo">' + h(c.nome) +
+  html += '<div class="card"><div class="card-capo">Cantiere</div><div class="card-corpo">' + h(c.nome) +
     (c.committente ? '\nCommittente: ' + h(c.committente) : '') + (c.indirizzo ? '\n' + h(c.indirizzo) : '') +
     '\nAperto ' + h(dataEstesa(rel.apertura)) + '\nChiuso ' + h(dataEstesa(rel.chiusura)) + '</div>' +
     '<div class="card-piede">Scritta il ' + h(dataSenzaAnno(rel.generata)) + ' alle ' + h(oraDaISO(rel.generata)) + '</div></div>';
@@ -3773,7 +3808,7 @@ function vistaRelazione(id) {
   // La contabilità completa: le righe senza prezzo si segnalano, il totale sta in fondo
   const cont = rel.contabilita || { righe: [], totale: 0, note: '' };
   const daCompletare = cont.righe.filter(function (r) { return r.dacompletare; }).length;
-  html += '<div class="eti">Contabilità' + (cont.codice ? ' · ' + h(cont.codice) : '') + (daCompletare ? '<span class="n" style="color:var(--gold)">' + daCompletare + ' da completare</span>' : '') + '</div>';
+  html += '<div class="eti">Contabilità' + (daCompletare ? '<span class="n" style="color:var(--gold)">' + daCompletare + ' da completare</span>' : '') + '</div>';
   if (cont.righe.length) html += '<div class="card">' + cont.righe.map(function (r) { return rigaContabilitaHtml(r, { lettura: true }); }).join('') + '</div>';
   else html += '<div class="vuoto-stato">Nessuna riga di contabilità.</div>';
   html += '<div class="totale"><span class="eti">Totale</span><span class="cifra">' + h(euro(cont.totale)) + '</span></div>';
@@ -3784,7 +3819,7 @@ function vistaRelazione(id) {
     html += '<div class="card">' + rel.giorni.map(function (g) {
       return '<button class="riga" data-az="vai" data-a="#/giorno/' + h(g.sop) + '"><span class="desc">' + h(dataBreve(g.giorno)) + ' · ' + h(g.ora) +
         '<small>' + g.sezioni + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + g.audio + ' audio · ' + g.foto + ' foto' + (g.documenti ? ' · ' + g.documenti + ' doc' : '') + '</small></span>' +
-        (g.chiuso ? '<span class="pill ok">' + h(g.verbale || 'chiusa') + '</span>' : '<span class="pill att">non chiusa</span>') + '<span class="frec">›</span></button>';
+        (g.chiuso ? '<span class="pill ok">chiusa</span>' : '<span class="pill att">non chiusa</span>') + '<span class="frec">›</span></button>';
     }).join('') + '</div>';
   } else html += '<div class="vuoto-stato">Nessun giorno di sopralluogo.</div>';
   // Le foto marcate, giorno per giorno: si leggono dal sopralluogo, come fa il PDF del verbale
@@ -3793,7 +3828,7 @@ function vistaRelazione(id) {
     const s = sopralluogo(g.sop);
     const marcate = s ? fotoDi(s).filter(function (f) { return f.nelPdf; }) : [];
     if (!marcate.length) return;
-    fotoHtml += '<div class="card"><div class="card-capo spenta">' + h(dataBreve(g.giorno)) + '<span class="dx">' + h(g.verbale || g.sopralluogo) + '</span></div>' + filaFoto(s, marcate) + '</div>';
+    fotoHtml += '<div class="card"><div class="card-capo spenta">' + h(dataBreve(g.giorno)) + '<span class="dx">' + h(oraCorta(g.ora)) + '</span></div>' + filaFoto(s, marcate) + '</div>';
   });
   if (fotoHtml) html += '<div class="eti">Foto nel PDF</div>' + fotoHtml;
   html += '<div class="barra"><button class="az verde" data-az="esporta-pdf-relazione" data-id="' + h(rel.id) + '">Esporta PDF</button>' +
@@ -3807,7 +3842,7 @@ function vistaRelazioneModifica(id) {
   const rel = relazione(id);
   if (!rel) return vistaDashboard();
   const c = cantierePerCodice(rel.cantiere) || { nome: '?' };
-  let html = testata({ indietro: '#/relazione/' + rel.id, titolo: 'Modifica ' + rel.codice, sotto: 'relazione di fine cantiere · ' + h(c.nome) });
+  let html = testata({ indietro: '#/relazione/' + rel.id, titolo: 'Modifica relazione', sotto: 'relazione di fine cantiere · ' + h(c.nome) });
   html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Correggere la relazione non tocca i verbali né la contabilità. Rigenerandola, le correzioni si perdono.</div>';
   html += '<div class="card"><div class="card-capo' + (String(rel.inBreve || '').trim() ? '' : ' spenta') + '">In breve</div>' +
     '<textarea class="corpo" data-campo="inbreve-relazione" data-id="' + h(rel.id) + '" placeholder="Due righe su com\'è andato il cantiere">' + h(rel.inBreve || '') + '</textarea></div>';
@@ -3845,11 +3880,11 @@ function vistaFoto(sopId, fotoId) {
   const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'foto' && REG.destinazione.foto === f.id;
   const sezione = sezioneFoto(f);
   const doc = !!GENERI[f.genere];
-  let html = testata({ indietro: '#/giorno/' + s.id, titolo: f.codice + (doc ? ' · ' + GENERI[f.genere] : ''), sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)) + ' · ' + h(f.ora),
+  let html = testata({ indietro: '#/giorno/' + s.id, titolo: nomeFoto(f), sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)),
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' : (f.nelPdf ? '<span class="pill ok">nel PDF</span>' : '<span class="pill grigia">non nel PDF</span>') });
   html += '<div class="foto-grande' + (f.file ? '' : ' manca') + '">' +
     (f.file ? '<img data-foto="' + h(f.file) + '" alt="">' : '<div class="foto-vuota">Foto archiviata' + (f.archiviato ? ' il ' + h(dataSenzaAnno(f.archiviato)) : '') + ': è nei File del telefono.</div>') +
-    '<div class="foto-dati">' + h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(c.nome) + ' · ' + h(s.codice) + '</div></div>';
+    '<div class="foto-dati">' + h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(titoloSopralluogo(s)) + '</div></div>';
   html += '<div class="card"><div class="card-capo' + (String(f.referto || '').trim() ? '' : ' spenta') + '">Referto' + (st.testo ? '<span class="dx ' + st.classe + '">' + h(st.testo) + '</span>' : '') + '</div>' +
     '<textarea class="corpo" data-campo="referto-foto" data-id="' + h(f.id) + '" data-sop="' + h(s.id) + '" placeholder="' + (doc ? 'Detta o scrivi cosa c\'è su questo documento' : 'Detta o scrivi cosa si vede') + '">' + h(f.referto || '') + '</textarea>' +
     (f.grezzo ? '<div class="card-piede">« ' + h(f.grezzo) + ' »</div>' : '') + '</div>';
@@ -3878,7 +3913,7 @@ function vistaContabilita(idCantiere) {
   const loc = leggiLocale();
   const proposte = loc.proposte.filter(function (p) { return p.cantiere === c.id; });
   const inCoda = loc.coda.filter(function (l) { return l.cantiere === c.id && (l.per === 'contabilita' || l.tipo === 'contabilita'); });
-  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Contabilità', sotto: h(c.nome) + (cont ? ' · ' + h(cont.codice) : ''),
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Contabilità', sotto: h(c.nome),
     destra: righe.some(function (r) { return r.dacompletare; }) ? '<span class="pill att">da completare</span>' : '' });
   inCoda.forEach(function (l) {
     html += '<div class="avviso" style="color:var(--muted);border-color:var(--line);background:var(--surface)">' +
@@ -3911,8 +3946,8 @@ function rigaContabilitaHtml(r, rif) {
   const attr = rif.lettura ? '' : (rif.proposta ? ' data-az="riga-modifica" data-proposta="' + h(rif.proposta) + '" data-indice="' + rif.indice + '"' : ' data-az="riga-modifica" data-cont="' + h(rif.cont) + '" data-id="' + h(r.codice) + '"');
   return '<' + tag + ' class="voceriga' + (r.dacompletare ? ' dacompletare' : '') + '"' + attr + '>' +
     '<div class="desc">' + h(r.descrizione || '(senza descrizione)') + '</div>' +
-    '<div class="conti"><span class="codice">' + h(r.codice || 'nuova') + '</span><span>' + h(numeroIt(r.quantita)) + ' ' + h(r.um || '') + '</span>' +
-    '<span>× ' + h(euro(r.prezzo)) + '</span>' + (r.dallistino ? '<span class="targa">' + h(r.dallistino) + '</span>' : '') +
+    '<div class="conti">' + (r.codice ? '' : '<span class="codice">nuova</span>') + '<span>' + h(numeroIt(r.quantita)) + ' ' + h(r.um || '') + '</span>' +
+    '<span>× ' + h(euro(r.prezzo)) + '</span>' + (r.dallistino ? '<span class="targa">listino</span>' : '') +
     '<span class="importo">' + (r.dacompletare ? 'da completare' : h(euro(r.importo))) + '</span></div></' + tag + '>';
 }
 
@@ -3930,7 +3965,7 @@ function apriRigaContabilita(riga, rif) {
   const opzioniUm = ['', 'm', 'm²', 'm³', 'kg', 'q', 't', 'n', 'h', 'corpo', 'l'];
   if (um && opzioniUm.indexOf(um) === -1) opzioniUm.push(um);
   apriFoglio(
-    '<h2>' + (riga.codice ? h(riga.codice) : 'Riga') + '</h2>' +
+    '<h2>' + (riga.codice ? h(primaRiga(riga.descrizione) || 'Riga') : 'Riga nuova') + '</h2>' +
     '<label class="eticampo">Descrizione lavorazione</label><input class="campo" id="r-desc" value="' + h(riga.descrizione) + '" autocomplete="off">' +
     '<div class="due" style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Quantità</label><input class="campo" id="r-qta" inputmode="decimal" value="' + h(numeroIt(riga.quantita)) + '"></div>' +
     '<div style="flex:1"><label class="eticampo">Unità</label><select class="campo" id="r-um">' + opzioniUm.map(function (u) { return '<option value="' + h(u) + '"' + (u === um ? ' selected' : '') + '>' + (u || '—') + '</option>'; }).join('') + '</select></div></div>' +
@@ -3986,7 +4021,7 @@ function disegnaSceltaListino() {
     '<h2>Cerca nel listino</h2>' +
     '<div class="cerca" style="margin:0 0 12px"><span class="ico ico-lente"></span> <input type="search" id="scelta-cerca" placeholder="Cerca nella descrizione" value="' + h(filtroListinoScelta) + '" data-campo="filtro-scelta" autocomplete="off" autofocus></div>' +
     '<div class="lista">' + (elenco.length ? elenco.map(function (v) {
-      return '<button class="riga" data-az="scegli-voce" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + h(v.codice) + ' · ' + h(v.um) + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
+      return '<button class="riga" data-az="scegli-voce" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + h(v.um) + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
     }).join('') : '<div class="vuoto-stato">' + (listinoTutto().length ? 'Nessuna voce trovata.' : 'Il listino è vuoto.') + '</div>') + '</div>' +
     '<button class="btn" data-az="scelta-annulla">Torna alla riga</button>'
   );
@@ -4007,7 +4042,7 @@ function vistaListino(idCantiere, sotto) {
     (tutte.length ? '<button class="btn medio btn-rosso" data-az="listino-svuota" style="margin-top:8px"><span class="ico ico-cestino"></span> Svuota il listino</button>' : '') + '</div>';
   if (voci.length) {
     html += '<div class="card" style="margin-top:12px">' + voci.slice(0, 200).map(function (v) {
-      return '<button class="riga" data-az="voce-modifica" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + h(v.codice) + (v.rif ? ' · ' + h(v.rif) : '') + ' · ' + h(v.um || '—') + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
+      return '<button class="riga" data-az="voce-modifica" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + (v.rif ? h(v.rif) + ' · ' : '') + h(v.um || '—') + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
     }).join('') + '</div>';
     if (voci.length > 200) html += '<div class="vuoto-stato">Mostrate le prime 200: cerca per restringere.</div>';
   } else {
@@ -4019,7 +4054,7 @@ function vistaListino(idCantiere, sotto) {
 function apriVoceListino(v) {
   VOCE_APERTA = v || { descrizione: '', um: '', prezzo: 0 };
   apriFoglio(
-    '<h2>' + (v ? h(v.codice) : 'Nuova voce') + '</h2>' +
+    '<h2>' + (v ? 'Voce del listino' : 'Nuova voce') + '</h2>' +
     '<label class="eticampo">Descrizione</label><input class="campo" id="v-desc" value="' + h(VOCE_APERTA.descrizione) + '" autocomplete="off"' + (v ? '' : ' autofocus') + '>' +
     '<div style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Unità</label><input class="campo" id="v-um" value="' + h(VOCE_APERTA.um) + '" placeholder="m², kg, h…" autocomplete="off"></div>' +
     '<div style="flex:1"><label class="eticampo">Prezzo unitario €</label><input class="campo" id="v-prezzo" inputmode="decimal" value="' + h(VOCE_APERTA.prezzo ? numeroIt(VOCE_APERTA.prezzo) : '') + '"></div></div>' +
@@ -4205,7 +4240,7 @@ function vistaNote(idCantiere) {
   const c = cantiere(idCantiere);
   if (!c) return vistaDashboard();
   const inCoda = leggiLocale().coda.filter(function (l) { return l.cantiere === c.id && (l.per === 'nota' || l.tipo === 'nota'); });
-  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Note del cantiere', sotto: h(c.nome) + ' · ' + h(c.codice) });
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Note del cantiere', sotto: h(c.nome) });
   inCoda.forEach(function (l) { html += '<div class="avviso" style="color:var(--muted);border-color:var(--line);background:var(--surface)">' + (l.stato === 'fallito' ? 'Nota dettata non riuscita: ' + h(l.errore || '') : 'Nota dettata in arrivo…') + '</div>'; });
   html += '<div class="modulo"><textarea class="campo auto" data-campo="note-cantiere" data-id="' + h(c.id) + '" placeholder="Note che valgono per tutto il cantiere" style="min-height:200px">' + h(c.note || '') + '</textarea></div>';
   if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="detta-nota" data-id="' + h(c.id) + '"><span class="ico ico-microfono"></span> Detta una nota</button></div>';
@@ -4231,35 +4266,35 @@ function vistaCerca() {
   valori(db.sopralluoghi).forEach(function (s) {
     CHIAVI_SEZIONI.concat(['da_smistare']).forEach(function (k) {
       const st = stralcio(s.sezioni[k]);
-      if (st) risultati.push({ cantiere: s.cantiere, codice: s.codice, giorno: s.giorno, dove: nomeSezione(k), testo: st, a: '#/giorno/' + s.id });
+      if (st) risultati.push({ cantiere: s.cantiere, cosa: 'Sopralluogo', giorno: s.giorno, dove: nomeSezione(k), testo: st, a: '#/giorno/' + s.id });
     });
   });
   valori(db.verbali).forEach(function (v) {
     const s = valori(db.sopralluoghi).find(function (x) { return x.codice === v.sopralluogo; });
     CHIAVI_SEZIONI.forEach(function (k) {
       const st = stralcio(v.sezioni[k]);
-      if (st) risultati.push({ cantiere: v.cantiere, codice: v.codice, giorno: v.giorno, dove: nomeSezione(k), testo: st, a: s ? '#/giorno/' + s.id : '#/verbale/' + v.id });
+      if (st) risultati.push({ cantiere: v.cantiere, cosa: v.nome || (v.giornata ? 'Giornata' : 'Verbale'), giorno: v.giorno, dove: nomeSezione(k), testo: st, a: s ? '#/giorno/' + s.id : '#/verbale/' + v.id });
     });
   });
   valori(db.contabilita).forEach(function (c) {
     const cant = cantierePerCodice(c.cantiere);
     (c.righe || []).forEach(function (r) {
       const st = stralcio(r.descrizione);
-      if (st) risultati.push({ cantiere: c.cantiere, codice: r.codice, giorno: c.aggiornato.slice(0, 10), dove: 'Contabilità ' + c.codice, testo: st, a: cant ? '#/contabilita/' + cant.id : '#/' });
+      if (st) risultati.push({ cantiere: c.cantiere, cosa: 'Contabilità', giorno: c.aggiornato.slice(0, 10), dove: 'Riga di contabilità', testo: st, a: cant ? '#/contabilita/' + cant.id : '#/' });
     });
     const sn = stralcio(c.note);
-    if (sn) risultati.push({ cantiere: c.cantiere, codice: c.codice, giorno: c.aggiornato.slice(0, 10), dove: 'Note della contabilità', testo: sn, a: cant ? '#/contabilita/' + cant.id : '#/' });
+    if (sn) risultati.push({ cantiere: c.cantiere, cosa: 'Contabilità', giorno: c.aggiornato.slice(0, 10), dove: 'Note della contabilità', testo: sn, a: cant ? '#/contabilita/' + cant.id : '#/' });
   });
   valori(db.cantieri).forEach(function (c) {
     const sn = stralcio(c.note);
-    if (sn) risultati.push({ cantiere: c.codice, codice: c.codice, giorno: c.aggiornato.slice(0, 10), dove: 'Note del cantiere', testo: sn, a: '#/note/' + c.id });
+    if (sn) risultati.push({ cantiere: c.codice, cosa: 'Cantiere', giorno: c.aggiornato.slice(0, 10), dove: 'Note del cantiere', testo: sn, a: '#/note/' + c.id });
   });
   risultati.sort(function (a, b) { return b.giorno.localeCompare(a.giorno); });
   if (!risultati.length) { html += '<div class="vuoto-stato">Niente con «' + h(filtroDocumenti) + '».</div>'; return html; }
   html += '<div class="eti">Risultati <span class="n">' + risultati.length + '</span></div>';
   risultati.slice(0, 100).forEach(function (r) {
     const cant = cantierePerCodice(r.cantiere);
-    html += '<div class="card tocca" data-az="vai" data-a="' + h(r.a) + '"><div class="card-in"><div class="fila" style="margin:0 0 6px"><span class="pill cod">' + h(r.codice) + '</span><span class="mini">' + h(cant ? cant.nome : r.cantiere) + ' · ' + h(dataSenzaAnno(r.giorno)) + '</span></div>' +
+    html += '<div class="card tocca" data-az="vai" data-a="' + h(r.a) + '"><div class="card-in"><div class="fila" style="margin:0 0 6px"><span class="pill cod">' + h(r.cosa) + '</span><span class="mini">' + h(cant ? cant.nome : '') + ' · ' + h(dataSenzaAnno(r.giorno)) + '</span></div>' +
       '<div class="sotto" style="color:var(--azione);font-size:14px;text-transform:uppercase;letter-spacing:.05em">' + h(r.dove) + '</div><div style="font-size:17px;margin-top:4px">' + h(r.testo) + '</div></div></div>';
   });
   return html;
@@ -4272,7 +4307,7 @@ function vistaCantiereForm(id, idAzienda) {
   const azNuova = idAzienda ? azienda(idAzienda) : null;
   const v = c || { nome: '', committente: '', indirizzo: '', stato: 'attivo', aperto: oggiISO(), azienda: azNuova ? azNuova.codice : '' };
   const aziende = aziendeTutte();
-  let html = testata({ indietro: c ? '#/cantiere/' + c.id : '#/', titolo: c ? 'Modifica ' + c.codice : 'Nuovo cantiere', sotto: c ? h(c.nome) : 'il codice arriva da solo' });
+  let html = testata({ indietro: c ? '#/cantiere/' + c.id : '#/', titolo: c ? 'Modifica cantiere' : 'Nuovo cantiere', sotto: c ? h(c.nome) : '' });
   html += '<div class="modulo">' +
     '<label class="eticampo">Nome del cantiere</label><input class="campo" id="c-nome" value="' + h(v.nome) + '" placeholder="es. Via Mazzini 14" autocomplete="off"' + (c ? '' : ' autofocus') + '>' +
     '<label class="eticampo">Committente</label><input class="campo" id="c-comm" value="' + h(v.committente) + '" autocomplete="off">' +
@@ -4412,13 +4447,13 @@ function vistaImpostazioniArchivio() {
 
   html += tendina('arc-aziende', 'Aziende', '<div class="card">' + (az.length ? az.map(function (a) {
     return '<button class="riga" data-az="vai" data-a="#/azienda/' + h(a.id) + '">' +
-      '<span class="desc">' + h(a.nome) + '<small>' + h(a.codice) + ' · ' + cantieriDiAzienda(a.codice).length + ' cantieri</small></span>' +
+      '<span class="desc">' + h(a.nome) + '<small>' + cantieriDiAzienda(a.codice).length + ' cantieri</small></span>' +
       '<span class="frec">›</span></button>';
   }).join('') : '<div class="card-corpo">Nessuna azienda.</div>') + '</div>', az.length);
 
   html += tendina('arc-cantieri', 'Cantieri', '<div class="card">' + (cant.length ? cant.map(function (c) {
     return '<button class="riga" data-az="vai" data-a="#/cantiere/' + h(c.id) + '">' +
-      '<span class="desc">' + h(c.nome) + '<small>' + h(c.codice) + ' · ' + h(c.committente || 'senza committente') + (c.stato === 'chiuso' ? ' · chiuso' : '') + '</small></span>' +
+      '<span class="desc">' + h(c.nome) + '<small>' + h(c.committente || 'senza committente') + (c.stato === 'chiuso' ? ' · chiuso' : '') + '</small></span>' +
       '<span class="frec">›</span></button>';
   }).join('') : '<div class="card-corpo">Nessun cantiere.</div>') + '</div>', cant.length);
 
@@ -4426,7 +4461,7 @@ function vistaImpostazioniArchivio() {
     const sop = valori(db.sopralluoghi).find(function (z) { return z.codice === v.sopralluogo; });
     const c = cantierePerCodice(v.cantiere);
     return '<button class="riga"' + (sop ? ' data-az="vai" data-a="#/giorno/' + h(sop.id) + '"' : '') + '>' +
-      '<span class="desc">' + h(nomeVerbale(v)) + '<small>' + (v.nome ? h(v.codice) + ' · ' : '') + h(giornoMese(v.giorno)) + ' · ' + h(c ? c.nome : v.cantiere) + '</small></span>' +
+      '<span class="desc">' + h(titoloVerbale(v, true)) + '<small>' + h(giornoMese(v.giorno)) + ' · ' + h(c ? c.nome : '') + '</small></span>' +
       (sop ? '<span class="frec">›</span>' : '') + '</button>';
   }).join('') : '<div class="card-corpo">Nessun verbale.</div>') + '</div>', verb.length);
 
@@ -4635,10 +4670,10 @@ function apriEsportaPdf(sopId, idVerbale) {
   // Nel cantiere chiuso c'è una voce in più: la relazione di fine cantiere.
   const rel = c && c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
   apriFoglio(
-    '<h2>Esporta PDF</h2><p>' + h(c ? c.nome : '') + ' · ' + h(nomeVerbale(v)) + '</p>' +
+    '<h2>Esporta PDF</h2><p>' + h(c ? c.nome + ' · ' : '') + h(titoloVerbale(v, true)) + '</p>' +
     '<label class="eticampo">Cosa</label><select class="campo" id="pdf-modo" data-campo="pdf-modo">' +
     '<option value="questo">Questo verbale</option><option value="periodo">Tutti i verbali del cantiere in un periodo</option><option value="sezione">Una sola sezione</option>' +
-    (rel ? '<option value="relazione">Relazione di fine cantiere (' + h(rel.codice) + ')</option>' : '') + '</select>' +
+    (rel ? '<option value="relazione">Relazione di fine cantiere</option>' : '') + '</select>' +
     '<div id="pdf-periodo" hidden>' +
     '<label class="eticampo">Periodi pronti</label>' +
     '<div class="periodi">' +
@@ -5754,7 +5789,7 @@ const AZIONI = {
     const c = cantiere(el.dataset.id);
     if (!c) return;
     const rel = generaRelazione(c, relazioneDi(c.codice));
-    avvisa('Relazione ' + rel.codice, 'ok');
+    avvisa('Relazione scritta', 'ok');
     vai('#/relazione/' + rel.id);
   },
   'relazione-rigenera': function (el) { rigeneraRelazione(el.dataset.id); },
@@ -5793,8 +5828,8 @@ const AZIONI = {
     if (!s) return;
     const cantieri = valori(leggiTutto().cantieri).sort(function (a, b) { return a.nome.localeCompare(b.nome); });
     apriFoglio(
-      '<h2>' + h(s.codice) + '</h2>' +
-      '<label class="eticampo">Cantiere</label><select class="campo" id="t-cantiere">' + cantieri.map(function (c) { return '<option value="' + h(c.codice) + '"' + (c.codice === s.cantiere ? ' selected' : '') + '>' + h(c.nome) + ' · ' + h(c.codice) + '</option>'; }).join('') + '</select>' +
+      '<h2>' + h(titoloSopralluogo(s)) + '</h2>' +
+      '<label class="eticampo">Cantiere</label><select class="campo" id="t-cantiere">' + cantieri.map(function (c) { return '<option value="' + h(c.codice) + '"' + (c.codice === s.cantiere ? ' selected' : '') + '>' + h(c.nome) + '</option>'; }).join('') + '</select>' +
       '<div style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Data</label><input class="campo" type="date" id="t-data" value="' + h(s.giorno) + '"></div>' +
       '<div style="flex:1"><label class="eticampo">Ora</label><input class="campo" type="time" id="t-ora" value="' + h(s.ora) + '"></div></div>' +
       /* Il nome serve a chiamarlo dettando: "questo va nel controllo del pomeriggio". */
@@ -5822,7 +5857,7 @@ const AZIONI = {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
     chiudiFoglio();
-    const ok = await chiedi('Eliminare ' + s.codice + '?', 'Si cancellano il sopralluogo, i suoi audio' + (s.verbale ? ' e il verbale ' + s.verbale : '') + '. Il codice non verrà riusato.', 'Elimina', 'rosso');
+    const ok = await chiedi('Eliminare il sopralluogo?', titoloSopralluogo(s) + ': si cancellano il sopralluogo, i suoi audio' + (s.verbale ? ' e il suo verbale' : '') + '.', 'Elimina', 'rosso');
     chiudiFoglio();
     if (!ok) return;
     for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
@@ -5880,7 +5915,7 @@ const AZIONI = {
     const f = s && trovaFoto(s, el.dataset.id);
     if (!f) return;
     if (REG.attiva && REG.destinazione && REG.destinazione.foto === f.id) { avvisa('Ferma prima la registrazione', 'att'); return; }
-    const ok = await chiedi('Eliminare ' + f.codice + '?', 'La foto e il suo referto si cancellano dal telefono. Il codice non verrà riusato.', 'Elimina', 'rosso');
+    const ok = await chiedi('Eliminare ' + nomeFoto(f).toLowerCase() + '?', 'La foto e il suo referto si cancellano dal telefono.', 'Elimina', 'rosso');
     chiudiFoglio();
     if (!ok) return;
     await eliminaFoto(s, f);
@@ -5974,7 +6009,7 @@ const AZIONI = {
     if (!VOCE_APERTA || !VOCE_APERTA.id) return;
     const v = VOCE_APERTA;
     chiudiFoglio();
-    const ok = await chiedi('Eliminare ' + v.codice + '?', v.descrizione, 'Elimina', 'rosso');
+    const ok = await chiedi('Eliminare la voce?', v.descrizione, 'Elimina', 'rosso');
     chiudiFoglio();
     if (!ok) return;
     cancella('listino', v.id);
@@ -6028,7 +6063,7 @@ const AZIONI = {
     const a = azienda(el.dataset.id);
     if (!a) return;
     const cant = cantieriDiAzienda(a.codice);
-    const ok = await chiedi('Eliminare ' + a.codice + '?', a.nome + '. ' + (cant.length ? 'I suoi ' + cant.length + ' cantieri non si cancellano: tornano fra quelli senza azienda.' : 'Non ha cantieri.'), 'Elimina', 'rosso');
+    const ok = await chiedi('Eliminare ' + a.nome + '?', (cant.length ? 'I suoi ' + cant.length + ' cantieri non si cancellano: tornano fra quelli senza azienda.' : 'Non ha cantieri.'), 'Elimina', 'rosso');
     chiudiFoglio();
     if (!ok) return;
     for (const k of ['logo', 'firma', 'banda', 'bandaPiede']) if (a[k]) await cancellaMedia(a[k]);
@@ -6065,7 +6100,7 @@ const AZIONI = {
     if (!c) return;
     const sops = sopralluoghiDi(c.codice);
     const rel = relazioneDi(c.codice);
-    const ok = await chiedi('Eliminare ' + c.codice + '?', c.nome + ': si cancellano anche ' + sops.length + ' sopralluoghi, i verbali' + (rel ? ', la relazione ' + rel.codice : '') + ' e la contabilità. Il listino resta.', 'Elimina tutto', 'rosso');
+    const ok = await chiedi('Eliminare ' + c.nome + '?', 'Si cancellano anche ' + sops.length + ' sopralluoghi, i verbali' + (rel ? ', la relazione' : '') + ' e la contabilità. Il listino resta.', 'Elimina tutto', 'rosso');
     chiudiFoglio();
     if (!ok) return;
     if (rel) cancella('relazione', rel.id);
