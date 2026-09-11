@@ -45,6 +45,17 @@ jobs:
           mkdir -p "$DEST"
           rsync -a --exclude '.git' --exclude '.github' ramo/ "$DEST/"
 
+      - name: Cambio il nome solo nella copia
+        # Cosi' sul telefono l'anteprima si installa gia' chiamata
+        # CANTIERI SVILUPPATORE e non si confonde con quella vera.
+        # I file del ramo non vengono toccati: si cambia solo la copia.
+        run: |
+          cd "anteprime/$RAMO"
+          sed -i 's/"name": "CANTIERI"/"name": "CANTIERI SVILUPPATORE"/' manifest.webmanifest
+          sed -i 's/"short_name": "CANTIERI"/"short_name": "SVILUPPATORE"/' manifest.webmanifest
+          sed -i 's|<title>CANTIERI</title>|<title>CANTIERI SVILUPPATORE</title>|' index.html
+          sed -i 's|content="CANTIERI"|content="CANTIERI SVILUPPATORE"|' index.html
+
       - name: Salvo
         run: |
           cd anteprime
