@@ -1,18 +1,20 @@
 # Anteprima di ogni ramo che non sia main.
-# Copia i file del ramo dentro  anteprime/<nome del ramo>/  su main,
-# cosi' GitHub Pages li pubblica a
-#   https://hsagency587.github.io/cantieri/anteprime/<nome del ramo>/
-# L'app vera, che sta nella radice, non viene toccata da questo lavoro.
+# Copia i file del ramo dentro il repository  hsagency587/cantieri-anteprime,
+# in una cartella che si chiama come il ramo. Indirizzo:
+#   https://hsagency587.github.io/cantieri-anteprime/<nome del ramo>/
+# Sta fuori da /cantieri/ apposta: li' dentro il telefono la scambiava per
+# l'app vera e apriva quella installata.
+# Serve il segreto TOKEN_ANTEPRIME (Contents: lettura e scrittura, solo sul
+# repository cantieri-anteprime).
 name: Anteprime dei rami
 
 on:
   push:
     branches-ignore:
       - main
-      - gh-pages
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: anteprime
@@ -27,38 +29,36 @@ jobs:
         with:
           path: ramo
 
-      - name: Prendo main
+      - name: Prendo il repository delle anteprime
         uses: actions/checkout@v4
         with:
-          ref: main
-          path: principale
+          repository: hsagency587/cantieri-anteprime
+          token: ${{ secrets.TOKEN_ANTEPRIME }}
+          path: anteprime
 
-      - name: Copio il ramo dentro anteprime
+      - name: Copio il ramo nella sua cartella
         run: |
           RAMO=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
           echo "RAMO=$RAMO" >> "$GITHUB_ENV"
-          DEST="principale/anteprime/$RAMO"
+          DEST="anteprime/$RAMO"
           rm -rf "$DEST"
           mkdir -p "$DEST"
-          rsync -a --exclude '.git' --exclude '.github' --exclude 'anteprime' ramo/ "$DEST/"
+          rsync -a --exclude '.git' --exclude '.github' ramo/ "$DEST/"
 
-      - name: Salvo su main
+      - name: Salvo
         run: |
-          cd principale
+          cd anteprime
           git config user.name "anteprime"
           git config user.email "anteprime@users.noreply.github.com"
-          git add -A anteprime
+          git add -A
           if git diff --cached --quiet; then
             echo "Niente di nuovo da pubblicare."
             exit 0
           fi
-          # Il marcatore [cache] fa saltare il lavoro "Controlla e numero cache":
-          # qui non si tocca nessun file dell'app, quindi il numero della cache
-          # di chi la usa non deve cambiare.
-          git commit -m "[anteprima] $RAMO [cache]"
+          git commit -m "anteprima $RAMO"
           for i in 1 2 3; do
             git pull --rebase --autostash && git push && exit 0
             sleep 7
           done
-          echo "Non sono riuscito a pubblicare: main si muove troppo."
+          echo "Non sono riuscito a pubblicare."
           exit 1
