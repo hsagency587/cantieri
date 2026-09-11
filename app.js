@@ -825,10 +825,17 @@ function persisti() {
 
 function codiceNuovo(prefisso) {
   const db = leggiTutto();
-  db.contatori[prefisso] = (db.contatori[prefisso] || 0) + 1;
-  const n = db.contatori[prefisso];
+  /* Un codice già usato non si ridà. Succede quando due telefoni lavorano senza
+     essersi ancora scambiati i dati: il contatore è indietro, e senza questo
+     controllo nascerebbero due SOP-010, col verbale dell'uno attaccato all'altro. */
+  const tipo = Object.keys(PREFISSI).find(function (k) { return PREFISSI[k] === prefisso; });
+  const coll = tipo && COLLEZIONI[tipo] ? valori(db[COLLEZIONI[tipo]] || {}) : [];
+  let n = db.contatori[prefisso] || 0, codice;
   // Tre cifre, che diventano quattro da sole quando serve.
-  return prefisso + '-' + String(n).padStart(3, '0');
+  do { n++; codice = prefisso + '-' + String(n).padStart(3, '0'); }
+  while (coll.some(function (x) { return x.codice === codice; }));
+  db.contatori[prefisso] = n;
+  return codice;
 }
 
 function salva(tipo, oggetto) {
@@ -1977,19 +1984,19 @@ async function lavoroRiordino(l) {
      compare sulla sua card, e nessun testo entra in una sezione prima di quella. */
   const scan = await scansionaDestinazione(sop, pezzo.grezzo);
   if (scan.pulito && scan.pulito !== pezzo.grezzo) { pezzo.grezzo = scan.pulito; salva('sopralluogo', sop); }
-  /* Un sopralluogo che ha già il verbale si tocca solo quando c'è da scegliere, cioè
-     quando di sopralluoghi nella giornata ce n'è più d'uno. Se è l'unico della giornata,
-     la registrazione non ci entra da sola: si chiede, e la si mette dove vuole lui. */
+  /* Se il tecnico non ha nominato nessun sopralluogo e nella giornata ce n'è uno solo,
+     è per forza quello: la registrazione ci entra da sola. Si chiede solo quando c'è
+     davvero da scegliere. Che il sopralluogo abbia già il verbale non conta: le
+     sezioni nuove ci passano da sole (allineaVerbale). */
   const quantiOggi = sopralluoghiDelGiorno(sop.cantiere, sop.giorno).length;
-  const destinoBuono = scan.sop && (!scan.sop.chiuso || quantiOggi > 1);
-  if (destinoBuono && scan.sop.codice !== sop.codice) {
-    const spostato = spostaPezzo(sop, pezzo, scan.sop);
+  const destino = scan.sop || (quantiOggi <= 1 ? sop : null);
+  if (destino && destino.id !== sop.id) {
+    const spostato = spostaPezzo(sop, pezzo, destino);
     if (spostato) {
       sop = spostato.sop; pezzo = spostato.pezzo;
       avvisa('Va nel ' + nomeSopralluogo(sop), 'ok');
-      if (sop.chiuso) avvisa('Il verbale del ' + nomeSopralluogo(sop) + ' va aggiornato', 'att');
     }
-  } else if (!destinoBuono) {
+  } else if (!destino) {
     pezzo.daAssegnare = true;
     pezzo.stato = 'da-assegnare';
     pezzo.titolo = pezzo.titolo || primaRiga(pezzo.grezzo) || ('Registrazione delle ' + pezzo.ora);
@@ -2043,7 +2050,18 @@ async function assegnaPezzo(sopId, pezzoId, destId) {
   if (dest.id !== sop.id) vai('#/giorno/' + corrente.sop.id);
   aggiornaVista();
   accoda({ tipo: 'riordino', sop: corrente.sop.id, pezzo: corrente.pezzo.id, etichetta: 'Riordino' });
-  if (corrente.sop.chiuso) avvisa('Il verbale di questo sopralluogo va aggiornato', 'att');
+}
+
+/* All'avvio: le registrazioni rimaste "da assegnare" in una giornata che ha un
+   sopralluogo solo non hanno niente da scegliere. Entrano lì e si riordinano. */
+function ripescaDaAssegnare() {
+  valori(leggiTutto().sopralluoghi).forEach(function (s) {
+    const attesa = (s.pezzi || []).filter(function (p) { return p.daAssegnare; });
+    if (!attesa.length || sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1) return;
+    attesa.forEach(function (p) { p.daAssegnare = false; p.stato = 'trascritto'; });
+    salva('sopralluogo', s);
+    attesa.forEach(function (p) { accoda({ tipo: 'riordino', sop: s.id, pezzo: p.id, etichetta: 'Riordino' }); });
+  });
 }
 
 async function lavoroNota(l) {
@@ -4658,7 +4676,13 @@ async function creaPdf(idVerbale) {
   const ambito = document.getElementById('pdf-ambito').value;
   let verbali = [v], soloSezione = null, riassunto = '';
   if (modo === 'periodo' || (modo === 'sezione' && ambito === 'periodo')) {
-    verbali = valori(leggiTutto().verbali).filter(function (x) { return x.cantiere === v.cantiere && x.giorno >= dal && x.giorno <= al; }).sort(function (a, b) { return (a.giorno + a.ora).localeCompare(b.giorno + b.ora); });
+    verbali = valori(leggiTutto().verbali).filter(function (x) { return x.cantiere === v.cantiere && x.giorno >= dal && x.giorno <= al; });
+    /* Un giorno entra una volta sola: se ha il verbale di giornata vale quello, che
+       già mette insieme i sopralluoghi; se no i verbali dei singoli sopralluoghi. */
+    const giorniConGiornata = {};
+    verbali.forEach(function (x) { if (x.giornata) giorniConGiornata[x.giorno] = true; });
+    verbali = verbali.filter(function (x) { return x.giornata || !giorniConGiornata[x.giorno]; })
+      .sort(function (a, b) { return (a.giorno + a.ora).localeCompare(b.giorno + b.ora); });
     if (!verbali.length) { avvisa('Nessun verbale nel periodo', 'att'); return; }
   }
   if (modo === 'sezione') soloSezione = quale;
@@ -6364,6 +6388,7 @@ function avvio() {
   if (!archivioEsiste()) { inserisciDatiEsempio(); }
   else if (!conta(db.cantieri) && db.soloEsempio) { inserisciDatiEsempio(); }
   sistemaAziende();
+  ripescaDaAssegnare();
 
   leggiRotta();
   disegna();
