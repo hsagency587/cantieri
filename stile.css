@@ -1005,5 +1005,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .doc-mini.fatto .ora{color:var(--accent)}
 .doc-mini.spento .ora{color:var(--muted)}
 
-/* Il piede della card foto ha solo il tasto piccolo, a destra. */
-.card-piede.dx{justify-content:flex-end}
+/* Il piede della card foto ha solo il tasto "Marca tutte": piccolo, snello, al centro.
+   Un tasto da premere una volta ogni tanto, non da guanti: 30px bastano. */
+.card-piede.dx{justify-content:center}
+.card-piede.dx button.pill{min-height:30px;padding:0 12px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:.02em}
