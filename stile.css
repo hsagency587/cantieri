@@ -858,3 +858,52 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
   background:#fff;border-radius:var(--radius-p);
   box-shadow:0 1px 6px rgba(0,0,0,.5);
 }
+
+
+/* ============ 15. LA STRISCIA DEI DOCUMENTI ============
+   I sopralluoghi di una giornata e i verbali di giornata di un cantiere stanno
+   uno di fianco all'altro e si scorrono di lato, come le foto. Ogni card porta
+   il tasto grande per aprire e i tre puntini per tutto il resto: così la cosa
+   che si fa sempre si fa con un dito solo, e le altre non rubano spazio. */
+
+.doc-fila{
+  display:flex;flex-wrap:nowrap;gap:var(--s2);
+  padding:var(--s2) var(--s4) var(--s3);
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+  scroll-snap-type:x proximity;scrollbar-width:none;overscroll-behavior-x:contain;
+}
+.doc-fila::-webkit-scrollbar{display:none}
+/* Come per le foto: senza questo il margine di destra sparisce a fine scorrimento. */
+.doc-fila::after{content:'';flex:0 0 1px}
+.doc-fila .doc-mini{scroll-snap-align:start}
+
+.doc-mini{position:relative;width:138px;flex:0 0 auto}
+.doc-mini .q{
+  display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;
+  width:100%;min-height:92px;padding:10px 34px 10px 12px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-p);
+  color:var(--text);
+}
+.doc-mini .q:active{filter:brightness(1.15)}
+.doc-mini .ora{font-size:var(--t2);font-weight:700;letter-spacing:.01em}
+.doc-mini .nm{font-size:var(--t1);color:var(--text-2);line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.doc-mini .st{font-size:var(--t1);color:var(--muted);margin-top:auto}
+/* Il sopralluogo che si sta guardando si riconosce senza leggere. */
+.doc-mini.qui .q{border-color:var(--azione);border-width:2px;padding:9px 33px 9px 11px}
+/* La card che apre un passaggio nuovo: stessa forma, ma vuota. */
+.doc-mini.piu .q{
+  align-items:center;justify-content:center;gap:6px;
+  padding:10px 12px;border-style:dashed;color:var(--muted);
+}
+.doc-mini.piu .ora{font-size:20px;font-weight:400}
+.doc-mini.piu .nm{text-align:center;color:var(--muted)}
+
+/* I tre puntini nell'angolo: area di tocco piena, segno piccolo. */
+.doc-mini .punti{
+  position:absolute;top:0;right:0;width:32px;height:40px;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:0;color:var(--muted);
+  font-size:18px;line-height:1;border-radius:0 var(--radius-p) 0 var(--radius-p);
+}
+.doc-mini .punti:active{background:var(--surface);color:var(--text)}

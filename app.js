@@ -376,6 +376,15 @@ const REGOLE_CERCA_VOCE = `Ricevi la descrizione di una lavorazione dettata in c
 
 const REGOLE_UM = `Ricevi un'unità di misura scritta o dettata in un cantiere italiano. Rispondi soltanto con la forma normalizzata, scelta fra: m, m², m³, kg, q, t, n, h, corpo, l, cm, mm. Se non è riconoscibile, rispondi con un punto interrogativo. Niente altro testo.`;
 
+const REGOLE_SCAN_SOPRALLUOGO = `Ricevi il testo di una dettatura fatta in cantiere e l'elenco dei sopralluoghi aperti oggi su quel cantiere.
+Devi capire una cosa sola: il tecnico ha detto a quale sopralluogo va questo dettato?
+Cerca frasi come "questo va nel sopralluogo delle nove", "per il secondo passaggio", "nel sopralluogo del mattino", "questo e' per il controllo del pomeriggio".
+Rispondi solo con un JSON, senza spiegazioni:
+{"sopralluogo":"<il codice del sopralluogo indicato, oppure vuoto>","pulito":"<il testo senza la frase che indicava il sopralluogo>"}
+Se il tecnico non ha indicato niente, metti sopralluogo vuoto e ripeti il testo identico in pulito.
+Se ha indicato un sopralluogo che non e' nell'elenco, metti sopralluogo vuoto.
+Non cambiare nient'altro del testo: togli solo la frase che indicava il sopralluogo.`;
+
 const REGOLE_RIASSUNTO = `Ricevi i verbali di sopralluogo di un cantiere in un periodo. Scrivi due righe, in italiano, che dicono come è andata: cosa è stato fatto, cosa manca, se ci sono stati problemi. Usa solo quello che c'è nei verbali: non inventare niente. Niente titoli, niente elenchi, solo le due righe.`;
 
 // Il referto di una foto è corto: un foglio corto e dedicato, non quello del sopralluogo, che costerebbe venti volte tanto.
@@ -999,6 +1008,39 @@ function sopralluogoDiOggi(codiceCantiere) {
   const oggi = oggiISO();
   return sopralluoghiDi(codiceCantiere).find(function (s) { return s.giorno === oggi; }) || null;
 }
+/* In una giornata si va in cantiere più volte: ogni passaggio è un sopralluogo suo,
+   con la sua ora e il suo verbale. Qui stanno tutti quelli di un giorno, dal primo. */
+function sopralluoghiDelGiorno(codiceCantiere, giorno) {
+  return sopralluoghiDi(codiceCantiere).filter(function (s) { return s.giorno === giorno; })
+    .sort(function (a, b) { return String(a.ora).localeCompare(String(b.ora)); });
+}
+function sopralluoghiDiOggi(codiceCantiere) { return sopralluoghiDelGiorno(codiceCantiere, oggiISO()); }
+// Aperto vuol dire senza verbale fatto.
+function sopralluoghiApertiOggi(codiceCantiere) {
+  return sopralluoghiDiOggi(codiceCantiere).filter(function (s) { return !s.chiuso; });
+}
+// Un sopralluogo si può chiamare come si vuole; se non ha un nome vale l'ora.
+function nomeSopralluogo(s) { return s ? (String(s.nome || '').trim() || ('sopralluogo delle ' + s.ora)) : ''; }
+function sopralluogoPerCodice(codice) {
+  return valori(leggiTutto().sopralluoghi).find(function (s) { return s.codice === codice; }) || null;
+}
+/* Il verbale di giornata: uno per cantiere e per giorno, e tiene dentro i verbali
+   dei sopralluoghi di quel giorno. Ha lo stesso archivio degli altri verbali. */
+function verbaleDiGiornata(codiceCantiere, giorno) {
+  return valori(leggiTutto().verbali).find(function (v) { return v.giornata && v.cantiere === codiceCantiere && v.giorno === giorno; }) || null;
+}
+function verbaliDiGiornata(codiceCantiere) {
+  return valori(leggiTutto().verbali).filter(function (v) { return v.giornata && v.cantiere === codiceCantiere; })
+    .sort(function (a, b) { return b.giorno.localeCompare(a.giorno); });
+}
+// I giorni di un cantiere, dal più recente: ognuno con i suoi sopralluoghi e il suo verbale.
+function giornateDi(codiceCantiere) {
+  const per = {};
+  sopralluoghiDi(codiceCantiere).forEach(function (s) { (per[s.giorno] = per[s.giorno] || []).push(s); });
+  return Object.keys(per).sort(function (a, b) { return b.localeCompare(a); }).map(function (g) {
+    return { giorno: g, sops: per[g].sort(function (a, b) { return String(a.ora).localeCompare(String(b.ora)); }), verbale: verbaleDiGiornata(codiceCantiere, g) };
+  });
+}
 function sezioniPiene(sezioni) {
   return CHIAVI_SEZIONI.filter(function (k) { return String(sezioni[k] || '').trim(); });
 }
@@ -1519,6 +1561,30 @@ function smistaInLocale(grezzo) {
   return { sezione: migliore.sezione, testo: testo.replace(/[.]?$/, '.'), titolo: testo.split(/\s+/).slice(0, 4).join(' ').replace(/[.,;:]$/, '') };
 }
 
+/* Prima di riordinare: il tecnico ha detto dove va questo dettato? Si guarda sempre,
+   anche quando di sopralluoghi aperti ce n'e' uno solo. Torna il sopralluogo trovato
+   (o niente) e il testo ripulito dalla frase che lo nominava: quella frase nel verbale
+   non ci deve finire. */
+async function scansionaDestinazione(sop, grezzo) {
+  const fratelli = sopralluoghiDelGiorno(sop.cantiere, sop.giorno);
+  const vuoto = { sop: null, pulito: grezzo };
+  if (!chiaveAnthropic() || !String(grezzo).trim()) return vuoto;
+  const elenco = fratelli.map(function (x) {
+    return '- ' + x.codice + ': ' + nomeSopralluogo(x) + ' (ore ' + x.ora + (x.chiuso ? ', verbale gia fatto' : '') + ')';
+  }).join('\n');
+  try {
+    const risposta = await chiamaClaude(REGOLE_SCAN_SOPRALLUOGO,
+      'Sopralluoghi di oggi su questo cantiere:\n' + elenco + '\n\nDettato:\n' + grezzo, 900);
+    const j = estraiJSON(risposta);
+    if (!j) return vuoto;
+    const codice = String(j.sopralluogo || '').trim();
+    const pulito = String(j.pulito || '').trim() || grezzo;
+    if (!codice) return { sop: null, pulito: pulito };
+    const trovato = fratelli.find(function (x) { return x.codice === codice; }) || null;
+    return { sop: trovato, pulito: pulito };
+  } catch (e) { return vuoto; }
+}
+
 async function riordinaConClaude(sop, grezzo) {
   const parti = spezzaTesto(grezzo);
   const risultato = { titolo: '' };
@@ -1783,9 +1849,9 @@ async function lavoroReferto(l) {
 }
 
 async function lavoroRiordino(l) {
-  const sop = sopralluogo(l.sop);
+  let sop = sopralluogo(l.sop);
   if (!sop) return;
-  const pezzo = sop.pezzi.find(function (p) { return p.id === l.pezzo; });
+  let pezzo = sop.pezzi.find(function (p) { return p.id === l.pezzo; });
   if (!pezzo || pezzo.stato === 'riordinato') return;
   if (!chiaveAnthropic()) {
     // Senza chiave il testo non si perde: va in "da smistare", e l'uomo lo mette dove va.
@@ -1795,9 +1861,74 @@ async function lavoroRiordino(l) {
     salva('sopralluogo', sop);
     return;
   }
+  /* Lo scan gira sempre. Se il tecnico ha nominato un sopralluogo, il pezzo ci va
+     dentro da solo — anche se quel sopralluogo ha gia il verbale fatto, e allora lo
+     diciamo. Se non ha nominato niente, il pezzo resta li' da assegnare: la scelta
+     compare sulla sua card, e nessun testo entra in una sezione prima di quella. */
+  const scan = await scansionaDestinazione(sop, pezzo.grezzo);
+  if (scan.pulito && scan.pulito !== pezzo.grezzo) { pezzo.grezzo = scan.pulito; salva('sopralluogo', sop); }
+  if (scan.sop && scan.sop.codice !== sop.codice) {
+    const spostato = spostaPezzo(sop, pezzo, scan.sop);
+    if (spostato) {
+      sop = spostato.sop; pezzo = spostato.pezzo;
+      avvisa('Va nel ' + nomeSopralluogo(sop), 'ok');
+      if (sop.chiuso) avvisa('Il verbale del ' + nomeSopralluogo(sop) + ' va aggiornato', 'att');
+    }
+  } else if (!scan.sop) {
+    pezzo.daAssegnare = true;
+    pezzo.stato = 'da-assegnare';
+    pezzo.titolo = pezzo.titolo || primaRiga(pezzo.grezzo) || ('Registrazione delle ' + pezzo.ora);
+    salva('sopralluogo', sop);
+    avvisa('Dimmi in che sopralluogo va', 'att');
+    aggiornaVista();
+    return;
+  }
   const risultato = await riordinaConClaude(sop, pezzo.grezzo);
   applicaRiordino(sop, pezzo, risultato);
   avvisa('Riordinato', 'ok');
+}
+
+/* Sposta una registrazione da un sopralluogo all'altro, con le sue foto e il suo audio.
+   Il testo gia' finito nelle sezioni resta dov'era: qui si sposta solo la registrazione. */
+function spostaPezzo(da, pezzo, a) {
+  const dest = sopralluogo(a.id);
+  if (!dest) return null;
+  da.pezzi = da.pezzi.filter(function (p) { return p.id !== pezzo.id; });
+  const copia = Object.assign({}, pezzo);
+  dest.pezzi.push(copia);
+  salva('sopralluogo', da);
+  salva('sopralluogo', dest);
+  return { sop: dest, pezzo: dest.pezzi[dest.pezzi.length - 1] };
+}
+
+/* La registrazione in attesa finisce nel sopralluogo scelto e da li' riparte il riordino.
+   Se si sceglie "un sopralluogo nuovo", nasce con l'ora della registrazione. */
+async function assegnaPezzo(sopId, pezzoId, destId) {
+  const sop = sopralluogo(sopId);
+  if (!sop) return;
+  const pezzo = sop.pezzi.find(function (p) { return p.id === pezzoId; });
+  if (!pezzo) return;
+  let dest = sop;
+  if (destId === 'nuovo') {
+    const c = cantierePerCodice(sop.cantiere);
+    if (!c) return;
+    dest = creaSopralluogo(c, sop.giorno, pezzo.ora || oraAdesso());
+  } else if (destId && destId !== sopId) {
+    dest = sopralluogo(destId) || sop;
+  }
+  let corrente = { sop: sop, pezzo: pezzo };
+  if (dest.id !== sop.id) {
+    const spostato = spostaPezzo(sop, pezzo, dest);
+    if (spostato) corrente = spostato;
+  }
+  corrente.pezzo.daAssegnare = false;
+  corrente.pezzo.stato = 'trascritto';
+  salva('sopralluogo', corrente.sop);
+  chiudiFoglio();
+  if (dest.id !== sop.id) vai('#/giorno/' + corrente.sop.id);
+  aggiornaVista();
+  accoda({ tipo: 'riordino', sop: corrente.sop.id, pezzo: corrente.pezzo.id, etichetta: 'Riordino' });
+  if (corrente.sop.chiuso) avvisa('Il verbale di questo sopralluogo va aggiornato', 'att');
 }
 
 async function lavoroNota(l) {
@@ -2768,6 +2899,9 @@ function vistaCantiere(id) {
       '</div></div>' + ingressiDocumento(null);
   }
 
+  /* I verbali di giornata in prima linea: sono i documenti che si vanno a cercare,
+     e stanno prima dei giorni perché sono quelli che si mandano fuori. */
+  html += strisciaVerbaliGiornata(c);
   // I giorni, dal più recente, raggruppati per mese
   let meseCorrente = null;
   sops.forEach(function (s) {
@@ -2786,8 +2920,9 @@ function vistaCantiere(id) {
     if (s.chiuso) { const vb = verbaleDiSopralluogo(s.codice); pill = '<span class="pill ok">' + h(vb ? nomeVerbale(vb) : (s.verbale || 'chiuso')) + '</span>'; }
     else if (s.giorno === oggi) pill = '<span class="pill att">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
+    const quanti = sopralluoghiDelGiorno(s.cantiere, s.giorno).length;
     html += '<button class="giorno' + (s.giorno === oggi && !s.chiuso ? ' oggi' : '') + '" data-az="vai" data-a="#/giorno/' + h(s.id) + '">' +
-      '<div class="n"><div class="titolo"><span class="gm">' + h(giornoMese(s.giorno)) + '</span> ' + h(nomeGiornoRelativo(s.giorno)) + ' · ' + h(s.ora) + '</div>' +
+      '<div class="n"><div class="titolo"><span class="gm">' + h(giornoMese(s.giorno)) + '</span> ' + h(nomeGiornoRelativo(s.giorno)) + ' · ' + h(s.ora) + h(quanti > 1 ? ' · ' + quanti + ' passaggi' : '') + '</div>' +
       '<div class="prima">' + h(anteprima) + '</div>' +
       '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + s.pezzi.length + ' audio</span></div></div></button>';
   });
@@ -2815,30 +2950,27 @@ function vistaCantiere(id) {
 
 function creaSopralluogo(c, giorno, ora) {
   return salva('sopralluogo', {
-    cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(),
+    cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(), nome: '',
     sezioni: sezioniVuote(), pezzi: [], chiuso: null, media: [], posizione: null
   });
 }
-/* Il sopralluogo di oggi su quel cantiere. Di una data ce n'è uno solo: se quello di oggi
-   c'è già, anche se è chiuso, si torna su quello e non se ne crea un secondo. */
+/* Dove va a finire quello che si detta adesso. In una giornata i sopralluoghi possono
+   essere più d'uno: si scrive sull'ultimo rimasto aperto. Se sono tutti chiusi, o non ce
+   n'è ancora nessuno, ne nasce uno con l'ora di adesso. La scelta vera, quando serve,
+   arriva dopo: a testo trascritto, non prima di premere. */
 function sopralluogoPerDettare(c) {
-  return sopralluogoDiOggi(c.codice) || creaSopralluogo(c);
+  const aperti = sopralluoghiApertiOggi(c.codice);
+  return aperti.length ? aperti[aperti.length - 1] : creaSopralluogo(c);
 }
 
-/* Il giorno cambia allo scattare della mezzanotte, non alla chiusura della giornata.
-   Quello che era oggi diventa ieri; se era rimasto aperto il lavoro continua, e si apre
-   il giorno di oggi sullo stesso cantiere. Una giornata chiusa non fa nascere niente. */
+/* Il giorno cambia allo scattare della mezzanotte. Non si apre niente da solo: un
+   sopralluogo nasce quando si detta, e basta. Quelli di ieri rimasti aperti restano
+   lì da chiudere, e non si mettono in mezzo al lavoro di oggi. */
 let GIORNO_APP = oggiISO();
 function controllaCambioGiorno() {
   const oggi = oggiISO();
   if (oggi === GIORNO_APP) return;
-  const prima = GIORNO_APP;
   GIORNO_APP = oggi;
-  valori(leggiTutto().sopralluoghi).filter(function (s) { return s.giorno === prima && !s.chiuso; })
-    .forEach(function (s) {
-      const c = cantierePerCodice(s.cantiere);
-      if (c && c.stato !== 'chiuso' && !sopralluogoDiOggi(c.codice)) creaSopralluogo(c);
-    });
   aggiornaVista();
 }
 
@@ -2884,6 +3016,10 @@ function vistaGiornoInCorso(s, c) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
+  /* I sopralluoghi della giornata, uno di fianco all'altro come le foto: si scorre
+     di lato e si salta da un passaggio all'altro senza tornare al cantiere. */
+  html += strisciaSopralluoghi(s);
+  html += cardDaAssegnare(s);
   // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
   // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
   html += cardFotoGiorno(s, !!s.chiuso);
@@ -2917,6 +3053,171 @@ function vistaGiornoInCorso(s, c) {
       '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">' + (s.chiuso ? 'Aggiorna' : 'Chiudi') + '</button></div>';
   }
   return html;
+}
+
+/* I verbali di giornata del cantiere, uno di fianco all'altro. Stesse card, stessi
+   tre puntini: Visualizza, Modifica, Esporta, Scarica. */
+function strisciaVerbaliGiornata(c) {
+  const lista = verbaliDiGiornata(c.codice);
+  if (!lista.length) return '';
+  return '<div class="card"><div class="card-capo">Verbali di giornata<span class="dx">' + lista.length + '</span></div>' +
+    '<div class="doc-fila">' + lista.map(function (v) {
+      const quanti = (v.sopralluoghi || []).length;
+      return '<div class="doc-mini">' +
+        '<button class="q" data-az="vai" data-a="#/verbale/' + h(v.id) + '">' +
+        '<span class="ora">' + h(giornoMese(v.giorno)) + '</span>' +
+        '<span class="nm">' + h(nomeVerbale(v)) + '</span>' +
+        '<span class="st">' + quanti + (quanti === 1 ? ' passaggio' : ' passaggi') + '</span></button>' +
+        '<button class="punti" data-az="menu-verbale" data-id="' + h(v.id) + '" aria-label="Altro">⋯</button>' +
+        '</div>';
+    }).join('') + '</div></div>';
+}
+
+/* Il verbale di giornata mette insieme i verbali dei sopralluoghi di quel giorno.
+   Sezione per sezione, con davanti l'ora del passaggio da cui viene il testo, così
+   chi legge sa in che momento della giornata è successa ogni cosa. Si riscrive: è
+   sempre lo stesso documento, con lo stesso codice. */
+async function faiVerbaleGiornata(codiceCantiere, giorno) {
+  const c = cantierePerCodice(codiceCantiere);
+  if (!c) return;
+  const sops = sopralluoghiDelGiorno(codiceCantiere, giorno);
+  if (!sops.length) { avvisa('Nessun sopralluogo in questa giornata', 'att'); return; }
+  const aperti = sops.filter(function (x) { return !x.chiuso; });
+  const gia = verbaleDiGiornata(codiceCantiere, giorno);
+  let testo = gia
+    ? 'Il verbale di giornata ' + gia.codice + ' si rifà con i verbali di adesso. Le correzioni fatte a mano su di lui si perdono.'
+    : 'Si mette insieme un documento solo con i ' + sops.length + ' sopralluoghi di questa giornata.';
+  if (aperti.length) testo = aperti.length + (aperti.length === 1 ? ' sopralluogo non ha ancora il suo verbale: entra con quello che ha adesso. ' : ' sopralluoghi non hanno ancora il loro verbale: entrano con quello che hanno adesso. ') + testo;
+  const ok = await chiedi(gia ? 'Aggiornare il verbale di giornata?' : 'Scrivere il verbale di giornata?', testo, gia ? 'Aggiorna' : 'Scrivi', '',
+    '<label class="eticampo">Nome del verbale</label><input class="campo" id="vg-nome" maxlength="80" placeholder="' + h(gia ? gia.codice : 'facoltativo, se no vale il codice') + '" value="' + h(gia ? (gia.nome || '') : '') + '">');
+  const campo = document.getElementById('vg-nome');
+  const nomeScelto = campo ? campo.value.trim() : '';
+  chiudiFoglio();
+  if (!ok) return;
+  const sezioni = {};
+  CHIAVI_SEZIONI.forEach(function (k) { sezioni[k] = ''; });
+  sops.forEach(function (x) {
+    const vb = verbaleDiSopralluogo(x.codice);
+    const fonte = vb ? vb.sezioni : x.sezioni;
+    CHIAVI_SEZIONI.forEach(function (k) {
+      const t = String(fonte[k] || '').trim();
+      if (!t) return;
+      sezioni[k] = aggiungiTesto(sezioni[k], 'Ore ' + x.ora + (String(x.nome || '').trim() ? ' · ' + x.nome : '') + '\n' + t);
+    });
+  });
+  let v = gia;
+  const campi = { cantiere: codiceCantiere, giorno: giorno, ora: sops[0].ora, giornata: true,
+    sopralluoghi: sops.map(function (x) { return x.codice; }), nome: nomeScelto, sezioni: sezioni };
+  if (v) { Object.assign(v, campi); v = salva('verbale', v); }
+  else v = salva('verbale', campi);
+  avvisa(gia ? 'Verbale di giornata aggiornato' : 'Verbale di giornata ' + nomeVerbale(v), 'ok');
+  aggiornaVista();
+}
+
+/* I tre puntini: le quattro cose che si fanno a un verbale senza aprirlo. */
+function menuVerbale(idVerbale) {
+  const v = verbale(idVerbale);
+  if (!v) return;
+  const p = pdfConChiave('verbale:' + v.codice);
+  apriFoglio(
+    '<h2>' + h(nomeVerbale(v)) + '</h2><p>' + h(dataBreve(v.giorno)) + (v.giornata ? ' · verbale di giornata' : ' · ore ' + h(v.ora)) + '</p>' +
+    '<button class="btn btn-ok" data-az="verbale-vedi" data-id="' + h(v.id) + '">Visualizza</button>' +
+    '<button class="btn" data-az="pdf-modifica" data-id="' + h(v.id) + '">Modifica</button>' +
+    (p ? '<button class="btn" data-az="pdf-manda" data-id="' + h(p.id) + '">Esporta</button>' : '<button class="btn" data-az="verbale-esporta" data-id="' + h(v.id) + '">Esporta</button>') +
+    '<button class="btn" data-az="verbale-scarica" data-id="' + h(v.id) + '">Scarica il PDF</button>' +
+    '<button class="btn" data-az="chiudi-foglio">Chiudi</button>'
+  );
+}
+
+/* Gli stessi tre puntini su un sopralluogo: portano al suo verbale, se c'è. */
+function menuSopralluogo(idSop) {
+  const s = sopralluogo(idSop);
+  if (!s) return;
+  const vb = verbaleDiSopralluogo(s.codice);
+  apriFoglio(
+    '<h2>' + h(nomeSopralluogo(s)) + '</h2><p>' + h(dataBreve(s.giorno)) + ' · ore ' + h(s.ora) + '</p>' +
+    '<button class="btn btn-ok" data-az="sopralluogo-apri" data-id="' + h(s.id) + '">Visualizza</button>' +
+    '<button class="btn" data-az="sopralluogo-nome" data-id="' + h(s.id) + '">Cambia il nome</button>' +
+    (vb ? '<button class="btn" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica il verbale</button>' +
+          '<button class="btn" data-az="verbale-scarica" data-id="' + h(vb.id) + '">Scarica il PDF</button>'
+        : '<button class="btn" data-az="sopralluogo-chiudi" data-id="' + h(s.id) + '">Scrivi il verbale</button>') +
+    '<button class="btn" data-az="chiudi-foglio">Chiudi</button>'
+  );
+}
+
+/* Dare un nome al sopralluogo serve a nominarlo dettando: "questo va nel controllo
+   del pomeriggio". Senza nome vale l'ora, e funziona lo stesso. */
+async function rinominaSopralluogo(idSop) {
+  const s = sopralluogo(idSop);
+  if (!s) return;
+  const ok = await chiedi('Nome del sopralluogo', 'Serve a nominarlo quando detti: "questo va nel controllo del pomeriggio". Se lo lasci vuoto vale l\'ora.', 'Salva', '',
+    '<input class="campo" id="sop-nome" maxlength="60" placeholder="controllo del pomeriggio" value="' + h(s.nome || '') + '">');
+  const campo = document.getElementById('sop-nome');
+  const nome = campo ? campo.value.trim() : '';
+  chiudiFoglio();
+  if (!ok) return;
+  s.nome = nome;
+  salva('sopralluogo', s);
+  avvisa('Salvato', 'ok');
+  aggiornaVista();
+}
+
+/* La striscia dei sopralluoghi del giorno. Ogni card ha l'ora e il nome, il tasto per
+   aprirlo e i tre puntini con Visualizza, Modifica, Esporta e Scarica del suo verbale.
+   In coda, il tasto per aprire un altro sopralluogo nello stesso giorno. */
+function strisciaSopralluoghi(s) {
+  const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
+  const vg = verbaleDiGiornata(s.cantiere, s.giorno);
+  const tuttiChiusi = fratelli.length && fratelli.every(function (x) { return !!x.chiuso; });
+  let html = '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">' + fratelli.length + (fratelli.length === 1 ? ' passaggio' : ' passaggi') + '</span></div>' +
+    '<div class="doc-fila">';
+  fratelli.forEach(function (x) {
+    const vb = verbaleDiSopralluogo(x.codice);
+    const qui = x.id === s.id;
+    html += '<div class="doc-mini' + (qui ? ' qui' : '') + '">' +
+      '<button class="q" data-az="vai" data-a="#/giorno/' + h(x.id) + '">' +
+      '<span class="ora">' + h(x.ora) + '</span>' +
+      '<span class="nm">' + h(nomeSopralluogo(x)) + '</span>' +
+      '<span class="st">' + (x.chiuso ? h(vb ? nomeVerbale(vb) : 'verbale fatto') : 'aperto') + '</span></button>' +
+      '<button class="punti" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
+      '</div>';
+  });
+  html += '<div class="doc-mini piu"><button class="q" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '"><span class="ora">＋</span><span class="nm">un altro<br>sopralluogo</span></button></div>';
+  html += '</div>';
+  /* Il verbale di giornata si fa quando i passaggi sono tutti chiusi: mette insieme
+     i loro verbali in un documento solo, quello che si manda fuori. */
+  if (vg) {
+    html += '<div class="griglia"><button class="btn btn-ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">Verbale di giornata ' + h(nomeVerbale(vg)) + '</button>' +
+      '<button class="btn" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button></div>';
+  } else if (tuttiChiusi) {
+    html += '<div class="griglia"><button class="btn btn-ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button></div>';
+  } else {
+    html += '<div class="card-corpo" style="color:var(--muted)">Il verbale di giornata si scrive quando tutti i passaggi hanno il loro verbale.</div>';
+  }
+  return html + '</div>';
+}
+
+/* Le registrazioni che aspettano di sapere dove vanno. Finché sono qui il loro testo
+   non è entrato in nessuna sezione: si tocca il sopralluogo giusto e ci va. */
+function cardDaAssegnare(s) {
+  const attesa = s.pezzi.filter(function (p) { return p.daAssegnare; });
+  if (!attesa.length) return '';
+  const aperti = sopralluoghiApertiOggi(s.cantiere);
+  return '<div class="card gialla"><div class="card-capo gialla">' + attesa.length + (attesa.length === 1 ? ' registrazione da assegnare' : ' registrazioni da assegnare') + '</div>' +
+    attesa.map(function (p) {
+      let scelte = '<div class="griglia">';
+      const visti = {};
+      scelte += '<button class="btn btn-ok" data-az="assegna-pezzo" data-sop="' + h(s.id) + '" data-pezzo="' + h(p.id) + '" data-dest="' + h(s.id) + '">In questo (' + h(s.ora) + ')</button>';
+      visti[s.id] = true;
+      aperti.forEach(function (x) {
+        if (visti[x.id]) return;
+        visti[x.id] = true;
+        scelte += '<button class="btn" data-az="assegna-pezzo" data-sop="' + h(s.id) + '" data-pezzo="' + h(p.id) + '" data-dest="' + h(x.id) + '">' + h(nomeSopralluogo(x)) + '</button>';
+      });
+      scelte += '<button class="btn" data-az="assegna-pezzo" data-sop="' + h(s.id) + '" data-pezzo="' + h(p.id) + '" data-dest="nuovo">Un sopralluogo nuovo</button></div>';
+      return '<div class="card-capo spenta">' + h(p.titolo || ('Registrazione delle ' + p.ora)) + '<span class="dx">' + h(p.ora) + '</span></div>' +
+        '<div class="card-corpo" style="color:var(--text-2)">' + h(p.grezzo || '') + '</div>' + scelte;
+    }).join('') + '</div>';
 }
 
 /* Lo scanner del telefono: si fotografa una bolla di consegna o il modulo firme degli
@@ -3075,10 +3376,14 @@ function vistaVerbaleModifica(id) {
   const v = verbale(id);
   if (!v) return vistaDashboard();
   const s = valori(leggiTutto().sopralluoghi).find(function (x) { return x.codice === v.sopralluogo; });
-  const c = cantierePerCodice(v.cantiere) || { nome: '?' };
-  let html = testata({ indietro: s ? '#/giorno/' + s.id : '#/', titolo: 'Modifica ' + nomeVerbale(v), sotto: h(c.nome) + ' · ' + h(v.codice) + ' · ' + h(dataBreve(v.giorno)) + ' · ' + h(v.ora),
-    destra: '<span class="pill ok">verbale</span>' });
-  html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Correggere il verbale non tocca il sopralluogo: la dettatura originale resta com\'era.</div>';
+  const c = cantierePerCodice(v.cantiere) || { nome: '?', id: '' };
+  const indietro = v.giornata ? ('#/cantiere/' + (cantiere(c.id) ? c.id : '')) : (s ? '#/giorno/' + s.id : '#/');
+  let html = testata({ indietro: indietro || '#/', titolo: 'Modifica ' + nomeVerbale(v), sotto: h(c.nome) + ' · ' + h(v.codice) + ' · ' + h(dataBreve(v.giorno)) + (v.giornata ? '' : ' · ' + h(v.ora)),
+    destra: '<span class="pill ok">' + (v.giornata ? 'giornata' : 'verbale') + '</span>' });
+  html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">' +
+    (v.giornata
+      ? 'È il verbale di tutta la giornata: mette insieme i ' + ((v.sopralluoghi || []).length || 'vari') + ' sopralluoghi di quel giorno. Se lo rifai da capo, le correzioni fatte qui si perdono.'
+      : 'Correggere il verbale non tocca il sopralluogo: la dettatura originale resta com\'era.') + '</div>';
   html += '<div class="card"><div class="card-capo">Nome del verbale</div>' +
     '<input class="campo" data-campo="nome-verbale" data-id="' + h(v.id) + '" maxlength="80" placeholder="' + h(v.codice) + '" value="' + h(v.nome || '') + '"></div>';
   SEZIONI.forEach(function (z) {
@@ -4142,9 +4447,11 @@ async function liberaSpazioMese(mese) {
    il tasto di condivisione dell'iPhone: nessun invio automatico.
    ============================================================ */
 
-function apriEsportaPdf(sopId) {
-  const s = sopralluogo(sopId);
-  const v = s && verbaleDiSopralluogo(s.codice);
+/* Si arriva qui da un sopralluogo — e allora si prende il suo verbale — oppure
+   direttamente da un verbale, anche da quello di giornata. */
+function apriEsportaPdf(sopId, idVerbale) {
+  let v = idVerbale ? verbale(idVerbale) : null;
+  if (!v) { const s = sopralluogo(sopId); v = s ? verbaleDiSopralluogo(s.codice) : null; }
   if (!v) { avvisa('Nessun verbale', 'att'); return; }
   const c = cantierePerCodice(v.cantiere);
   const tutti = valori(leggiTutto().verbali).filter(function (x) { return x.cantiere === v.cantiere; }).sort(function (a, b) { return a.giorno.localeCompare(b.giorno); });
@@ -5195,6 +5502,38 @@ const AZIONI = {
     avviaRegistrazione({ tipo: 'rilievo', sop: s.id, sezione: el.dataset.sezione });
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
+  /* Un altro passaggio nello stesso giorno: nasce con l'ora di adesso e si apre subito. */
+  'sopralluogo-nuovo': function (el) {
+    const s = sopralluogo(el.dataset.id);
+    if (!s) return;
+    const c = cantierePerCodice(s.cantiere);
+    if (!c) return;
+    const n = creaSopralluogo(c, s.giorno, oraAdesso());
+    vai('#/giorno/' + n.id);
+  },
+  'assegna-pezzo': function (el) { assegnaPezzo(el.dataset.sop, el.dataset.pezzo, el.dataset.dest); },
+  'menu-sopralluogo': function (el) { menuSopralluogo(el.dataset.id); },
+  'menu-verbale': function (el) { menuVerbale(el.dataset.id); },
+  'sopralluogo-apri': function (el) { chiudiFoglio(); vai('#/giorno/' + el.dataset.id); },
+  'sopralluogo-nome': function (el) { rinominaSopralluogo(el.dataset.id); },
+  'sopralluogo-chiudi': function (el) { chiudiFoglio(); chiudiGiornata(el.dataset.id); },
+  'giornata-verbale': function (el) { faiVerbaleGiornata(el.dataset.cantiere, el.dataset.giorno); },
+  /* Visualizza: se il PDF c'è già si legge quello, se no si apre il verbale. */
+  'verbale-vedi': function (el) {
+    const v = verbale(el.dataset.id);
+    chiudiFoglio();
+    if (!v) return;
+    const p = pdfConChiave('verbale:' + v.codice);
+    vai(p ? '#/leggi/' + p.id : '#/verbale/' + v.id);
+  },
+  'verbale-esporta': function (el) {
+    const v = verbale(el.dataset.id);
+    if (!v) return;
+    const p = pdfConChiave('verbale:' + v.codice);
+    chiudiFoglio();
+    if (p) mandaFuoriPdf(p.id); else apriEsportaPdf(null, v.id);
+  },
+  'verbale-scarica': function (el) { const id = el.dataset.id; chiudiFoglio(); apriEsportaPdf(null, id); },
   'esporta-pdf': function (el) { apriEsportaPdf(el.dataset.id); },
   'pdf-crea': function (el) { creaPdf(el.dataset.id); },
   /* Le scorciatoie del periodo: riempiono le due date al posto tuo. Fine
