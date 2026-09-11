@@ -2721,8 +2721,15 @@ function vistaCantiere(id) {
   // Un cantiere chiuso ha la sua relazione in testa, prima dei giorni: è la cosa che si va a leggere.
   const rel = c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
   if (c.stato === 'chiuso') {
-    if (rel) html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
-      '<div class="fila"><span class="pill ok">' + h(rel.codice) + '</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div></div>';
+    if (rel) {
+      // La card si tocca per leggere la relazione; i tre tasti sotto fanno il resto.
+      const pdfRel = pdfConChiave('relazione:' + rel.codice);
+      html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
+        '<div class="fila"><span class="pill ok">' + h(rel.codice) + '</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div>' +
+        '<div class="griglia"><button class="btn" data-az="esporta-pdf-relazione" data-id="' + h(rel.id) + '">Esporta</button>' +
+        (pdfRel ? '<button class="btn" data-az="vai" data-a="#/leggi/' + h(pdfRel.id) + '">Visualizza</button>' : '') +
+        '<button class="btn" data-az="vai" data-a="#/modifica-relazione/' + h(rel.id) + '">Correggi</button></div></div>';
+    }
     else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni, con i conti</div></div></div>';
   }
   if (!sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso') {
@@ -2861,9 +2868,11 @@ function vistaGiornoInCorso(s, c) {
      e si tocca Aggiorna. Da qui si esce col PDF o si va a correggere il verbale. */
   if (s.chiuso) {
     const vb = verbaleDiSopralluogo(s.codice);
+    const pdfVb = vb ? pdfConChiave('verbale:' + vb.codice) : null;
     html += '<div class="card"><div class="card-capo">Verbale ' + h(vb ? vb.codice : (s.verbale || '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
-      '<div class="griglia"><button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta il PDF</button>' +
-      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi il verbale</button>' : '') + '</div></div>';
+      '<div class="griglia"><button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>' +
+      (pdfVb ? '<button class="btn" data-az="vai" data-a="#/leggi/' + h(pdfVb.id) + '">Visualizza</button>' : '') +
+      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi</button>' : '') + '</div></div>';
   }
 
   if (String(s.sezioni.da_smistare || '').trim()) {
@@ -4562,7 +4571,7 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
 /* Logo e firma dell'azienda del cantiere, già incorporati nel documento. Senza azienda,
    o senza immagini, si restituisce vuoto e il PDF esce come prima. */
 async function preparaMarchio(doc, primo) {
-  const vuoto = { az: null, logo: null, firma: null };
+  const vuoto = { az: null, logo: null, firma: null, banda: null, piede: null };
   if (!primo) return vuoto;
   const c = cantierePerCodice(primo.cantiere);
   const a = aziendaDiCantiere(c);
@@ -4850,6 +4859,9 @@ function pdfArchiviati() {
 function pdfDi(codiceCantiere) {
   return pdfArchiviati().filter(function (p) { return p.cantiere === codiceCantiere; })
     .sort(function (a, b) { return String(b.quando).localeCompare(String(a.quando)); });
+}
+function pdfConChiave(chiave) {
+  return pdfArchiviati().find(function (p) { return p.chiave === chiave; }) || null;
 }
 function pdfPerSopralluogo(codiceSop) {
   return pdfArchiviati().find(function (p) { return p.tipo === 'verbale' && p.sopralluogo === codiceSop; }) || null;
