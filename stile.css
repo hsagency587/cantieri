@@ -1009,3 +1009,28 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    Un tasto da premere una volta ogni tanto, non da guanti: 30px bastano. */
 .card-piede.dx{justify-content:center}
 .card-piede.dx button.pill{min-height:30px;padding:0 12px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:.02em}
+
+/* La tendina di "Esporta": le due strade scendono sotto la fila dei tasti, dentro
+   la card, come le voci dei puntini. Il tasto aperto si vede dal fondo e dalla freccia. */
+.btn .fr{margin-left:var(--s1);font-size:var(--t1);opacity:.7}
+.griglia .btn.on{background:var(--surface-2);border-color:var(--azione)}
+.esp-voci{display:flex;flex-direction:column;border-top:1px solid var(--line);margin-top:var(--s1)}
+.esp-voci .voce-m{
+  display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  width:100%;min-height:52px;padding:var(--s2) var(--s4);
+  background:transparent;border:0;border-bottom:1px solid var(--line);
+  color:var(--text);text-align:left;
+}
+.esp-voci .voce-m:last-child{border-bottom:0}
+.esp-voci .voce-m:active{background:var(--surface)}
+.esp-voci .voce-m b{font-size:var(--t3);font-weight:600;color:var(--azione)}
+.esp-voci .voce-m small{font-size:var(--t1);color:var(--muted)}
+
+/* Elimina, nelle voci dei puntini: rosso, e sempre per ultimo. */
+.doc-mini .voce-m.rossa{color:var(--danger)}
+
+/* La firma del tecnico, nella scheda azienda, sotto il suo nome. */
+.az-firma{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
+.az-firma img,.az-firma .vuoto{flex:0 0 120px;width:120px;height:56px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:var(--radius-p)}
+.az-firma .vuoto{display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--muted);font-size:var(--t1)}
+.az-firma .btn{flex:1;min-height:44px;font-size:var(--t2)}
