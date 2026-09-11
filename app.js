@@ -1693,6 +1693,22 @@ async function riordinaConClaude(sop, grezzo) {
   return risultato;
 }
 
+/* Se la giornata ha già il suo verbale, una correzione alla giornata passa da sola
+   nel verbale: solo le sezioni toccate, così quello che si è corretto a mano
+   nelle altre resta. Non serve più premere Aggiorna. */
+function allineaVerbale(sop, chiavi) {
+  if (!sop.chiuso) return;
+  const v = verbaleDiSopralluogo(sop.codice);
+  if (!v) return;
+  let cambiato = false;
+  chiavi.forEach(function (k) {
+    if (k === 'da_smistare' || CHIAVI_SEZIONI.indexOf(k) === -1) return;
+    const testo = String(sop.sezioni[k] || '');
+    if ((v.sezioni[k] || '') !== testo) { v.sezioni[k] = testo; cambiato = true; }
+  });
+  if (cambiato) salva('verbale', v);
+}
+
 // Il testo nuovo non sostituisce quello che c'è già: si aggiunge in fondo, a capo.
 function applicaRiordino(sop, pezzo, risultato) {
   const piene = [];
@@ -1707,6 +1723,7 @@ function applicaRiordino(sop, pezzo, risultato) {
   pezzo.sezione = piene[0] || (risultato.da_smistare ? 'da_smistare' : '');
   pezzo.stato = 'riordinato';
   salva('sopralluogo', sop);
+  allineaVerbale(sop, piene);
 }
 
 /* ============================================================
@@ -1909,6 +1926,7 @@ async function lavoroRilievo(l) {
   pezzo.stato = 'riordinato';
   pezzo.errore = null;
   salva('sopralluogo', sop);
+  allineaVerbale(sop, [l.sezione]);
   avvisa('Rilievo pronto', 'ok');
 }
 
@@ -3102,7 +3120,7 @@ function vistaGiornoInCorso(s, c) {
     '<div class="barra-av"><i style="width:' + Math.round(piene.length / CHIAVI_SEZIONI.length * 100) + '%"></i></div></div>';
 
   /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
-     e si tocca Aggiorna. Da qui si esce col PDF o si va a correggere il verbale. */
+     e ogni correzione passa da sola nel verbale. Da qui si esce col PDF o si va a correggere il verbale. */
   if (s.chiuso) {
     const vb = verbaleDiSopralluogo(s.codice);
     /* Visualizza c'è sempre, e sta per primo: è il tasto che si preme di più.
@@ -3152,10 +3170,12 @@ function vistaGiornoInCorso(s, c) {
   });
   if (vuote.length) html += tendina('vuote-' + s.id, vuote.length + (vuote.length === 1 ? ' sezione ancora vuota' : ' sezioni ancora vuote'), vuote.join(''));
   html += tendinaGrezzo(s);
+  /* Col verbale già scritto il tasto Chiudi non serve più: ogni correzione alla
+     giornata passa da sola nel verbale, e per il resto ci sono i tasti della card. */
   if (!REG.attiva) {
-    html += '<div class="barra tre"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '"><span class="ico ico-microfono"></span> ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
+    html += '<div class="barra' + (s.chiuso ? '' : ' tre') + '"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '"><span class="ico ico-microfono"></span> ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(s.id) + '"><span class="ico ico-fotocamera"></span> Foto</button>' +
-      '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">' + (s.chiuso ? 'Aggiorna' : 'Chiudi') + '</button></div>';
+      (s.chiuso ? '' : '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">Chiudi</button>') + '</div>';
   }
   return html;
 }
@@ -3458,7 +3478,7 @@ function tendinaGrezzo(s) {
 }
 
 /* Chiudere la giornata vuol dire scrivere il verbale, e basta: la giornata non si blocca.
-   Si continua a cambiarla, e si ripreme Aggiorna quante volte si vuole. Il verbale è
+   Si continua a cambiarla, e ogni correzione passa da sola nel verbale. Il verbale è
    sempre lo stesso documento, con lo stesso codice: si riscrive, non se ne fa un altro. */
 async function chiudiGiornata(sopId) {
   const s = sopralluogo(sopId);
@@ -3468,7 +3488,7 @@ async function chiudiGiornata(sopId) {
   const giaFatto = verbaleDiSopralluogo(s.codice);
   let testo = giaFatto
     ? 'Il verbale ' + giaFatto.codice + ' si rifà con quello che hai cambiato. Le correzioni fatte a mano sul verbale si perdono. La giornata resta modificabile.'
-    : 'Si scrive il verbale della giornata. La giornata resta modificabile: se cambi qualcosa, tocca Aggiorna e il verbale si rifà.';
+    : 'Si scrive il verbale della giornata. La giornata resta modificabile: se cambi qualcosa, il verbale si aggiorna da solo.';
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
   const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale', '',
@@ -5737,6 +5757,7 @@ const AZIONI = {
     // I pezzi che stavano "da smistare" adesso hanno una sezione: così l'audio si trova sotto il testo.
     s.pezzi.forEach(function (p) { if (p.sezione === 'da_smistare' || (!p.sezione && p.stato === 'riordinato')) { p.sezione = el.dataset.sezione; p.sezioni = [el.dataset.sezione]; } });
     salva('sopralluogo', s);
+    allineaVerbale(s, [el.dataset.sezione]);
     avvisa('Spostato in ' + nomeSezione(el.dataset.sezione), 'ok');
     aggiornaVista();
   },
@@ -6185,7 +6206,7 @@ function suCampo(el, evento) {
     cresciTextarea(el);
     const capo = el.previousElementSibling;
     if (capo && capo.classList.contains('card-capo') && !capo.classList.contains('gialla')) capo.classList.toggle('spenta', !el.value.trim());
-    salvaConCalma('sop-' + s.id, function () { salva('sopralluogo', s); chiediNotificheUnaVolta(); });
+    salvaConCalma('sop-' + s.id, function () { salva('sopralluogo', s); allineaVerbale(s, [el.dataset.sezione]); chiediNotificheUnaVolta(); });
     return;
   }
   if (campo === 'nome-verbale') {
