@@ -3170,12 +3170,11 @@ function vistaGiornoInCorso(s, c) {
   });
   if (vuote.length) html += tendina('vuote-' + s.id, vuote.length + (vuote.length === 1 ? ' sezione ancora vuota' : ' sezioni ancora vuote'), vuote.join(''));
   html += tendinaGrezzo(s);
-  /* Col verbale già scritto il tasto Chiudi non serve più: ogni correzione alla
-     giornata passa da sola nel verbale, e per il resto ci sono i tasti della card. */
+  /* Solo dettare e fotografare. Il verbale si scrive dai puntini del sopralluogo,
+     nella striscia in alto; una volta scritto, ogni correzione ci passa da sola. */
   if (!REG.attiva) {
-    html += '<div class="barra' + (s.chiuso ? '' : ' tre') + '"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '"><span class="ico ico-microfono"></span> ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
-      '<button class="az verde" data-az="foto-scatta" data-id="' + h(s.id) + '"><span class="ico ico-fotocamera"></span> Foto</button>' +
-      (s.chiuso ? '' : '<button class="az stretta" data-az="chiudi-giornata" data-id="' + h(s.id) + '">Chiudi</button>') + '</div>';
+    html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '"><span class="ico ico-microfono"></span> ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
+      '<button class="az verde" data-az="foto-scatta" data-id="' + h(s.id) + '"><span class="ico ico-fotocamera"></span> Foto</button></div>';
   }
   return html;
 }
