@@ -923,6 +923,8 @@ function cantiere(id) { return leggiTutto().cantieri[id] || null; }
 function cantierePerCodice(codice) { return valori(leggiTutto().cantieri).find(function (c) { return c.codice === codice; }) || null; }
 function sopralluogo(id) { return leggiTutto().sopralluoghi[id] || null; }
 function verbale(id) { return leggiTutto().verbali[id] || null; }
+// Un verbale si può chiamare come si vuole; se non ha un nome vale il codice.
+function nomeVerbale(v) { return v ? (String(v.nome || '').trim() || v.codice) : ''; }
 function sopralluoghiDi(codiceCantiere) {
   return valori(leggiTutto().sopralluoghi).filter(function (s) { return s.cantiere === codiceCantiere; })
     .sort(function (a, b) { return (b.giorno + b.ora).localeCompare(a.giorno + a.ora); });
@@ -1933,10 +1935,10 @@ function chiudiFoglio() {
 function foglioAperto() { return !document.getElementById('finestra').hidden; }
 
 // Le conferme non usano confirm(): su iPhone installata esce un riquadro piccolo e grigio, illeggibile.
-function chiedi(titolo, testo, etichettaOk, tipoOk) {
+function chiedi(titolo, testo, etichettaOk, tipoOk, extra) {
   return new Promise(function (ok) {
     apriFoglio(
-      '<h2>' + h(titolo) + '</h2>' + (testo ? '<p>' + h(testo) + '</p>' : '') +
+      '<h2>' + h(titolo) + '</h2>' + (testo ? '<p>' + h(testo) + '</p>' : '') + (extra || '') +
       '<button class="btn ' + (tipoOk === 'rosso' ? 'btn-rosso' : 'btn-ok') + '" data-az="conferma-si">' + h(etichettaOk || 'Conferma') + '</button>' +
       '<button class="btn" data-az="conferma-no">Annulla</button>'
     );
@@ -2781,7 +2783,7 @@ function vistaCantiere(id) {
     const piene = sezioniPiene(s.sezioni).length;
     const anteprima = CHIAVI_SEZIONI.map(function (k) { return primaRiga(s.sezioni[k]); }).filter(Boolean)[0] || (s.sezioni.da_smistare ? primaRiga(s.sezioni.da_smistare) : '') || (s.pezzi.length ? 'trascrizione in arrivo…' : 'ancora niente');
     let pill;
-    if (s.chiuso) pill = '<span class="pill ok">' + h(s.verbale || 'chiuso') + '</span>';
+    if (s.chiuso) { const vb = verbaleDiSopralluogo(s.codice); pill = '<span class="pill ok">' + h(vb ? nomeVerbale(vb) : (s.verbale || 'chiuso')) + '</span>'; }
     else if (s.giorno === oggi) pill = '<span class="pill att">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
     html += '<button class="giorno' + (s.giorno === oggi && !s.chiuso ? ' oggi' : '') + '" data-az="vai" data-a="#/giorno/' + h(s.id) + '">' +
@@ -2869,7 +2871,7 @@ function vistaGiornoInCorso(s, c) {
   if (s.chiuso) {
     const vb = verbaleDiSopralluogo(s.codice);
     const pdfVb = vb ? pdfConChiave('verbale:' + vb.codice) : null;
-    html += '<div class="card"><div class="card-capo">Verbale ' + h(vb ? vb.codice : (s.verbale || '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
+    html += '<div class="card"><div class="card-capo">Verbale ' + h(vb ? nomeVerbale(vb) : (s.verbale || '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
       '<div class="griglia"><button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>' +
       (pdfVb ? '<button class="btn" data-az="vai" data-a="#/leggi/' + h(pdfVb.id) + '">Visualizza</button>' : '') +
       (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi</button>' : '') + '</div></div>';
@@ -3033,15 +3035,19 @@ async function chiudiGiornata(sopId) {
     : 'Si scrive il verbale della giornata. La giornata resta modificabile: se cambi qualcosa, tocca Aggiorna e il verbale si rifà.';
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
-  const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale');
+  const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale', '',
+    '<label class="eticampo">Nome del verbale</label><input class="campo" id="v-nome" maxlength="80" placeholder="' + h(giaFatto ? giaFatto.codice : 'facoltativo, se no vale il codice') + '" value="' + h(giaFatto ? (giaFatto.nome || '') : '') + '">');
+  // Il campo si legge prima di chiudere il foglio: dopo non c'è più.
+  const campoNome = document.getElementById('v-nome');
+  const nomeScelto = campoNome ? campoNome.value.trim() : '';
   chiudiFoglio();
   if (!ok) return;
   const sezioni = {};
   CHIAVI_SEZIONI.forEach(function (k) { sezioni[k] = s.sezioni[k] || ''; });
   if (String(s.sezioni.da_smistare || '').trim()) sezioni.note = aggiungiTesto(sezioni.note, s.sezioni.da_smistare);
   let v = giaFatto;
-  if (v) { v.sezioni = sezioni; v.giorno = s.giorno; v.ora = s.ora; v = salva('verbale', v); }
-  else v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, sezioni: sezioni });
+  if (v) { v.sezioni = sezioni; v.giorno = s.giorno; v.ora = s.ora; v.nome = nomeScelto; v = salva('verbale', v); }
+  else v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, nome: nomeScelto, sezioni: sezioni });
   /* I rilievi della giornata salgono da soli nei rilievi complessivi del
      cantiere: sono misure del lavoro, non della giornata. Si portano una volta
      sola, alla prima chiusura: se il verbale si rifà non si raddoppiano. */
@@ -3060,7 +3066,7 @@ async function chiudiGiornata(sopId) {
   s.chiuso = adessoISO();
   s.verbale = v.codice;
   salva('sopralluogo', s);
-  avvisa(giaFatto ? 'Verbale ' + v.codice + ' aggiornato' : 'Verbale ' + v.codice, 'ok');
+  avvisa(giaFatto ? 'Verbale ' + nomeVerbale(v) + ' aggiornato' : 'Verbale ' + nomeVerbale(v), 'ok');
   aggiornaVista();
 }
 
@@ -3070,9 +3076,11 @@ function vistaVerbaleModifica(id) {
   if (!v) return vistaDashboard();
   const s = valori(leggiTutto().sopralluoghi).find(function (x) { return x.codice === v.sopralluogo; });
   const c = cantierePerCodice(v.cantiere) || { nome: '?' };
-  let html = testata({ indietro: s ? '#/giorno/' + s.id : '#/', titolo: 'Modifica ' + v.codice, sotto: h(c.nome) + ' · ' + h(dataBreve(v.giorno)) + ' · ' + h(v.ora),
+  let html = testata({ indietro: s ? '#/giorno/' + s.id : '#/', titolo: 'Modifica ' + nomeVerbale(v), sotto: h(c.nome) + ' · ' + h(v.codice) + ' · ' + h(dataBreve(v.giorno)) + ' · ' + h(v.ora),
     destra: '<span class="pill ok">verbale</span>' });
   html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Correggere il verbale non tocca il sopralluogo: la dettatura originale resta com\'era.</div>';
+  html += '<div class="card"><div class="card-capo">Nome del verbale</div>' +
+    '<input class="campo" data-campo="nome-verbale" data-id="' + h(v.id) + '" maxlength="80" placeholder="' + h(v.codice) + '" value="' + h(v.nome || '') + '"></div>';
   SEZIONI.forEach(function (z) {
     const testo = v.sezioni[z.chiave] || '';
     html += '<div class="card"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
@@ -3937,7 +3945,7 @@ function vistaImpostazioniArchivio() {
     const sop = valori(db.sopralluoghi).find(function (z) { return z.codice === v.sopralluogo; });
     const c = cantierePerCodice(v.cantiere);
     return '<button class="riga"' + (sop ? ' data-az="vai" data-a="#/giorno/' + h(sop.id) + '"' : '') + '>' +
-      '<span class="desc">' + h(v.codice) + '<small>' + h(giornoMese(v.giorno)) + ' · ' + h(c ? c.nome : v.cantiere) + '</small></span>' +
+      '<span class="desc">' + h(nomeVerbale(v)) + '<small>' + (v.nome ? h(v.codice) + ' · ' : '') + h(giornoMese(v.giorno)) + ' · ' + h(c ? c.nome : v.cantiere) + '</small></span>' +
       (sop ? '<span class="frec">›</span>' : '') + '</button>';
   }).join('') : '<div class="card-corpo">Nessun verbale.</div>') + '</div>', verb.length);
 
@@ -4144,7 +4152,7 @@ function apriEsportaPdf(sopId) {
   // Nel cantiere chiuso c'è una voce in più: la relazione di fine cantiere.
   const rel = c && c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
   apriFoglio(
-    '<h2>Esporta PDF</h2><p>' + h(c ? c.nome : '') + ' · ' + h(v.codice) + '</p>' +
+    '<h2>Esporta PDF</h2><p>' + h(c ? c.nome : '') + ' · ' + h(nomeVerbale(v)) + '</p>' +
     '<label class="eticampo">Cosa</label><select class="campo" id="pdf-modo" data-campo="pdf-modo">' +
     '<option value="questo">Questo verbale</option><option value="periodo">Tutti i verbali del cantiere in un periodo</option><option value="sezione">Una sola sezione</option>' +
     (rel ? '<option value="relazione">Relazione di fine cantiere (' + h(rel.codice) + ')</option>' : '') + '</select>' +
@@ -4206,7 +4214,9 @@ async function creaPdf(idVerbale) {
   try { byte = await costruisciPdf(verbali, soloSezione, riassunto, { dal: dal, al: al, modo: modo }); }
   catch (e) { avvisa('PDF non riuscito', 'err'); return; }
   const c = cantierePerCodice(v.cantiere);
-  const nome = (modo === 'questo' ? v.codice : (modo === 'periodo' ? (c ? c.codice : 'cantiere') + '_' + dal + '_' + al : v.codice + '_' + quale)) + '.pdf';
+  // Se il verbale ha un nome, il file lo porta dietro al codice: VER-003_getto-solaio.pdf
+  const baseVerbale = v.nome ? v.codice + '_' + nomeFile(v.nome) : v.codice;
+  const nome = (modo === 'questo' ? baseVerbale : (modo === 'periodo' ? (c ? c.codice : 'cantiere') + '_' + dal + '_' + al : baseVerbale + '_' + quale)) + '.pdf';
   // Prima resta nell'app, poi esce: se la condivisione la annulli, il documento c'è lo stesso.
   const archiviato = await archiviaPdf(byte, nome, {
     chiave: modo === 'questo' ? 'verbale:' + v.codice : (modo === 'periodo' ? 'periodo:' + v.cantiere + ':' + dal + ':' + al : 'sezione:' + v.codice + ':' + quale),
@@ -4495,6 +4505,7 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     if (testataPiena) {
       scrivi('VERBALE DI SOPRALLUOGO', 16, grassetto);
       y -= 4;
+      if (v.nome) scrivi(v.nome, 12, grassetto);
       scrivi(v.codice + '   -   sopralluogo ' + (v.sopralluogo || ''), 11, normale);
       scrivi('Cantiere: ' + (c.codice || '') + ' - ' + (c.nome || '') + (c.indirizzo ? ' - ' + c.indirizzo : ''), 11, normale);
       scrivi('Committente: ' + (c.committente || ''), 11, normale);
@@ -4503,7 +4514,7 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       pagina.drawLine({ start: { x: M, y: y }, end: { x: L - M, y: y }, thickness: 0.8, color: PDF.rgb(0.2, 0.2, 0.2) });
       y -= 12;
     } else {
-      scrivi(dataEstesa(v.giorno).toUpperCase() + ' - ' + v.codice, 12, grassetto);
+      scrivi(dataEstesa(v.giorno).toUpperCase() + ' - ' + nomeVerbale(v), 12, grassetto);
     }
     const chiavi = soloSezione ? [soloSezione] : CHIAVI_SEZIONI;
     const fotoQui = fotoPerVerbale[v.id] || {};
@@ -5678,6 +5689,13 @@ function suCampo(el, evento) {
     const capo = el.previousElementSibling;
     if (capo && capo.classList.contains('card-capo') && !capo.classList.contains('gialla')) capo.classList.toggle('spenta', !el.value.trim());
     salvaConCalma('sop-' + s.id, function () { salva('sopralluogo', s); chiediNotificheUnaVolta(); });
+    return;
+  }
+  if (campo === 'nome-verbale') {
+    const v = verbale(el.dataset.id);
+    if (!v) return;
+    v.nome = el.value.trim();
+    salvaConCalma('ver-' + v.id, function () { salva('verbale', v); });
     return;
   }
   if (campo === 'sezione-verbale') {
