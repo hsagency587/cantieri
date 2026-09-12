@@ -478,7 +478,8 @@ function strisciaVerbaliGiornata(c) {
     return '<div class="doc-mini fatto' + (aperto ? ' menu' : '') + '">' +
       '<div class="q"><span class="ora">Settimana</span><span class="nm">' + h(giornoMese(w.dal) + ' – ' + giornoMese(w.al)) + '</span></div>' +
       (aperto
-        ? '<div class="voci"><button class="voce-m" data-az="pdf-manda" data-id="' + h(w.pdf.id) + '">Esporta</button>' +
+        ? '<div class="voci"><button class="voce-m" data-az="settimana-rifai" data-id="' + h(c.id) + '" data-dal="' + h(w.dal) + '" data-al="' + h(w.al) + '">Rifai</button>' +
+          '<button class="voce-m" data-az="pdf-manda" data-id="' + h(w.pdf.id) + '">Esporta</button>' +
           '<button class="voce-m" data-az="pdf-fuori" data-id="' + h(w.pdf.id) + '">Scarica</button>' +
           '<button class="voce-m rossa" data-az="pdf-elimina" data-id="' + h(w.pdf.id) + '">Elimina</button></div>'
         : '<button class="vedi" data-az="pdf-apri" data-id="' + h(w.pdf.id) + '">Visualizza</button>') +

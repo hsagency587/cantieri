@@ -1204,3 +1204,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .giorno.oggi{background:color-mix(in srgb, var(--azione) 6%, transparent);box-shadow:inset 2px 0 0 var(--azione)}
 /* Dentro una tendina aperta il contenuto va a tutta larghezza, come la tendina stessa: niente rientro. */
 .tendine > div > .card{margin-left:0;margin-right:0}
+/* Le due card "＋" del cantiere, una di fianco all'altra: una riga sola. */
+.due-card{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)}
+.due-card > .card{margin:0}
+.due-card .card.piu .titolo{font-size:var(--t2)}

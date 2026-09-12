@@ -217,15 +217,18 @@ function vistaCantiere(id) {
     }
     else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni, con i conti</div></div></div>';
   }
-  if (!sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso') {
-    // La data corta, di fianco al titolo: la card resta di una riga.
-    html += '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p><div class="sotto">' + h(giornoMese(oggi) + '/' + oggi.slice(2, 4)) + '</div></div></div>';
-  }
-  /* La domenica, il verbale di settimana: il PDF da lunedì a oggi di questo cantiere.
-     Compare solo se nella settimana c'è almeno un sopralluogo, e sparisce una volta fatto (solo in questo cantiere). */
-  if (daISO(oggi).getDay() === 0 && c.stato !== 'chiuso' && sops.some(function (s) { return s.giorno >= lunediDi(oggi); }) && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)) {
-    html += '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale di settimana</p><div class="sotto">' + h(giornoMese(lunediDi(oggi)) + ' – ' + giornoMese(oggi)) + '</div></div></div>';
-  }
+  /* Le due card "＋": il sopralluogo di oggi (se non c'è ancora) e il verbale di settimana,
+     una di fianco all'altra su una riga sola quando ci sono tutte e due. Il verbale di
+     settimana compare da sabato alle 10 fino a domenica, se la settimana ha almeno un
+     sopralluogo, e sparisce una volta fatto — solo in questo cantiere. Per rifarlo:
+     i puntini della sua card nella casella Verbali. */
+  const adesso = new Date();
+  const finestraSettimana = adesso.getDay() === 0 || (adesso.getDay() === 6 && adesso.getHours() >= 10);
+  const cardOggi = !sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso'
+    ? '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p></div></div>' : '';
+  const cardSett = finestraSettimana && c.stato !== 'chiuso' && sops.some(function (s) { return s.giorno >= lunediDi(oggi); }) && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)
+    ? '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale di settimana</p></div></div>' : '';
+  html += cardOggi && cardSett ? '<div class="due-card">' + cardOggi + cardSett + '</div>' : cardOggi + cardSett;
   /* Rilievi e bolle si prendono pensando al cantiere, non alla giornata: qui il tasto sta
      in chiaro, e quello che si detta o si scansiona finisce nel giorno di oggi. */
   /* Due piani. Quello del cantiere raccoglie i rilievi e i documenti che valgono

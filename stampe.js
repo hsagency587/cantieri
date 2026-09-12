@@ -1411,6 +1411,19 @@ Object.assign(AZIONI, {
     aggiornaVista();
     apriFoglioPdfFatto(p, null);
   },
+  // Rifare un verbale di settimana già fatto: stesso periodo, PDF nuovo al posto del vecchio.
+  'settimana-rifai': async function (el) {
+    const c = cantiere(el.dataset.id);
+    if (!c) return;
+    if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
+    PUNTI_APERTI = null;
+    avvisa('Rifaccio il verbale di settimana…');
+    giornateDi(c.codice).forEach(function (g) { if (g.giorno >= el.dataset.dal && g.giorno <= el.dataset.al && g.sops.length && !g.verbale) scriviVerbaleGiornata(c.codice, g.giorno, ''); });
+    const p = await pdfPeriodo(c, el.dataset.dal, el.dataset.al);
+    if (!p) { avvisa('Nessun verbale in questa settimana', 'att'); return; }
+    aggiornaVista();
+    apriFoglioPdfFatto(p, null);
+  },
   'pdf-apri': function (el) { vai('#/leggi/' + el.dataset.id); },
   'pdf-leggi': function (el) { chiudiFoglio(); vai('#/leggi/' + el.dataset.id); },
   'pdf-modifica': function (el) { chiudiFoglio(); vai('#/verbale/' + el.dataset.id); },
