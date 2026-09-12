@@ -1053,3 +1053,10 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 #fotocamera .scatta{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);background-clip:padding-box}
 #fotocamera .scatta:active{transform:translateX(-50%) scale(.92)}
 #fotocamera .chiudi{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;font-size:22px}
+
+/* La riga in testa alla giornata: tutto su una riga sola. Il verbale di giornata è un
+   tasto sottile — solo il contorno nel colore principale, stretto sulle parole. */
+.avanz .r{align-items:center;flex-wrap:nowrap;white-space:nowrap}
+.avanz .r .dx{flex:0 0 auto}
+.avanz .r button.pill{min-height:24px;padding:0 7px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:0;background:transparent;border:1px solid var(--line)}
+.avanz .r button.pill.ok{color:var(--accent);border-color:var(--accent)}
