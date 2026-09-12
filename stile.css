@@ -1034,3 +1034,22 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .az-firma img,.az-firma .vuoto{flex:0 0 120px;width:120px;height:56px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:var(--radius-p)}
 .az-firma .vuoto{display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--muted);font-size:var(--t1)}
 .az-firma .btn{flex:1;min-height:44px;font-size:var(--t2)}
+
+/* I tre puntini fuori dalla striscia — giornate, cantieri, aziende: lo stesso pill grigio
+   di "apri", in fondo alla riga. La voce Elimina scende sotto, come la tendina di Esporta. */
+.pill.cod.puntini{min-height:30px;padding:0 10px;font-size:var(--t3);line-height:1;letter-spacing:0}
+.pill.cod.puntini.on{color:var(--azione);border-color:var(--azione)}
+.giorno .stat .puntini{margin-left:auto}
+.card-in.cant{grid-template-columns:1fr auto auto}
+.card-in.cant > .puntini{grid-area:1/3;align-self:center}
+.card-in.cant .sotto{grid-area:2/1/2/4}
+.riga.az-capo .apre.piu{color:var(--azione);font-weight:600}
+.esp-voci .voce-m.rossa b{color:var(--danger)}
+
+/* La fotocamera dentro l'app: tutto schermo, solo il video. Il tasto di scatto in basso
+   al centro, la ✕ in alto a destra. */
+#fotocamera{position:fixed;inset:0;z-index:1000;background:#000}
+#fotocamera video{width:100%;height:100%;object-fit:cover}
+#fotocamera .scatta{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);background-clip:padding-box}
+#fotocamera .scatta:active{transform:translateX(-50%) scale(.92)}
+#fotocamera .chiudi{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;font-size:22px}
