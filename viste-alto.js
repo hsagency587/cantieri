@@ -219,14 +219,14 @@ function vistaCantiere(id) {
   }
   /* Le due card "＋": il sopralluogo di oggi (se non c'è ancora) e il verbale di settimana,
      una di fianco all'altra su una riga sola quando ci sono tutte e due. Il verbale di
-     settimana compare da sabato alle 10 fino a domenica, se la settimana ha almeno un
-     sopralluogo, e sparisce una volta fatto — solo in questo cantiere. Per rifarlo:
+     settimana compare da sabato alle 10 fino a domenica, se la settimana ha almeno due
+     verbali di giornata, e sparisce una volta fatto — solo in questo cantiere. Per rifarlo:
      i puntini della sua card nella casella Verbali. */
   const adesso = new Date();
   const finestraSettimana = adesso.getDay() === 0 || (adesso.getDay() === 6 && adesso.getHours() >= 10);
   const cardOggi = !sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso'
     ? '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p></div></div>' : '';
-  const cardSett = finestraSettimana && c.stato !== 'chiuso' && sops.some(function (s) { return s.giorno >= lunediDi(oggi); }) && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)
+  const cardSett = finestraSettimana && c.stato !== 'chiuso' && verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunediDi(oggi) && v.giorno <= oggi; }).length >= 2 && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)
     ? '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale di settimana</p></div></div>' : '';
   html += cardOggi && cardSett ? '<div class="due-card">' + cardOggi + cardSett + '</div>' : cardOggi + cardSett;
   /* Rilievi e bolle si prendono pensando al cantiere, non alla giornata: qui il tasto sta
