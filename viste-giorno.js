@@ -357,9 +357,9 @@ function vistaGiornata(id) {
   return html;
 }
 
-// La card del verbale di giornata: il nome su una riga sola, e i tre tasti.
+// La card del verbale di giornata: il titolo nel colore primario, come il pallino, e i tre tasti.
 function cardVerbaleGiornata(vg) {
-  return '<div class="card"><div class="card-capo"><span class="et">' + h(titoloVerbale(vg, true)) + '</span><span class="dx">verbale di giornata</span></div>' +
+  return '<div class="card"><div class="card-capo"><span class="et acc">Verbale di giornata</span></div>' +
     '<div class="griglia tre">' +
     '<button class="btn" data-az="verbale-vedi" data-id="' + h(vg.id) + '">Visualizza</button>' +
     tastoEsporta('vg-' + vg.id) +
@@ -448,18 +448,18 @@ function vistaGiornoInCorso(s, c) {
 
 /* I verbali di giornata del cantiere, uno di fianco all'altro. Stesse card, stessi
    tre puntini: Visualizza, Modifica, Esporta, Scarica. */
-/* Cosa sta nella casella dei verbali: i verbali di settimana (i PDF di periodo del
-   cantiere) e, fra quelli di giornata, solo i giorni che nessuna settimana ha già
-   raccolto. Ogni settimana la casella si svuota; i PDF di giornata restano in
-   "PDF archiviati". */
+/* Cosa sta nella casella dei verbali: i verbali di giornata della settimana in
+   corso (da lunedì) e il verbale della settimana scorsa, che resta lì tutta la
+   settimana per poterla confrontare con questa. Alla mezzanotte di domenica la
+   casella si svuota da sola; i PDF di giornata restano in "PDF archiviati". */
 function verbaliInVista(c) {
+  const lunedi = lunediDi(oggiISO());
+  const scorsa = dataLocaleISO(new Date(daISO(lunedi).getTime() - 7 * 86400000));
   const settimane = pdfDi(c.codice).filter(function (p) { return p.tipo === 'periodo'; }).map(function (p) {
     const k = String(p.chiave || '').split(':');
     return { pdf: p, dal: k[2] || '', al: k[3] || '' };
-  }).sort(function (a, b) { return b.al.localeCompare(a.al); });
-  const giornate = verbaliDiGiornata(c.codice).filter(function (v) {
-    return !settimane.some(function (w) { return v.giorno >= w.dal && v.giorno <= w.al; });
-  });
+  }).filter(function (w) { return w.dal >= scorsa && w.dal < lunedi; }).sort(function (a, b) { return b.al.localeCompare(a.al); });
+  const giornate = verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunedi; });
   return { settimane: settimane, giornate: giornate };
 }
 function strisciaVerbaliGiornata(c) {

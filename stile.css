@@ -1194,3 +1194,5 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    e sotto Scrivi/Aggiorna il verbale, con il colore del lavoro fatto. */
 .doc-mini .vedi + .vedi{margin-top:0}
 .doc-mini .vedi.scrivi{color:var(--accent)}
+/* La card del verbale di giornata: il titolo è "Verbale di giornata", nel colore primario come il pallino. Niente scritta a destra. */
+.card-capo .et.acc{color:var(--accent)}
