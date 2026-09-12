@@ -3030,7 +3030,9 @@ function segnaScorrimento(radice) {
     fila.insertAdjacentHTML('afterbegin', '<span class="frec-s sx" data-az="scorri" data-verso="-1" aria-hidden="true"><i>‹</i></span>');
     fila.insertAdjacentHTML('beforeend', '<span class="frec-s dx" data-az="scorri" data-verso="1" aria-hidden="true"><i>›</i></span>');
     const aggiorna = function () {
-      fila.classList.toggle('piu-sx', fila.scrollLeft > 2);
+      // A riposo lo snap porta la prima card a filo, oltre il padding: quello non conta come "altra roba".
+      const bordo = parseFloat(getComputedStyle(fila).paddingLeft) || 0;
+      fila.classList.toggle('piu-sx', fila.scrollLeft > bordo + 2);
       fila.classList.toggle('piu-dx', fila.scrollLeft + fila.clientWidth < fila.scrollWidth - 2);
     };
     fila.addEventListener('scroll', aggiorna, { passive: true });
