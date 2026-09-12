@@ -1065,3 +1065,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    striscia si allarga un poco, e il tasto non va a capo. */
 .doc-mini{width:152px}
 .doc-mini .vedi{white-space:nowrap;padding:0 4px;letter-spacing:-.01em}
+
+/* "Libera memoria": una riga sottile, il colore dell'avviso, niente di più. */
+.riga-memoria{display:flex;align-items:center;justify-content:center;width:100%;min-height:28px;margin-bottom:var(--s2);padding:0 var(--s4);background:transparent;border:1px solid color-mix(in srgb, var(--gold) 55%, transparent);border-radius:var(--radius-p);color:var(--gold);font-size:var(--t1);font-weight:600}
+.riga-memoria:active{background:color-mix(in srgb, var(--gold) 12%, transparent)}
