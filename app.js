@@ -5990,8 +5990,16 @@ function vistaLeggiPdf(idPdf) {
   const c = p.cantiere ? cantierePerCodice(p.cantiere) : null;
   const sop = p.sopralluogo ? valori(leggiTutto().sopralluoghi).find(function (z) { return z.codice === p.sopralluogo; }) : null;
   const v = sop ? verbaleDiSopralluogo(sop.codice) : null;
+  /* Indietro torna da dove si è venuti: il PDF di un sopralluogo o di una giornata
+     riporta nella giornata; gli altri (periodo, sezione, relazione) nell'elenco dei PDF. */
+  const vg = p.tipo === 'verbale' && !sop ? verbalePerCodice(String(p.chiave || '').replace(/^verbale:/, '')) : null;
+  const giornata = vg && vg.giornata ? (sopralluoghiDelGiorno(vg.cantiere, vg.giorno)[0] || null) : null;
+  let indietro = c ? '#/pdf/' + c.id : '#/';
+  if (sop) indietro = '#/giorno/' + sop.id;
+  else if (giornata) indietro = '#/giorno/' + giornata.id;
+  else if (vg && vg.giornata && giornataDi(vg.cantiere, vg.giorno)) indietro = '#/giornata/' + giornataDi(vg.cantiere, vg.giorno).id;
   let html = testata({
-    indietro: c ? '#/pdf/' + c.id : '#/',
+    indietro: indietro,
     titolo: p.nome || 'documento.pdf',
     sotto: h(dataBreve(p.giorno)) + ' · ' + h(pesoFile(p.peso || 0))
   });
