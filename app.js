@@ -2755,19 +2755,21 @@ function descriviStatoFoto(st) {
 function filaFoto(s, lista, opzioni) {
   opzioni = opzioni || {};
   if (!lista.length) return '';
-  return '<div class="foto-fila">' + lista.map(function (f) {
+  return '<div class="foto-fila">' + lista.map(function (x) {
+    // Un elemento è la foto, oppure { sop, f } quando la fila mette insieme più sopralluoghi.
+    const f = x.f || x, sx = x.sop || s;
     const st = statoLavoroFoto(f);
     const eti = opzioni.doc ? (GENERI_BREVI[f.genere] || 'documento') : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
-      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
+      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(sx.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
       // Una scansione PDF non ha miniatura: l'icona del documento e il numero di pagine.
       (f.file ? (f.formato === 'pdf' ? '<span class="ico ico-documento"></span><small>' + (f.pagine ? f.pagine + ' pag.' : 'PDF') + '</small>' : '<img data-foto="' + h(f.file) + '" alt="">') : '') + '</button>' +
       // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
-      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(nomeFoto(f)) + '">✕</button>' +
+      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(sx.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(nomeFoto(f)) + '">✕</button>' +
       /* Il bollino del PDF sta nell'angolo basso della foto. Dove serve scegliere si tocca,
          e non ruba una riga sotto la miniatura; altrove dice soltanto com'è messa. */
       (opzioni.segna
-        ? '<button class="tacca' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="' + (f.nelPdf ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (f.nelPdf ? '✓ PDF' : '☐ PDF') + '</button>'
+        ? '<button class="tacca' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(sx.id) + '" data-id="' + h(f.id) + '" aria-label="' + (f.nelPdf ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (f.nelPdf ? '✓ PDF' : '☐ PDF') + '</button>'
         : (f.nelPdf ? '<span class="tacca on">✓ PDF</span>' : '')) +
       '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
       '</div>';
@@ -3367,6 +3369,8 @@ function vistaGiornoInCorso(s, c) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
+  // La galleria della giornata sta sopra i sopralluoghi: da qui si spuntano le foto del verbale di giornata.
+  html += cardFotoGiornata(s);
   /* I sopralluoghi della giornata, uno di fianco all'altro come le foto: si scorre
      di lato e si salta da un passaggio all'altro senza tornare al cantiere. */
   html += strisciaSopralluoghi(s);
@@ -3567,9 +3571,13 @@ function strisciaSopralluoghi(s) {
       '<div class="q">' +
       '<span class="ora">' + h(suoNome || x.ora) + '</span>' +
       (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '') + '</div>' +
+      /* Visualizza: la prima volta apre il sopralluogo qui sotto; sul sopralluogo già
+         aperto apre il suo verbale (il PDF se c'è), e se non è scritto chiede di scriverlo. */
       (aperto
         ? '<div class="voci">' + vociMenuSopralluogo(x) + '</div>'
-        : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>') +
+        : (qui
+          ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Visualizza</button>'
+          : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>')) +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   });
@@ -3674,8 +3682,22 @@ function cardStrumenti(s) {
 }
 
 
-/* La card delle foto del giorno, con i due ingressi nascosti: la fotocamera (capture)
-   e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
+/* Tutte le foto della giornata in una fila sola, sopra i sopralluoghi. Sono le stesse
+   foto dei passaggi, viste insieme: spunta ed elimina valgono da tutte e due le parti. */
+function cardFotoGiornata(s) {
+  const lista = [];
+  sopralluoghiDelGiorno(s.cantiere, s.giorno).forEach(function (x) {
+    fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); });
+  });
+  if (!lista.length) return '';
+  const nelPdf = lista.filter(function (x) { return x.f.nelPdf; }).length;
+  return '<div class="card"><div class="card-capo">Foto della giornata<span class="dx">' + nelPdf + ' su ' + lista.length + ' nel PDF</span></div>' +
+    filaFoto(s, lista, { segna: true }) + '</div>';
+}
+
+/* Le foto di questo sopralluogo, in una tendina chiusa: la galleria della giornata sta
+   sopra e le mostra già tutte. Sotto restano i due ingressi nascosti: la fotocamera
+   (capture) e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
 function cardFotoGiorno(s, conVerbale) {
   const foto = fotoNormali(s);
   const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
@@ -3683,11 +3705,12 @@ function cardFotoGiorno(s, conVerbale) {
   if (foto.length) {
     const tutte = nelPdf === foto.length;
     // La spunta "nel PDF" c'è sempre: una foto marcata entra nel verbale di giornata anche se questo passaggio non ha il suo verbale.
-    html += '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
+    html += tendina('foto-' + s.id, 'Foto di questo sopralluogo',
+      '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
       filaFoto(s, foto, { segna: true }) +
       // Solo il tasto piccolo, a destra: il conteggio in testa dice già com'è messa.
       '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' +
-      '</div>';
+      '</div>', foto.length);
   }
   html += ingressiFoto(s);
   return html;
@@ -5990,6 +6013,17 @@ const AZIONI = {
   'sopralluogo-nome': function (el) { rinominaSopralluogo(el.dataset.id); },
   'sopralluogo-chiudi': function (el) { PUNTI_APERTI = null; chiudiFoglio(); chiudiGiornata(el.dataset.id); },
   'giornata-verbale': function (el) { faiVerbaleGiornata(el.dataset.cantiere, el.dataset.giorno); },
+  /* Visualizza sul sopralluogo già aperto: il suo verbale — il PDF se c'è, se no il testo.
+     Se il verbale non è ancora scritto si chiede di scriverlo, e poi si apre. */
+  'sopralluogo-verbale': async function (el) {
+    const s = sopralluogo(el.dataset.id);
+    if (!s) return;
+    let vb = verbaleDiSopralluogo(s.codice);
+    if (!vb) { await chiudiGiornata(s.id); vb = verbaleDiSopralluogo(s.codice); }
+    if (!vb) return;
+    const p = pdfConChiave('verbale:' + vb.codice);
+    vai(p ? '#/leggi/' + p.id : '#/verbale/' + vb.id);
+  },
   /* Visualizza: se il PDF c'è già si legge quello, se no si apre il verbale. */
   'verbale-vedi': function (el) {
     const v = verbale(el.dataset.id);
