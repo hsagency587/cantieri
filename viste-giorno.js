@@ -348,7 +348,7 @@ function vistaGiornata(id) {
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(g.giorno), sotto: h(c.nome),
     destra: '' });
   html += '<div class="avanz"><div class="r">' +
-    '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>' +
+    tastoVerbaleGiornata(vg, g.cantiere, g.giorno) +
     '<span class="dx">0 audio · 0:00 | 0 foto</span></div></div>';
   if (vg) html += cardVerbaleGiornata(vg);
   html += '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">nessuno</span></div><div class="doc-fila">' +
@@ -357,6 +357,12 @@ function vistaGiornata(id) {
   return html;
 }
 
+/* Il tasto in testa alla giornata: verde per scrivere il verbale, verde per aggiornarlo
+   se dal verbale in poi è cambiato qualcosa; grigio e spento se non c'è niente da aggiornare. */
+function tastoVerbaleGiornata(vg, codiceCantiere, giorno) {
+  if (vg && verbaleAllineato(vg)) return '<button class="pill grigia" disabled>Aggiorna il verbale</button>';
+  return '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(codiceCantiere) + '" data-giorno="' + h(giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>';
+}
 // La card del verbale di giornata: il titolo nel colore primario, come il pallino, e i tre tasti.
 function cardVerbaleGiornata(vg) {
   return '<div class="card"><div class="card-capo"><span class="et acc">Verbale di giornata</span></div>' +
@@ -380,7 +386,7 @@ function vistaGiornoInCorso(s, c) {
   const vg = verbaleDiGiornata(s.cantiere, s.giorno);
   // Un tasto solo, sempre verde: scrive il verbale la prima volta, lo aggiorna dopo. Il nome sta nella card sotto.
   html += '<div class="avanz"><div class="r">' +
-    '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>' +
+    tastoVerbaleGiornata(vg, s.cantiere, s.giorno) +
     '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
 
   /* La barra del verbale di giornata: è della giornata, non del passaggio, quindi sta qui
@@ -535,6 +541,30 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
 }
 /* La scrittura vera, senza domande: la usa il tasto qui sopra e la chiusura della
    settimana, che i verbali mancanti li fa da sola. Torna null se il giorno è vuoto. */
+/* L'impronta di quello che entra in un verbale: le sezioni, le foto spuntate con il
+   loro referto e la loro sezione, i documenti nel PDF. Si salva sul verbale quando lo
+   si scrive; finché non cambia nemmeno una virgola, "Aggiorna" non ha niente da fare. */
+function improntaSopralluogo(s) {
+  return JSON.stringify([
+    CHIAVI_SEZIONI.map(function (k) { return s.sezioni[k] || ''; }), s.sezioni.da_smistare || '',
+    fotoNormali(s).filter(function (f) { return f.nelPdf; }).map(function (f) { return [f.id, f.referto || '', sezioneFoto(f)]; }),
+    documentiDi(s).filter(function (f) { return f.nelPdf; }).map(function (f) { return [f.id, f.referto || '']; })
+  ]);
+}
+// Il verbale di giornata prende il testo dai verbali dei passaggi, se ci sono; le foto dai passaggi.
+function improntaGiornata(sops) {
+  return JSON.stringify(sops.map(function (x) {
+    const vb = verbaleDiSopralluogo(x.codice);
+    return [x.codice, x.ora, x.nome || '', vb ? CHIAVI_SEZIONI.map(function (k) { return vb.sezioni[k] || ''; }) : null, improntaSopralluogo(x)];
+  }));
+}
+// Vero se dal verbale in poi non è cambiato niente. Un verbale vecchio senza impronta conta come cambiato.
+function verbaleAllineato(v) {
+  if (!v || !v.impronta) return false;
+  if (v.giornata) return improntaGiornata(sopralluoghiDelGiorno(v.cantiere, v.giorno)) === v.impronta;
+  const s = sopralluogoPerCodice(v.sopralluogo);
+  return !!s && improntaSopralluogo(s) === v.impronta;
+}
 function scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto) {
   const sops = sopralluoghiDelGiorno(codiceCantiere, giorno);
   if (!sops.length) return null;
@@ -550,7 +580,7 @@ function scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto) {
     });
   });
   let v = verbaleDiGiornata(codiceCantiere, giorno);
-  const campi = { cantiere: codiceCantiere, giorno: giorno, ora: sops[0].ora, giornata: true,
+  const campi = { cantiere: codiceCantiere, giorno: giorno, ora: sops[0].ora, giornata: true, impronta: improntaGiornata(sops),
     sopralluoghi: sops.map(function (x) { return x.codice; }), nome: nomeScelto || '', sezioni: sezioni };
   if (v) { Object.assign(v, campi); return salva('verbale', v); }
   return salva('verbale', campi);
@@ -660,7 +690,8 @@ function strisciaSopralluoghi(s) {
         : (qui
           ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Verbale di sopralluogo</button>'
           : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>') +
-          '<button class="vedi scrivi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>') +
+          // Aggiorna compare solo se c'è qualcosa da aggiornare: nemmeno una virgola cambiata, e non c'è.
+          (vb && verbaleAllineato(vb) ? '' : '<button class="vedi scrivi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>')) +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   });
@@ -835,8 +866,9 @@ async function chiudiGiornata(sopId) {
   CHIAVI_SEZIONI.forEach(function (k) { sezioni[k] = s.sezioni[k] || ''; });
   if (String(s.sezioni.da_smistare || '').trim()) sezioni.note = aggiungiTesto(sezioni.note, s.sezioni.da_smistare);
   let v = giaFatto;
-  if (v) { v.sezioni = sezioni; v.giorno = s.giorno; v.ora = s.ora; v.nome = nomeScelto; v = salva('verbale', v); }
-  else v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, nome: nomeScelto, sezioni: sezioni });
+  const impronta = improntaSopralluogo(s);
+  if (v) { v.sezioni = sezioni; v.giorno = s.giorno; v.ora = s.ora; v.nome = nomeScelto; v.impronta = impronta; v = salva('verbale', v); }
+  else v = salva('verbale', { sopralluogo: s.codice, cantiere: s.cantiere, giorno: s.giorno, ora: s.ora, nome: nomeScelto, sezioni: sezioni, impronta: impronta });
   /* I rilievi della giornata salgono da soli nei rilievi complessivi del
      cantiere: sono misure del lavoro, non della giornata. Si portano una volta
      sola, alla prima chiusura: se il verbale si rifà non si raddoppiano. */

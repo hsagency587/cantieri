@@ -1196,3 +1196,5 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .doc-mini .vedi.scrivi{color:var(--accent)}
 /* La card del verbale di giornata: il titolo è "Verbale di giornata", nel colore primario come il pallino. Niente scritta a destra. */
 .card-capo .et.acc{color:var(--accent)}
+/* "Aggiorna il verbale" spento: grigio, non si tocca, resta al suo posto. */
+.avanz .r button.pill:disabled{color:var(--muted);border-color:var(--line);opacity:.7}
