@@ -678,21 +678,18 @@ function strisciaSopralluoghi(s) {
     /* Il bordo azzurro dice "sei qui", e vale solo per un sopralluogo ancora
        aperto: su uno che ha già il verbale non c'è niente da segnare.
        Verde chi ha il verbale, grigio chi non ce l'ha: lo dice il verbale, non "chiuso". */
+    /* Tutta la testa della card è il tasto che apre quel passaggio; su quello che si sta
+       già guardando non è un tasto. In fondo una riga sola, sempre presente, che dice a che
+       punto è il verbale: da scrivere, da aggiornare (è cambiato qualcosa), oppure fatto — e lo apre. */
+    const testa = '<span class="ora">' + h(suoNome || x.ora) + '</span>' + (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '');
+    const riga = !vb
+      ? '<button class="vedi scrivi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">Scrivi il verbale</button>'
+      : (verbaleAllineato(vb)
+        ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Verbale di sopralluogo</button>'
+        : '<button class="vedi scrivi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">Aggiorna il verbale</button>');
     html += '<div class="doc-mini' + (vb ? ' fatto' : ' spento') + (qui && !x.chiuso ? ' qui' : '') + (aperto ? ' menu' : '') + '">' +
-      '<div class="q">' +
-      '<span class="ora">' + h(suoNome || x.ora) + '</span>' +
-      (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '') + '</div>' +
-      /* Visualizza apre il sopralluogo qui sotto. Su quello già aperto il tasto si chiama
-         "Verbale di sopralluogo": apre il suo PDF se c'è, e se non è scritto chiede di scriverlo. */
-      /* Sotto, il tasto per scrivere il verbale di quel passaggio (o aggiornarlo): sta sulla
-         card, in vista, non solo dentro i puntini. La card si allunga di una riga. */
-      (aperto
-        ? '<div class="voci">' + vociMenuSopralluogo(x) + '</div>'
-        : (qui
-          ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Verbale di sopralluogo</button>'
-          : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>') +
-          // Aggiorna compare solo se c'è qualcosa da aggiornare: nemmeno una virgola cambiata, e non c'è.
-          (vb && verbaleAllineato(vb) ? '' : '<button class="vedi scrivi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>')) +
+      (qui ? '<div class="q">' + testa + '</div>' : '<button class="q" data-az="vai" data-a="#/giorno/' + h(x.id) + '">' + testa + '</button>') +
+      (aperto ? '<div class="voci">' + vociMenuSopralluogo(x) + '</div>' : riga) +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   });

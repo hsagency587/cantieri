@@ -1208,3 +1208,8 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .due-card{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)}
 .due-card > .card{margin:0}
 .due-card .card.piu .titolo{font-size:var(--t2)}
+
+/* La testa della card del sopralluogo e un tasto: apre quel passaggio. Stessa forma della testa
+   non-tasto, riempie la card cosi la riga del verbale resta in fondo. */
+.doc-mini button.q{width:100%;flex:1 1 auto;background:transparent;border:0;font:inherit;cursor:pointer}
+.doc-mini button.q:active{background:var(--surface)}
