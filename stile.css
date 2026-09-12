@@ -1080,3 +1080,6 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .frec-s i{position:absolute;top:50%;transform:translateY(-50%);width:26px;height:26px;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-style:normal;font-size:22px;line-height:1;padding-bottom:3px;color:var(--text);background:color-mix(in srgb, var(--surface-2) 88%, transparent);border:1px solid var(--line);border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .frec-s.sx i{left:2px}
 .frec-s.dx i{right:2px}
+/* Larghe zero ma con il gap della fila accanto: si annulla, se no la prima card slitta. */
+.frec-s.sx{margin-right:calc(var(--s2) * -1)}
+.frec-s.dx{margin-left:calc(var(--s2) * -1)}
