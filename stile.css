@@ -1083,3 +1083,110 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 /* Larghe zero ma con il gap della fila accanto: si annulla, se no la prima card slitta. */
 .frec-s.sx{margin-right:calc(var(--s2) * -1)}
 .frec-s.dx{margin-left:calc(var(--s2) * -1)}
+
+/* ============ 27. LE RIGHE D'ORDINE ============
+   Una riga con due tocchi: la descrizione apre la riga, la pastiglia a destra
+   fa girare lo stato. Il bersaglio della pastiglia è alto quanto la riga:
+   la pastiglia è solo il segno, il tasto che la contiene è quello che si tocca. */
+.ordine{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.card .ordine:last-child{border-bottom:0}
+.ordine .desc{
+  flex:1;min-width:0;min-height:52px;padding:var(--s1) 0 var(--s1) var(--s4);
+  background:transparent;border:0;color:var(--text);
+  font-size:var(--t3);line-height:1.3;text-align:left;
+}
+.ordine .desc small{display:block;margin-top:1px;font-size:var(--t2);color:var(--muted);font-variant-numeric:tabular-nums}
+.ordine .stato{flex:0 0 auto;display:flex;align-items:center;padding:0 var(--s4) 0 var(--s2);background:transparent;border:0}
+.ordine .stato .pill{white-space:nowrap}
+.ordine .desc:active,.ordine .stato:active{background:var(--surface)}
+
+/* ============ 28. IL RITAGLIO DELLA BOLLA ============
+   Tutto schermo come la fotocamera: la foto adattata, quattro angoli da
+   trascinare, il contorno del foglio nel colore principale. In fondo la barra
+   di sempre: Ritaglia pieno, "Usa così" vuoto. */
+#ritaglio{position:fixed;inset:0;z-index:1000;background:#000}
+#ritaglio .area{position:absolute;left:0;right:0;top:calc(64px + env(safe-area-inset-top));bottom:calc(96px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:center}
+#ritaglio .foglio{position:relative;touch-action:none}
+#ritaglio canvas{display:block;width:100%;height:100%}
+#ritaglio svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+#ritaglio polygon{fill:color-mix(in srgb, var(--accent) 14%, transparent);stroke:var(--accent);stroke-width:2}
+#ritaglio .angolo{
+  position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;padding:0;
+  background:color-mix(in srgb, var(--accent) 25%, transparent);border:3px solid var(--accent);border-radius:50%;
+  box-shadow:0 1px 6px rgba(0,0,0,.5);
+}
+#ritaglio .angolo:active{background:color-mix(in srgb, var(--accent) 60%, transparent)}
+#ritaglio .chiudi{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;font-size:22px}
+#ritaglio .barra{background:linear-gradient(to top,#000 72%,transparent)}
+
+/* ============ 29. LE TENDINE DUE PER RIGA ============
+   Le tendine di una schermata stanno in una griglia a due colonne. Quella
+   aperta prende la riga intera, e il suo contenuto sotto; le altre scendono e
+   restano due per riga. Il contenuto chiuso è hidden, quindi non occupa celle.
+   Una sola tendina prende tutta la riga; con un numero dispari l'ultima resta
+   larga metà. */
+.tendine{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1);margin-bottom:var(--s2)}
+.tendine > .tend{width:auto;margin:0;min-width:0}
+.tendine.una > .tend,.tendine > .tend[aria-expanded="true"],.tendine > .tend[aria-expanded="true"] + div{grid-column:1/-1}
+/* L'etichetta è una o due parole; se non entra si tronca con i puntini. */
+.tend .et{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+/* Il numero sulla linguetta diventa giallo quando dentro c'è qualcosa da guardare. */
+.tend .n.att{color:var(--gold);font-weight:700}
+
+/* ============ 30. LE DIFFERENZE NEGLI ORDINI ============
+   Arrivato meno di quanto ordinato, o arrivato senza ordine: la riga è gialla,
+   il numero mancante è giallo, e i due tasti escono toccando la riga. */
+.ordine.diff{background:color-mix(in srgb, var(--gold) 8%, transparent)}
+.ordine .stato .meno,.voce .meno{color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums}
+.ordine .stato .meno{font-size:var(--t3)}
+/* L'esito di un confronto, dove sta scritto in una riga: verde se torna, giallo se no. */
+.esito.ok{color:var(--accent);font-weight:600}
+.esito.att{color:var(--gold);font-weight:600}
+/* I filtri di stato nella pagina degli ordini: il filtro acceso ha il colore di ciò che si consulta. */
+.periodi .pill.on{color:var(--azione);border-color:var(--azione)}
+
+/* ============ 31. I LISTINI NELLA SCHEDA DEL CANTIERE ============
+   Una riga per listino: il nome si tocca per scegliere, la freccia sposta su,
+   la pastiglia dice sì o no. È una riga con due tocchi, come quelle degli ordini. */
+.riga.lis{padding-right:var(--s4)}
+.riga.lis .desc{flex:1;min-width:0;min-height:52px;padding:0;background:transparent;border:0;color:var(--text);font-size:var(--t3);text-align:left;line-height:1.3}
+.riga.lis .desc small{display:block;font-size:var(--t2);color:var(--muted)}
+.riga.lis .desc .targa{margin-right:var(--s1)}
+.riga.lis button.pill.cod{flex:0 0 auto;min-height:30px;padding:0 10px;margin-right:var(--s2);font-size:var(--t3);line-height:1;letter-spacing:0}
+.riga.lis .pill{flex:0 0 auto}
+
+/* ============ 32. LA CONTABILITÀ COMPLETA ============
+   Una riga con l'unità diversa dal listino è gialla come quella senza prezzo, e
+   sotto i numeri dice cosa non torna. In fondo, con sconto o IVA, i cinque conti
+   in colonna e il totale grande come prima. */
+.voceriga.umdiversa{box-shadow:inset 3px 0 0 var(--gold)}
+.voceriga .avvertenza,.foglio .avvertenza{margin-top:2px;font-size:var(--t1);color:var(--gold);font-weight:600}
+.totale.conti{flex-direction:column;align-items:stretch;gap:var(--s1)}
+.totale .conti-righe{display:flex;flex-direction:column;gap:2px;padding-bottom:var(--s2);border-bottom:1px solid var(--line)}
+.totale .conto{display:flex;justify-content:space-between;align-items:baseline;font-size:var(--t2);color:var(--muted);font-variant-numeric:tabular-nums}
+.totale .conto.finale{color:var(--text)}
+.totale .conto.finale .cifra{margin-left:auto}
+
+/* ============ 33. MODIFICHE D'USO ============ */
+/* Punto 1 — "Riprova" sulla riga dell'audio fallito: al posto della durata, prima della ✕.
+   Una pastiglia vuota nel colore di ciò che si consulta: non è l'azione della schermata. */
+.audio .riprova{flex:0 0 auto;min-height:30px;padding:0 10px;background:transparent;border:1px solid var(--azione);border-radius:var(--radius-p);color:var(--azione);font-size:var(--t1);font-weight:600}
+.audio .riprova:active{background:color-mix(in srgb, var(--azione) 12%, transparent)}
+/* Punto 2 — il foglio del microfono: i passi numerati e la nota piccola sotto. */
+.foglio .passi{margin:0 0 var(--s4);padding-left:22px;font-size:var(--t3);line-height:1.45}
+.foglio .passi li{margin-bottom:var(--s2)}
+.foglio .nota-piccola{margin:0 0 var(--s4);font-size:var(--t1);color:var(--muted);line-height:1.4}
+/* Punto 7 — la scelta del cantiere: il nome in grassetto e sotto, in piccolo, il committente. */
+.foglio .btn.scelta{flex-direction:column;align-items:flex-start;gap:1px;min-height:52px;margin-bottom:var(--s2);text-align:left}
+.foglio .btn.scelta b{font-size:var(--t3)}
+.foglio .btn.scelta small{font-size:var(--t1);color:var(--muted);font-weight:400}
+/* Punto 9 — "Chiudi cantiere" non si abbrevia: il tasto si allarga sulle parole, e se
+   con "Detta un sopralluogo" non ci sta, la barra va su due righe. */
+.barra.larga{flex-wrap:wrap}
+.barra.larga .az{flex:1 0 auto;white-space:nowrap;padding:0 var(--s4)}
+/* La riga in testa a una card resta una riga: il titolo si tronca con i puntini, la scritta a destra resta intera. */
+.card-capo .et{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-capo .et + .dx{flex:0 0 auto;white-space:nowrap}
+/* La riga sotto la testata della giornata resta dentro lo schermo anche sui telefoni stretti:
+   il tasto tiene le sue parole, il conto a destra si accorcia con i puntini se non ci sta. */
+.avanz .r .dx{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}

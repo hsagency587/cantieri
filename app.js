@@ -60,6 +60,11 @@ const LATO_DOC = 2200;
 const QUALITA_DOC = 0.82;
 const LATO_DOC_PDF = 1700;
 const QUALITA_DOC_PDF = 0.7;
+// La copia di una bolla che si manda a leggere: più piccola del documento, basta per il testo.
+const LATO_LETTURA = 1200;
+const QUALITA_LETTURA = 0.8;
+// La foto originale, prima del ritaglio: oltre questo lato il telefono finisce la memoria.
+const LATO_RITAGLIO = 3000;
 const GENERI = { bolla: 'Bolla', firme: 'Modulo firme' };
 // Sotto una miniatura larga 104 "Modulo firme" non ci sta: lì basta la parola.
 const GENERI_BREVI = { bolla: 'Bolla', firme: 'Firme' };
@@ -105,8 +110,8 @@ const PAROLE_SEZIONE = {
 };
 
 // Prefissi dei codici automatici e dove sta ogni tipo di documento nell'archivio.
-const PREFISSI = { azienda: 'AZ', cantiere: 'CANT', giornata: 'GIO', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', foto: 'FOTO', relazione: 'REL' };
-const COLLEZIONI = { azienda: 'aziende', cantiere: 'cantieri', giornata: 'giornate', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino', relazione: 'relazioni' };
+const PREFISSI = { azienda: 'AZ', cantiere: 'CANT', giornata: 'GIO', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', listini: 'PRZ', foto: 'FOTO', relazione: 'REL' };
+const COLLEZIONI = { azienda: 'aziende', cantiere: 'cantieri', giornata: 'giornate', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino', listini: 'listini', relazione: 'relazioni' };
 
 // Unità di misura: la tabella dei sinonimi si applica in locale, gratis. Claude si chiama solo per quello che manca qui.
 const UM_SINONIMI = {
@@ -381,6 +386,11 @@ Se non riesci a capire una colonna, mettila a null: l'utente la sceglierà a man
 
 Rispondi soltanto con un oggetto JSON: {"riga_intestazione":0,"colonne":{"codice":null,"descrizione":1,"um":2,"prezzo":3},"decimali":",","migliaia":".","riga_categoria":"la descrizione è in maiuscolo e il prezzo è vuoto"}. Niente altro testo.`;
 
+// Una pagina di prezzario fotografata: le voci le legge Claude, una pagina per volta.
+const REGOLE_LISTINO_IMMAGINE = `Ricevi la fotografia di una pagina di un prezzario edile. Ricavi le voci del prezzario (codice se c'è, descrizione, unità di misura, prezzo). Non inventare prezzi: se non si legge, prezzo è null. Una riga che è un titolo di capitolo va riportata con la sola descrizione e prezzo null.
+Risposta solo JSON:
+{"righe":[{"codice":null,"descrizione":"","um":"","prezzo":null}]}`;
+
 const REGOLE_CERCA_VOCE = `Ricevi la descrizione di una lavorazione dettata in cantiere e un elenco numerato di voci di un listino prezzi. Devi dire quale voce del listino corrisponde alla lavorazione dettata. Conta il significato, non le parole esatte: "intonaco civile" e "Intonaco civile per interni a tre strati" sono la stessa cosa. Se nessuna voce corrisponde davvero, o se ne corrispondono più di una e non c'è modo di scegliere, rispondi "nessuna". Rispondi soltanto con il numero della voce, oppure con la parola nessuna. Niente altro testo.`;
 
 const REGOLE_UM = `Ricevi un'unità di misura scritta o dettata in un cantiere italiano. Rispondi soltanto con la forma normalizzata, scelta fra: m, m², m³, kg, q, t, n, h, corpo, l, cm, mm. Se non è riconoscibile, rispondi con un punto interrogativo. Niente altro testo.`;
@@ -412,6 +422,23 @@ Regole:
 - Se il dettato non si capisce, riporta il testo così com'è senza inventare.
 
 Rispondi soltanto con le righe del rilievo. Niente altro testo, niente virgolette.`;
+
+/* Dal rilievo d'ordine escono anche le righe, oltre al testo: una per prodotto,
+   con quantità e unità, per farne la lista da mandare al fornitore. */
+const REGOLE_ORDINE = `Ricevi il dettato di un materiale da ordinare in cantiere, già trascritto. Ricavi una riga per prodotto: descrizione, quantità (numero), unità di misura normalizzata (pz, m, m², m³, kg, q, t, corpo), e le misure se dette (per esempio "120x150 cm"). Non inventare quantità: se non è detta, 0.
+Risposta solo JSON:
+{"righe":[{"descrizione":"","quantita":0,"um":"","misure":null}]}`;
+
+/* La bolla di consegna si legge e si confronta con quello che era a ordine:
+   una chiamata sola, con la foto e l'elenco numerato delle righe. */
+const REGOLE_BOLLA = `Ricevi la fotografia di una bolla di consegna e l'elenco numerato del materiale ordinato per quel cantiere. Devi:
+- ricavare fornitore, numero del documento, data, e le righe della merce consegnata (descrizione, quantità, unità di misura normalizzata);
+- dire, per ogni riga consegnata, a quale numero dell'elenco ordinato corrisponde, contando il significato e non le parole esatte. Se non corrisponde a niente, il numero è null.
+Se l'immagine non si legge, rispondi {"leggibile":false} e basta.
+Non inventare niente: quello che non si legge è null.
+Risposta solo JSON:
+{"leggibile":true,"fornitore":null,"numero":null,"data":null,
+ "righe":[{"descrizione":"","quantita":0,"um":"","ordine":null}]}`;
 
 const REGOLE_FOTO = `Ricevi la descrizione dettata a voce di una fotografia scattata in cantiere, già trascritta. Scrivi la didascalia di quella foto per il verbale di sopralluogo.
 
@@ -589,6 +616,8 @@ function primaRiga(testo) {
   return r[0] || '';
 }
 function conta(obj) { return Object.keys(obj || {}).length; }
+// "1 giorno", "2 giorni": la parola giusta accanto a un numero.
+function plurale(n, uno, tanti) { return Number(n) === 1 ? uno : tanti; }
 function valori(obj) { return Object.keys(obj || {}).map(function (k) { return obj[k]; }); }
 function stimaToken(testo) { return Math.ceil(String(testo || '').split(/\s+/).filter(Boolean).length * 1.6); }
 
@@ -688,8 +717,8 @@ let LOCALE = null;   // le cose del telefono, in memoria
 function archivioVuoto() {
   return {
     versione: 1,
-    contatori: { AZ: 0, CANT: 0, GIO: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0, REL: 0 },
-    aziende: {}, cantieri: {}, giornate: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {}, relazioni: {},
+    contatori: { AZ: 0, CANT: 0, GIO: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0, PRZ: 0, REL: 0 },
+    aziende: {}, cantieri: {}, giornate: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {}, listini: {}, relazioni: {},
     cancellati: {},     // id → quando: perché una cancellazione arrivi anche all'altra copia
     soloEsempio: true,  // finché è vero, dentro ci sono solo i dati di esempio
     aggiornato: adessoISO()
@@ -1011,6 +1040,34 @@ function contabilitaOCrea(codiceCantiere) {
 function listinoTutto() {
   return valori(leggiTutto().listino).sort(function (a, b) { return a.codice.localeCompare(b.codice); });
 }
+/* ---- i listini: più d'uno, legati al cantiere ----
+   Le voci stanno nella collezione "listino" di sempre; ogni voce dice a quale
+   listino appartiene. Il "Generale" vale per tutti i cantieri, ed è l'ultimo in
+   cui si cerca. Un cantiere tiene l'elenco ordinato dei suoi listini. */
+function listiniTutti() {
+  return valori(leggiTutto().listini).sort(function (a, b) { return (b.generale ? 1 : 0) - (a.generale ? 1 : 0) || a.nome.localeCompare(b.nome); });
+}
+function listinoPerCodice(codice) { return listiniTutti().find(function (l) { return l.codice === codice; }) || null; }
+function listinoGenerale() { return listiniTutti().find(function (l) { return l.generale; }) || null; }
+// Nato mentre ci sono solo gli esempi, è un esempio anche lui: se no l'archivio non sembrerebbe più "solo esempi".
+function listinoGeneraleOCrea() { return listinoGenerale() || salva('listini', { nome: 'Generale', riferimento: '', generale: true, esempio: !!leggiTutto().soloEsempio }); }
+function vociDi(codiceListino) { return listinoTutto().filter(function (v) { return v.listino === codiceListino; }); }
+// I listini di un cantiere, nell'ordine in cui si cerca; il Generale chiude sempre.
+function listiniDelCantiere(c) {
+  const lista = (c && c.listini || []).map(listinoPerCodice).filter(Boolean);
+  const gen = listinoGenerale();
+  if (gen && lista.indexOf(gen) === -1) lista.push(gen);
+  return lista;
+}
+/* Le voci di prima non avevano un listino: alla prima apertura finiscono tutte nel
+   "Generale". Silenzioso, una volta sola, e vale anche per un archivio arrivato
+   da un altro telefono. */
+function migraListini() {
+  const orfane = listinoTutto().filter(function (v) { return !v.listino; });
+  if (!orfane.length) return;
+  const gen = listinoGeneraleOCrea();
+  orfane.forEach(function (v) { v.listino = gen.codice; salva('listino', v); });
+}
 /* La card della settimana chiusa: compare da mercoledì, in cima alla prima schermata,
    e non se ne va finché non la mandi fuori o non dici che ce l'hai già. */
 function cardSettimana() {
@@ -1091,6 +1148,23 @@ function assicuraGiornata(codiceCantiere, giorno) {
   return giornataDi(codiceCantiere, giorno) || salva('giornata', { cantiere: codiceCantiere, giorno: giorno });
 }
 // I giorni di un cantiere, dal più recente: ognuno con i suoi sopralluoghi e il suo verbale.
+/* Com'è messo un cantiere, per l'elenco: "da fare" se ha giornate passate senza
+   verbale di giornata; "in corso" (blu) se resta solo quella di oggi; "fatto" quando
+   anche oggi ha il verbale, o non c'è niente da compilare. Chiuso resta chiuso. */
+function statoCantiere(c) {
+  const oggi = oggiISO();
+  if (c.stato === 'chiuso') return { pill: 'grigia', nome: 'chiuso', mini: '' };
+  const giornate = giornateDi(c.codice);
+  const arretrate = giornate.filter(function (g) { return g.giorno < oggi && g.sops.length && !g.verbale; });
+  if (arretrate.length) return { pill: 'att', nome: 'da fare', mini: arretrate.length + (arretrate.length === 1 ? ' giornata da chiudere' : ' giornate da chiudere') };
+  const diOggi = giornate.find(function (g) { return g.giorno === oggi && g.sops.length; });
+  if (diOggi && !diOggi.verbale) {
+    const sop = diOggi.sops[0];
+    return { pill: 'blu', nome: 'in corso', mini: 'oggi alle ' + oraCorta(sop.ora) + ' · ' + diOggi.sops.reduce(function (t, s) { return t + s.pezzi.length; }, 0) + ' audio' };
+  }
+  const ultima = giornate.find(function (g) { return g.sops.length; });
+  return { pill: 'ok', nome: 'fatto', mini: diOggi ? 'verbale di oggi fatto' : (ultima ? 'ultimo: ' + (nomeGiornoRelativo(ultima.giorno).toLowerCase() + (Date.now() - daISO(ultima.giorno).getTime() > 6 * 86400000 ? ' ' + dataSenzaAnno(ultima.giorno) : '')) : 'nessun sopralluogo') };
+}
 function giornateDi(codiceCantiere) {
   const per = {};
   valori(leggiTutto().giornate).forEach(function (g) { if (g.cantiere === codiceCantiere) per[g.giorno] = []; });
@@ -1806,7 +1880,7 @@ function accoda(lavoro) {
   return lavoro;
 }
 function descriviLavoro(l) {
-  const tipi = { trascrizione: 'Trascrizione', riordino: 'Riordino', contabilita: 'Contabilità', nota: 'Nota', referto: 'Referto foto', rilievo: 'Rilievo' };
+  const tipi = { trascrizione: 'Trascrizione', riordino: 'Riordino', contabilita: 'Contabilità', nota: 'Nota', referto: 'Referto foto', rilievo: 'Rilievo', bolla: 'Bolla' };
   return (tipi[l.tipo] || l.tipo) + (l.etichetta ? ' · ' + l.etichetta : '');
 }
 
@@ -1887,6 +1961,7 @@ async function eseguiLavoro(l) {
   if (l.tipo === 'nota') return await lavoroNota(l);
   if (l.tipo === 'referto') return await lavoroReferto(l);
   if (l.tipo === 'rilievo') return await lavoroRilievo(l);
+  if (l.tipo === 'bolla') return await lavoroBolla(l);
   throw new Error('Lavoro sconosciuto');
 }
 
@@ -1929,7 +2004,7 @@ async function lavoroTrascrizione(l) {
     // L'audio di una nota o di una riga di contabilità serve solo a trascrivere: una volta letto si libera.
     await cancellaMedia(l.audio);
     if (l.per === 'nota') accoda({ tipo: 'nota', cantiere: l.cantiere, grezzo: l.grezzo, etichetta: l.etichetta });
-    else accoda({ tipo: 'contabilita', cantiere: l.cantiere, grezzo: l.grezzo, ora: l.ora, etichetta: l.etichetta });
+    else accoda({ tipo: 'contabilita', cantiere: l.cantiere, grezzo: l.grezzo, ora: l.ora, etichetta: l.etichetta, origine: l.id, listino: l.listino || null });
   }
   if (l.per === 'rilievo') {
     const sop = sopralluogo(l.sop);
@@ -1995,6 +2070,24 @@ async function lavoroRilievo(l) {
   }
   avvisa('Rilievo pronto', 'ok');
   aggiornaVista();
+  /* Il rilievo d'ordine fa anche le righe, dal testo già pulito. Il testo è già
+     al sicuro: se questa lettura fallisce si perde solo la lista, non il rilievo. */
+  if (l.sezione === 'rilievi_ordine' && testo && chiaveAnthropic()) {
+    try {
+      const r = estraiJSON(await chiamaClaude(REGOLE_ORDINE, 'Dettato: ' + testo, 800));
+      const c = cantierePerCodice(sop.cantiere);
+      const righe = (r && Array.isArray(r.righe) ? r.righe : []).filter(function (x) { return x && String(x.descrizione || '').trim(); });
+      if (c && righe.length) {
+        c.ordini = c.ordini || [];
+        righe.forEach(function (x) {
+          c.ordini.push({ id: nuovoId(), descrizione: String(x.descrizione).trim(), quantita: Number(x.quantita) || 0, um: String(x.um || '').trim(), misure: x.misure ? String(x.misure).trim() : '',
+            stato: 'da_ordinare', sop: sop.codice, giorno: sop.giorno, ora: pezzo.ora || oraAdesso() });
+        });
+        salva('cantiere', c);
+        aggiornaVista();
+      }
+    } catch (e) { avvisa('Righe d\'ordine non lette', 'att'); }
+  }
 }
 
 /* La scheda del rilievo appena arrivato. Si mostra nella giornata (per sopralluogo)
@@ -2068,6 +2161,172 @@ async function lavoroReferto(l) {
   f.errore = null;
   salva('sopralluogo', sop);
   avvisa(grezzo ? 'Referto pronto' : 'Registrazione vuota', grezzo ? 'ok' : 'att');
+}
+
+/* ---- la lettura di una bolla ----
+   Una chiamata sola: la foto (o il testo del PDF) e l'elenco numerato di quello
+   che era a ordine. Se la foto piccola non si legge si riprova una volta con
+   quella grande; poi ci si ferma e il documento resta com'è. */
+async function lavoroBolla(l) {
+  const sop = sopralluogo(l.sop);
+  const f = sop && trovaFoto(sop, l.foto);
+  if (!f) return;
+  const c = cantierePerCodice(sop.cantiere);
+  // A ordine: quello che non è ancora arrivato, più quello che questa stessa bolla aveva già spuntato (rilettura).
+  const aperte = ordiniDi(c).filter(function (o) { return o.stato !== 'arrivato' || (o.arrivi && o.arrivi[f.id] != null); });
+  const elenco = 'Materiale ordinato per questo cantiere:\n' +
+    (aperte.length ? aperte.map(function (o, i) { return (i + 1) + '. ' + rigaOrdineTesto(o); }).join('\n') : '(niente a ordine)');
+  let r = null;
+  for (const grande of [false, true]) {
+    if (grande && f.formato !== 'pdf' && !f.lettura) break;
+    const blocchi = await contenutoBolla(f, grande);
+    if (!blocchi) break;
+    blocchi.push({ type: 'text', text: elenco });
+    r = estraiJSON(await chiamaClaude(REGOLE_BOLLA, blocchi, 4000));
+    if (r && r.leggibile !== false) break;
+    r = null;
+  }
+  if (!r) {
+    f.stato = 'errore'; f.errore = 'bolla non leggibile';
+    salva('sopralluogo', sop);
+    avvisa('Bolla non leggibile', 'err');
+    aggiornaVista();
+    return;
+  }
+  applicaBolla(sop, f, r, aperte, c);
+  // La domanda aspetta una risposta: la coda no, va avanti con il resto.
+  chiediSpostamentoBolla(sop, f, c).catch(function () {});
+}
+/* I blocchi del messaggio: l'immagine in base64, oppure per un PDF il testo se
+   ce l'ha dentro, se no le sue pagine disegnate (al massimo tre). */
+async function contenutoBolla(f, grande) {
+  const lato = grande ? LATO_DOC : LATO_LETTURA;
+  const immagine = async function (blob) { return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: await blobInBase64(blob) } }; };
+  const blob = await leggiMedia(f.formato === 'pdf' ? f.file : ((!grande && f.lettura) || f.file));
+  if (!blob) return null;
+  if (f.formato !== 'pdf') return [await immagine(blob)];
+  const lib = await caricaPdfJs();
+  const doc = await lib.getDocument({ data: await blob.arrayBuffer() }).promise;
+  const pagine = Math.min(doc.numPages, 3);
+  if (!grande) {
+    let testo = '';
+    for (let n = 1; n <= pagine; n++) {
+      const tc = await (await doc.getPage(n)).getTextContent();
+      testo += tc.items.map(function (i) { return i.str; }).join(' ') + '\n';
+    }
+    if (testo.trim().length > 40) return [{ type: 'text', text: 'Testo della bolla (PDF):\n' + testo.trim() }];
+  }
+  const blocchi = [];
+  for (let n = 1; n <= pagine; n++) {
+    const pagina = await doc.getPage(n);
+    const base = pagina.getViewport({ scale: 1 });
+    const vista = pagina.getViewport({ scale: lato / Math.max(base.width, base.height) });
+    const tela = document.createElement('canvas');
+    tela.width = Math.round(vista.width); tela.height = Math.round(vista.height);
+    await pagina.render({ canvasContext: tela.getContext('2d'), viewport: vista }).promise;
+    blocchi.push(await immagine((await blobDaTela(tela, QUALITA_LETTURA)).blob));
+  }
+  return blocchi;
+}
+// "12/09/2026", "2026-09-12", "12.9.26": se si capisce diventa ISO, se no resta com'è scritta.
+function dataDaBolla(t) {
+  t = String(t || '').trim();
+  if (!t) return '';
+  let m = t.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  m = t.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  return t;
+}
+function eISO(t) { return /^\d{4}-\d{2}-\d{2}$/.test(String(t || '')); }
+function dataBollaBreve(f) { return eISO(f.dataBolla) ? giornoMese(f.dataBolla) + '/' + f.dataBolla.slice(0, 4) : (f.dataBolla || ''); }
+// "Fornitore · n. 123 · del 12/09/2026": quello che si è letto, per la card e per il referto.
+function intestazioneBolla(f) {
+  return [f.fornitore, f.numero ? 'n. ' + f.numero : '', f.dataBolla ? 'del ' + dataBollaBreve(f) : ''].filter(Boolean).join(' · ');
+}
+/* Quello che si è letto va sul documento, nel referto (sotto, se c'era già del
+   testo) e sulle righe d'ordine agganciate, che passano ad arrivato con la
+   quantità arrivata. Quello che non era a ordine resta sul documento, da
+   aggiungere con un tocco. Nessuna riga si cancella. */
+function applicaBolla(sop, f, r, aperte, c) {
+  f.fornitore = r.fornitore ? String(r.fornitore).trim() : '';
+  f.numero = r.numero != null && r.numero !== '' ? String(r.numero).trim() : '';
+  f.dataBolla = dataDaBolla(r.data);
+  const righe = (Array.isArray(r.righe) ? r.righe : []).filter(function (x) { return x && String(x.descrizione || '').trim(); })
+    .map(function (x) { return { descrizione: String(x.descrizione).trim(), quantita: Number(x.quantita) || 0, um: String(x.um || '').trim(), ordine: Number(x.ordine) || 0 }; });
+  const letto = [intestazioneBolla(f)].concat(righe.map(rigaOrdineTesto)).filter(Boolean).join('\n');
+  const prima = String(f.referto || '').trim();
+  f.referto = prima ? prima + '\n\n' + letto : letto;
+  // Una rilettura non somma due volte: prima si toglie quello che questa bolla aveva già messo.
+  ordiniDi(c).forEach(function (o) { if (o.arrivi && o.arrivi[f.id] != null) { delete o.arrivi[f.id]; o.arrivata = sommaArrivi(o); } });
+  f.senzaOrdine = [];
+  righe.forEach(function (x) {
+    const o = x.ordine >= 1 && x.ordine <= aperte.length ? aperte[x.ordine - 1] : null;
+    if (!o) { f.senzaOrdine.push({ id: nuovoId(), descrizione: x.descrizione, quantita: x.quantita, um: x.um }); return; }
+    o.arrivi = o.arrivi || {};
+    o.arrivi[f.id] = (o.arrivi[f.id] || 0) + x.quantita;
+    o.arrivata = sommaArrivi(o);
+    o.stato = 'arrivato';
+  });
+  f.stato = 'riordinato'; f.errore = null;
+  f.letta = adessoISO();
+  salva('sopralluogo', sop);
+  if (c) salva('cantiere', c);
+  avvisa('Bolla letta', 'ok');
+  aggiornaVista();
+}
+function sommaArrivi(o) { return Object.keys(o.arrivi || {}).reduce(function (t, k) { return t + (Number(o.arrivi[k]) || 0); }, 0); }
+/* Com'è andato il confronto di una bolla: le righe d'ordine che ha spuntato,
+   quante tornano, quante no (arrivato meno, o arrivato senza ordine). */
+function confrontoBolla(c, f) {
+  const righe = ordiniDi(c).filter(function (o) { return o.arrivi && o.arrivi[f.id] != null; });
+  const meno = righe.filter(function (o) { return mancante(o) > 0; }).length;
+  const senza = (f.senzaOrdine || []).length;
+  return { righe: righe, aPosto: righe.length - meno, diff: meno + senza };
+}
+// "3 righe a posto · 1 differenza": verde se torna tutto, gialla se no.
+function riepilogoBollaHtml(c, f) {
+  const k = confrontoBolla(c, f);
+  const testo = k.righe.length || k.diff
+    ? k.aPosto + (k.aPosto === 1 ? ' riga a posto' : ' righe a posto') + (k.diff ? ' · ' + k.diff + (k.diff === 1 ? ' differenza' : ' differenze') : '')
+    : 'niente da confrontare';
+  return '<span class="esito ' + (k.diff ? 'att' : 'ok') + '">' + h(testo) + '</span>';
+}
+// Il dettaglio riga per riga, per la tendina Confronto della giornata.
+function dettaglioConfrontoHtml(c, sop, f) {
+  const k = confrontoBolla(c, f);
+  let html = '<button class="riga" data-az="vai" data-a="#/foto/' + h(sop.id) + '/' + h(f.id) + '"><span class="desc">' + h(intestazioneBolla(f) || nomeFoto(f)) + '<small>' + riepilogoBollaHtml(c, f) + '</small></span><span class="frec">›</span></button>';
+  if (!k.righe.length && !(f.senzaOrdine || []).length) return html;
+  html += '<div class="card-corpo">';
+  k.righe.forEach(function (o) {
+    const manca = mancante(o);
+    html += '<div class="voce"><span class="segno">●</span><span>' + h(o.descrizione) + ' · ordinati ' + h(numeroIt(o.quantita)) + ' · arrivati ' + h(numeroIt(o.arrivi[f.id])) +
+      (manca ? ' <b class="meno">−' + h(numeroIt(manca)) + '</b>' : '') + '</span></div>';
+  });
+  (f.senzaOrdine || []).forEach(function (x) {
+    html += '<div class="voce"><span class="segno">●</span><span>' + h(x.descrizione) + ' · arrivati ' + h(contiOrdine(x)) + ' <b class="meno">senza ordine</b></span></div>';
+  });
+  return html + '</div>';
+}
+/* La bolla porta una data diversa dal giorno in cui è stata caricata, e quel
+   giorno nel cantiere c'è già: si chiede una volta sola se spostarla lì. */
+async function chiediSpostamentoBolla(sop, f, c) {
+  if (!c || f.spostaChiesto || !eISO(f.dataBolla) || f.dataBolla === f.giorno) return;
+  const dest = sopralluoghiDelGiorno(c.codice, f.dataBolla)[0];
+  if (!dest || dest.id === sop.id) return;
+  f.spostaChiesto = true;
+  salva('sopralluogo', sop);
+  const si = await chiedi('Bolla ' + delGiorno(f.dataBolla), 'La bolla porta la data ' + delGiorno(f.dataBolla) + ', e quel giorno c\'è già nel cantiere. La sposto lì?', 'Sposta');
+  chiudiFoglio();
+  if (!si) return;
+  sop.media = sop.media.filter(function (m) { return m !== f; });
+  f.giorno = f.dataBolla;
+  if (!Array.isArray(dest.media)) dest.media = [];
+  dest.media.push(f);
+  salva('sopralluogo', sop);
+  salva('sopralluogo', dest);
+  avvisa('Spostata nella giornata ' + delGiorno(f.giorno), 'ok');
+  if (ROTTA.nome === 'foto' && ROTTA.parametri[1] === f.id) vai('#/foto/' + dest.id + '/' + f.id); else aggiornaVista();
 }
 
 async function lavoroRiordino(l) {
@@ -2189,6 +2448,9 @@ async function lavoroContabilita(l) {
   } else {
     righe = [rigaContabilitaLocale(l.grezzo)];
   }
+  // Il listino scelto a fine dettato, se c'è, va per primo; poi il Generale. Se no l'ordine del cantiere.
+  const scelto = l.listino ? listinoPerCodice(l.listino) : null;
+  const listini = scelto ? [scelto].concat(listinoGenerale() && !scelto.generale ? [listinoGenerale()] : []) : listiniDelCantiere(c);
   const proposte = [];
   for (const r of righe) {
     const riga = {
@@ -2200,8 +2462,14 @@ async function lavoroContabilita(l) {
     };
     if (!(riga.prezzo > 0)) {
       // Prima la ricerca per parole, gratis. Claude solo se non trova niente o trova troppo.
-      const voce = await trovaVoceListino(riga.descrizione);
-      if (voce) { riga.prezzo = voce.prezzo; riga.dallistino = voce.codice; if (!riga.um) riga.um = voce.um; }
+      const voce = await trovaVoceListino(riga.descrizione, listini);
+      if (voce) {
+        riga.prezzo = voce.prezzo; riga.dallistino = voce.codice;
+        if (!riga.um) riga.um = voce.um;
+        /* Unità dettata diversa da quella della voce: niente conversione a indovinare.
+           L'importo si calcola lo stesso, la riga resta segnata finché uno la sistema. */
+        else if (voce.um && riga.um !== voce.um) riga.umListino = voce.um;
+      }
     }
     riga.dacompletare = !(riga.prezzo > 0);
     riga.importo = Math.round(riga.quantita * riga.prezzo * 100) / 100;
@@ -2231,10 +2499,23 @@ function rigaContabilitaLocale(frase) {
   return { descrizione: t.charAt(0).toUpperCase() + t.slice(1), quantita: quantita, um: um, prezzo_unitario: null };
 }
 
-function cercaListinoLocale(testo) {
+/* A fine dettato, se il cantiere ha più di un listino, si chiede quale usare: un
+   tasto per listino, e la scelta vale solo per quella riga dettata. Con un
+   listino solo non si chiede niente. */
+function chiediListinoPerDettato(c, lavoro) {
+  const listini = listiniDelCantiere(c);
+  if (listini.length < 2) return;
+  apriFoglio(
+    '<h2>Con quale listino?</h2><p>Per i prezzi di questa riga dettata.</p>' +
+    listini.map(function (l) { return '<button class="btn" data-az="listino-scelto" data-lavoro="' + h(lavoro.id) + '" data-listino="' + h(l.codice) + '">' + h(l.nome) + (l.riferimento ? ' <small>' + h(l.riferimento) + '</small>' : '') + '</button>'; }).join('') +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Nell\'ordine del cantiere</button>'
+  );
+}
+// Cerca per parole dentro un elenco di voci (tutte, se non è detto quali).
+function cercaListinoLocale(testo, voci) {
   const p = parole(testo);
   if (!p.length) return [];
-  return listinoTutto().map(function (v) {
+  return (voci || listinoTutto()).map(function (v) {
     const pv = parole(v.descrizione);
     let punti = 0;
     p.forEach(function (w) { if (pv.some(function (x) { return x === w || (w.length > 4 && x.indexOf(w) === 0) || (x.length > 4 && w.indexOf(x) === 0); })) punti++; });
@@ -2242,16 +2523,25 @@ function cercaListinoLocale(testo) {
   }).filter(function (r) { return r.punti > 0; }).sort(function (a, b) { return b.punti - a.punti; });
 }
 
-async function trovaVoceListino(descrizione) {
-  const risultati = cercaListinoLocale(descrizione);
-  if (!risultati.length && !listinoTutto().length) return null;
+/* Si cerca un listino alla volta, nell'ordine del cantiere: il primo che dà una
+   voce vince, e il Generale è l'ultimo. Dentro ogni listino prima le parole,
+   gratis; Claude solo se non trova niente o trova troppo. */
+async function trovaVoceListino(descrizione, listini) {
+  for (const l of listini) {
+    const voce = await trovaVoceIn(descrizione, vociDi(l.codice));
+    if (voce) return voce;
+  }
+  return null;
+}
+async function trovaVoceIn(descrizione, voci) {
+  if (!voci.length) return null;
+  const risultati = cercaListinoLocale(descrizione, voci);
   const nParole = parole(descrizione).length;
   // Una sola voce chiara: prende tutte le parole, o stacca nettamente la seconda.
   if (risultati.length === 1 && risultati[0].punti >= Math.min(2, nParole)) return risultati[0].voce;
   if (risultati.length > 1 && risultati[0].punti >= Math.min(2, nParole) && risultati[0].punti >= risultati[1].punti * 2) return risultati[0].voce;
   if (!chiaveAnthropic() || !navigator.onLine) return null;
-  const candidate = (risultati.length ? risultati : listinoTutto().map(function (v) { return { voce: v }; })).slice(0, 20).map(function (r) { return r.voce; });
-  if (!candidate.length) return null;
+  const candidate = (risultati.length ? risultati : voci.map(function (v) { return { voce: v }; })).slice(0, 20).map(function (r) { return r.voce; });
   const elenco = candidate.map(function (v, i) { return (i + 1) + '. ' + v.descrizione + ' (' + v.um + ')'; }).join('\n');
   try {
     const risposta = await chiamaClaude(REGOLE_CERCA_VOCE, 'Lavorazione dettata: ' + descrizione + '\n\nVoci del listino:\n' + elenco, 800);
@@ -2340,6 +2630,35 @@ const REG = {
 
 function registrazioneAttiva() { return REG.attiva; }
 
+/* Il microfono è negato: una pagina web non può aprire le Impostazioni del telefono,
+   né su iPhone né su Android. Quindi si spiega, con i passi giusti per quel telefono
+   e per come è aperta l'app. La destinazione resta da parte: "Riprova" riparte da lì. */
+let MIC_DESTINAZIONE = null;
+function apriFoglioMicrofono(destinazione) {
+  MIC_DESTINAZIONE = destinazione;
+  const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const installata = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const passi = iphone
+    ? (installata
+      ? ['Apri Impostazioni del telefono.', 'Tocca App, poi Safari.', 'Tocca Impostazioni per i siti web, poi Microfono.', 'Trova CANTIERI e scegli Consenti.', 'Torna qui e tocca Riprova.']
+      : ['Tocca AA a sinistra dell\'indirizzo, in alto.', 'Tocca Impostazioni sito web.', 'Alla voce Microfono scegli Consenti.', 'Torna qui e tocca Riprova.'])
+    : (installata
+      ? ['Tieni premuta l\'icona di CANTIERI sulla schermata Home.', 'Tocca Informazioni app, poi Impostazioni sito.', 'Alla voce Microfono scegli Consenti.', 'Torna qui e tocca Riprova.']
+      : ['Tocca il lucchetto (o l\'icona) a sinistra dell\'indirizzo, in alto.', 'Tocca Autorizzazioni.', 'Alla voce Microfono scegli Consenti.', 'Torna qui e tocca Riprova.']);
+  const nota = iphone
+    ? (installata
+      ? 'Se CANTIERI non c\'è nell\'elenco: togli l\'icona dalla schermata Home, apri l\'indirizzo in Safari, consenti il microfono, poi rimetti l\'icona con Condividi › Aggiungi alla schermata Home.'
+      : 'Se non trovi AA: Impostazioni del telefono › App › Safari › Impostazioni per i siti web › Microfono › CANTIERI › Consenti.')
+    : '';
+  apriFoglio(
+    '<h2>Il microfono è spento per questa app</h2>' +
+    '<ol class="passi">' + passi.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol>' +
+    (nota ? '<p class="nota-piccola">' + h(nota) + '</p>' : '') +
+    '<button class="btn btn-ok" data-az="microfono-riprova">Riprova</button>' +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>'
+  );
+}
+
 async function avviaRegistrazione(destinazione) {
   if (REG.attiva) return;
   if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2351,7 +2670,9 @@ async function avviaRegistrazione(destinazione) {
     // Il permesso si chiede qui, alla prima pressione del bottone, non all'apertura dell'app.
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
-    avvisa('Microfono negato', 'err');
+    // Permesso negato: un foglio che spiega come ridarlo. Il resto: un avviso.
+    if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')) apriFoglioMicrofono(destinazione);
+    else avvisa('Microfono non disponibile', 'err');
     return;
   }
   REG.stream = stream;
@@ -2532,7 +2853,8 @@ async function salvaPezzoRegistrato(blob, durata, ora, destinazione) {
     accoda({ tipo: 'trascrizione', per: 'sopralluogo', sop: sop.id, pezzo: id, etichetta: 'Registrazione delle ' + ora });
   } else if (destinazione.tipo === 'contabilita') {
     avvisa('Salvato', 'ok');
-    accoda({ tipo: 'trascrizione', per: 'contabilita', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'riga delle ' + ora });
+    const lavoro = accoda({ tipo: 'trascrizione', per: 'contabilita', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'riga delle ' + ora });
+    chiediListinoPerDettato(cantiere(destinazione.cantiere), lavoro);
   } else if (destinazione.tipo === 'nota') {
     avvisa('Salvato', 'ok');
     accoda({ tipo: 'trascrizione', per: 'nota', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'nota delle ' + ora });
@@ -2636,6 +2958,130 @@ async function riduciFoto(file, latoMax, qualita) {
   tela.width = 1; tela.height = 1;
   return { blob: blob, larghezza: W, altezza: A };
 }
+// Una tela già della misura giusta diventa un JPEG, con le misure che servono al PDF.
+async function blobDaTela(tela, qualita) {
+  const W = tela.width, A = tela.height;
+  const blob = await new Promise(function (ok, no) {
+    tela.toBlob(function (b) { if (b) ok(b); else no(new Error('Riduzione non riuscita')); }, 'image/jpeg', qualita);
+  });
+  tela.width = 1; tela.height = 1;
+  return { blob: blob, larghezza: W, altezza: A };
+}
+
+/* ---- il ritaglio di una bolla ----
+   La foto di un foglio è quasi sempre storta e con il tavolo intorno. Quattro
+   angoli da trascinare sui bordi del foglio, e il foglio si raddrizza: una
+   trasformazione di prospettiva fatta sulla tela, un pixel alla volta, senza
+   librerie. "Usa così" salta tutto e tiene la foto com'è. */
+let RITAGLIO = null;
+// La foto, ridotta a LATO_RITAGLIO, su una tela: da qui escono l'anteprima e il ritaglio.
+async function telaSorgente(file) {
+  const im = await apriImmagine(file);
+  const w = im.naturalWidth || im.width, a = im.naturalHeight || im.height;
+  if (!w || !a) throw new Error('Foto vuota');
+  const scala = Math.min(1, LATO_RITAGLIO / Math.max(w, a));
+  const tela = document.createElement('canvas');
+  tela.width = Math.max(1, Math.round(w * scala)); tela.height = Math.max(1, Math.round(a * scala));
+  tela.getContext('2d').drawImage(im, 0, 0, tela.width, tela.height);
+  if (im.close) im.close();
+  return tela;
+}
+/* La schermata del ritaglio. Risolve con la tela del foglio raddrizzato, con la
+   parola 'salta' se si usa la foto com'è, con null se si chiude senza salvare. */
+async function ritagliaDocumento(file) {
+  const sorgente = await telaSorgente(file);
+  return new Promise(function (ok) {
+    const box = document.createElement('div');
+    box.id = 'ritaglio';
+    box.innerHTML = '<div class="area"><div class="foglio"><canvas></canvas><svg><polygon></polygon></svg>' +
+      [0, 1, 2, 3].map(function (i) { return '<button class="angolo" data-i="' + i + '" aria-label="Angolo ' + (i + 1) + '"></button>'; }).join('') + '</div></div>' +
+      '<button class="chiudi" data-az="ritaglio-chiudi" aria-label="Chiudi">✕</button>' +
+      '<div class="barra"><button class="az verde" data-az="ritaglio-ok">Ritaglia</button><button class="az stretta" data-az="ritaglio-salta">Usa così</button></div>';
+    document.body.appendChild(box);
+    // La foto adattata all'area libera; gli angoli partono dai quattro angoli della foto.
+    const area = box.querySelector('.area'), foglio = box.querySelector('.foglio'), tela = box.querySelector('canvas');
+    const scala = Math.min(area.clientWidth / sorgente.width, area.clientHeight / sorgente.height);
+    const W = Math.round(sorgente.width * scala), A = Math.round(sorgente.height * scala);
+    foglio.style.width = W + 'px'; foglio.style.height = A + 'px';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    tela.width = Math.round(W * dpr); tela.height = Math.round(A * dpr);
+    tela.getContext('2d').drawImage(sorgente, 0, 0, tela.width, tela.height);
+    const punti = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: A }, { x: 0, y: A }];
+    RITAGLIO = { box: box, sorgente: sorgente, punti: punti, scala: scala, ok: ok, attivo: null };
+    disegnaRitaglio();
+    // Un dito sull'angolo lo porta dove va: il gesto resta suo anche uscendo dal cerchietto.
+    foglio.addEventListener('pointerdown', function (ev) {
+      const an = ev.target.closest('.angolo');
+      if (!an) return;
+      RITAGLIO.attivo = Number(an.dataset.i);
+      an.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    });
+    foglio.addEventListener('pointermove', function (ev) {
+      if (RITAGLIO.attivo == null) return;
+      const r = foglio.getBoundingClientRect();
+      RITAGLIO.punti[RITAGLIO.attivo] = { x: Math.min(W, Math.max(0, ev.clientX - r.left)), y: Math.min(A, Math.max(0, ev.clientY - r.top)) };
+      disegnaRitaglio();
+    });
+    foglio.addEventListener('pointerup', function () { RITAGLIO.attivo = null; });
+    foglio.addEventListener('pointercancel', function () { RITAGLIO.attivo = null; });
+  });
+}
+function disegnaRitaglio() {
+  if (!RITAGLIO) return;
+  const p = RITAGLIO.punti;
+  RITAGLIO.box.querySelector('polygon').setAttribute('points', p.map(function (q) { return q.x + ',' + q.y; }).join(' '));
+  RITAGLIO.box.querySelectorAll('.angolo').forEach(function (an, i) { an.style.left = p[i].x + 'px'; an.style.top = p[i].y + 'px'; });
+}
+function chiudiRitaglio(esito) {
+  if (!RITAGLIO) return;
+  const r = RITAGLIO;
+  RITAGLIO = null;
+  r.box.remove();
+  if (esito !== 'tela') r.sorgente.width = 1;
+  r.ok(esito === 'tela' ? raddrizza(r.sorgente, r.punti.map(function (q) { return { x: q.x / r.scala, y: q.y / r.scala }; })) : esito);
+}
+/* Il quadrilatero segnato diventa un rettangolo. La corrispondenza fra il
+   rettangolo di uscita e il quadrilatero è un'omografia (Heckbert, quadrato
+   unitario → quadrilatero); per ogni pixel di uscita si va a prendere il punto
+   della foto, con interpolazione bilineare perché il testo resti leggibile. */
+function raddrizza(sorgente, p) {
+  const dist = function (a, b) { return Math.hypot(a.x - b.x, a.y - b.y); };
+  let W = Math.max(dist(p[0], p[1]), dist(p[3], p[2])), A = Math.max(dist(p[0], p[3]), dist(p[1], p[2]));
+  const scala = Math.min(1, LATO_DOC / Math.max(W, A));
+  W = Math.max(1, Math.round(W * scala)); A = Math.max(1, Math.round(A * scala));
+  const x0 = p[0].x, y0 = p[0].y, x1 = p[1].x, y1 = p[1].y, x2 = p[2].x, y2 = p[2].y, x3 = p[3].x, y3 = p[3].y;
+  const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3;
+  const dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+  let g = 0, hh = 0;
+  if (dx3 || dy3) { const den = dx1 * dy2 - dx2 * dy1; g = (dx3 * dy2 - dx2 * dy3) / den; hh = (dx1 * dy3 - dx3 * dy1) / den; }
+  const a = x1 - x0 + g * x1, b = x3 - x0 + hh * x3, c = x0, d = y1 - y0 + g * y1, e = y3 - y0 + hh * y3, f = y0;
+  const sw = sorgente.width, sh = sorgente.height;
+  const src = sorgente.getContext('2d').getImageData(0, 0, sw, sh).data;
+  sorgente.width = 1;
+  const uscita = document.createElement('canvas');
+  uscita.width = W; uscita.height = A;
+  const ctx = uscita.getContext('2d');
+  const img = ctx.createImageData(W, A), o = img.data;
+  let k = 0;
+  for (let j = 0; j < A; j++) {
+    const v = (j + 0.5) / A;
+    for (let i = 0; i < W; i++) {
+      const u = (i + 0.5) / W, den = g * u + hh * v + 1;
+      let x = (a * u + b * v + c) / den, y = (d * u + e * v + f) / den;
+      x = Math.min(sw - 1.001, Math.max(0, x)); y = Math.min(sh - 1.001, Math.max(0, y));
+      const xi = x | 0, yi = y | 0, fx = x - xi, fy = y - yi;
+      const i00 = (yi * sw + xi) * 4, i01 = i00 + 4, i10 = i00 + sw * 4, i11 = i10 + 4;
+      for (let z = 0; z < 3; z++) {
+        o[k + z] = src[i00 + z] * (1 - fx) * (1 - fy) + src[i01 + z] * fx * (1 - fy) + src[i10 + z] * (1 - fx) * fy + src[i11 + z] * fx * fy;
+      }
+      o[k + 3] = 255;
+      k += 4;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return uscita;
+}
 
 /* ---- la fotocamera dentro l'app ----
    La fotocamera del telefono, aperta dall'ingresso file, su Android chiude spesso la
@@ -2691,18 +3137,30 @@ async function aggiungiFoto(file, sopId, origine, genere) {
   /* Lo scanner del telefono restituisce un PDF: si salva com'è, senza disegnarlo.
      Le pagine si contano con pdf-lib, se c'è; se non si riesce restano ignote. */
   const pdf = doc && ePdf(file);
+  const bolla = genere === 'bolla';
+  let ridotta = null;
+  // La foto di una bolla passa prima dal ritaglio: si raddrizza, o si tiene com'è.
+  if (bolla && !pdf) {
+    let esito = 'salta';
+    try { esito = await ritagliaDocumento(file); } catch (e) { avvisa(e.message || 'Foto non leggibile', 'err'); return; }
+    if (!esito) return;
+    if (esito !== 'salta') ridotta = await blobDaTela(esito, QUALITA_DOC);
+  }
   avvisa(doc ? 'Preparo la scansione…' : 'Preparo la foto…');
-  let ridotta;
   if (pdf) {
     ridotta = { blob: file, larghezza: 0, altezza: 0, pagine: await contaPaginePdf(file) };
-  } else {
+  } else if (!ridotta) {
     try { ridotta = await riduciFoto(file, doc ? LATO_DOC : LATO_FOTO, doc ? QUALITA_DOC : QUALITA_FOTO); }
     catch (e) { avvisa(e.message || 'Foto non leggibile', 'err'); return; }
   }
   const id = nuovoId();
-  let rif;
+  let rif, lettura = null;
   try { rif = await salvaMedia(id, ridotta.blob); }
   catch (e) { avvisa('Foto non salvata', 'err'); return; }
+  // La copia piccola della bolla, solo per leggerla. Se non riesce si leggerà quella grande.
+  if (bolla && !pdf) {
+    try { lettura = await salvaMedia(id + '-l', (await riduciFoto(ridotta.blob, LATO_LETTURA, QUALITA_LETTURA)).blob); } catch (e) { lettura = null; }
+  }
   // Dal rullino vale la data del file, se è credibile; uno scatto è adesso.
   const d = (origine === 'rullino' && file.lastModified && file.lastModified < Date.now() - 60000) ? new Date(file.lastModified) : new Date();
   if (!Array.isArray(s.media)) s.media = [];
@@ -2718,8 +3176,11 @@ async function aggiungiFoto(file, sopId, origine, genere) {
   };
   // Campi in più solo per il PDF scansionato: una foto normale non li ha, e non cambia.
   if (pdf) { f.formato = 'pdf'; f.pagine = ridotta.pagine; }
+  if (lettura) f.lettura = lettura;
   s.media.push(f);
   salva('sopralluogo', s);
+  // La bolla si legge subito, dalla coda: senza rete aspetta e riparte da sola.
+  if (bolla) accoda({ tipo: 'bolla', sop: s.id, foto: f.id, etichetta: nomeFoto(f) });
   /* Dopo uno scatto non si cambia schermata: in cantiere le foto si fanno in fila, e
      cambiare pagina fra una e l'altra costava un tocco ogni volta. La miniatura compare
      da sola nella striscia; il referto si detta toccandola, quando si ha tempo. */
@@ -2746,6 +3207,7 @@ async function eliminaFoto(s, f) {
   loc.coda = loc.coda.filter(function (l) { return l.foto !== f.id; });
   salvaLocale();
   if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+  if (f.lettura) await cancellaMedia(f.lettura);
   if (f.audio) await cancellaMedia(f.audio);
   s.media = (s.media || []).filter(function (m) { return m !== f; });
   salva('sopralluogo', s);
@@ -2754,6 +3216,7 @@ async function eliminaFoto(s, f) {
 async function cancellaFileFoto(s) {
   for (const f of fotoDi(s)) {
     if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+    if (f.lettura) await cancellaMedia(f.lettura);
     if (f.audio) await cancellaMedia(f.audio);
   }
 }
@@ -2821,7 +3284,9 @@ function statoLavoroFoto(f) {
   const l = loc.coda.find(function (x) { return x.foto === f.id; });
   const copia = Object.assign({}, f);
   if (l) {
-    if (l.stato === 'in_corso') copia.stato = l.tipo === 'referto' ? 'trascritto' : 'in_corso';
+    // La bolla in coda o in lettura dice la stessa cosa: si sta leggendo.
+    if (l.tipo === 'bolla' && l.stato !== 'fallito') copia.stato = 'lettura';
+    else if (l.stato === 'in_corso') copia.stato = l.tipo === 'referto' ? 'trascritto' : 'in_corso';
     else if (l.stato === 'fallito') { copia.stato = 'errore'; copia.errore = l.errore; }
     else if (l.stato === 'in_attesa') { copia.stato = l.tipo === 'referto' ? 'trascritto' : 'in_coda'; copia.errore = l.errore || null; }
   } else if (f.stato === 'in_coda' || f.stato === 'in_corso' || f.stato === 'trascritto') {
@@ -2831,6 +3296,7 @@ function statoLavoroFoto(f) {
   return copia;
 }
 function descriviStatoFoto(st) {
+  if (st.stato === 'lettura') return { testo: 'Leggo la bolla…', classe: 'att' };
   if (st.stato === 'in_coda') return { testo: 'referto in coda' + (st.errore ? ' · ' + st.errore : ''), classe: 'att' };
   if (st.stato === 'in_corso') return { testo: 'trascrivendo…', classe: 'att' };
   if (st.stato === 'trascritto') return { testo: 'trascritto, sistemo il referto…', classe: 'att' };
@@ -2846,7 +3312,7 @@ function filaFoto(s, lista, opzioni) {
     // Un elemento è la foto, oppure { sop, f } quando la fila mette insieme più sopralluoghi.
     const f = x.f || x, sx = x.sop || s;
     const st = statoLavoroFoto(f);
-    const eti = opzioni.doc ? (GENERI_BREVI[f.genere] || 'documento') : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
+    const eti = opzioni.doc ? (st.stato === 'lettura' ? 'Leggo…' : (GENERI_BREVI[f.genere] || 'documento')) : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
       '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(sx.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
       // Una scansione PDF non ha miniatura: l'icona del documento e il numero di pagine.
@@ -2991,7 +3457,9 @@ function disegna() {
       case 'modifica-relazione': html = vistaRelazioneModifica(ROTTA.parametri[0]); break;
       case 'foto': html = vistaFoto(ROTTA.parametri[0], ROTTA.parametri[1]); break;
       case 'contabilita': html = vistaContabilita(ROTTA.parametri[0]); break;
-      case 'listino': html = vistaListino(ROTTA.parametri[0], ROTTA.parametri[1]); break;
+      case 'ordini': html = vistaOrdini(ROTTA.parametri[0]); break;
+      case 'documenti': html = vistaDocumenti(ROTTA.parametri[0]); break;
+      case 'listino': html = vistaListino(ROTTA.parametri[0], ROTTA.parametri[1], ROTTA.parametri[2]); break;
       case 'note': html = vistaNote(ROTTA.parametri[0]); break;
       case 'pdf': html = vistaPdf(ROTTA.parametri[0]); break;
       case 'leggi': html = vistaLeggiPdf(ROTTA.parametri[0]); break;
@@ -3055,10 +3523,23 @@ function testata(o) {
 }
 function tendina(chiave, etichetta, contenuto, n) {
   const aperta = !!leggiLocale().tendine[chiave];
+  // Il numero a destra può essere gialla: { n: 2, att: true } dice "qui c'è qualcosa da guardare".
+  const att = n && typeof n === 'object';
+  if (att) n = n.n;
   return '<button class="tend" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
-    '<span class="frec">▶</span> ' + h(etichetta) + (n != null ? '<span class="n">' + h(n) + '</span>' : '') + '</button>' +
+    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span>' + (n != null ? '<span class="n' + (att ? ' att' : '') + '">' + h(n) + '</span>' : '') + '</button>' +
     '<div' + (aperta ? '' : ' hidden') + '>' + contenuto + '</div>';
 }
+/* Le tendine di una schermata stanno due per riga; quella aperta prende la riga
+   intera con il suo contenuto sotto. Si passano solo quelle che hanno qualcosa
+   dentro: una tendina vuota non si disegna. Una sola, e prende tutta la riga. */
+function grigliaTendine(lista) {
+  lista = lista.filter(Boolean);
+  if (!lista.length) return '';
+  return '<div class="tendine' + (lista.length === 1 ? ' una' : '') + '">' + lista.join('') + '</div>';
+}
+// L'elenco dentro una tendina scorre nella sua altezza, come la lista degli audio.
+function scorrevole(html) { return '<div class="audio-lista corta">' + html + '</div>'; }
 function testoElenco(testo, elenco) {
   if (!elenco) return h(testo);
   return righeElenco(testo).map(function (r) { return '<div class="voce"><span class="segno">●</span><span>' + h(r) + '</span></div>'; }).join('');
@@ -3071,18 +3552,49 @@ function rigaAudio(sop, pezzo, opzioni) {
   const nome = pezzo.titolo || 'Registrazione delle ' + pezzo.ora;
   if (pezzo.stato === 'in_coda') { sotto = 'in coda' + (pezzo.errore ? ' · ' + pezzo.errore : '') + ' · ' + pezzo.ora; classe = 'att'; }
   else if (pezzo.stato === 'in_corso' || pezzo.stato === 'trascritto') { sotto = (pezzo.stato === 'trascritto' ? 'trascritto, riordino in corso' : 'trascrivendo…') + ' · ' + pezzo.ora; classe = 'att'; }
-  else if (pezzo.stato === 'errore') { sotto = 'non riuscito: ' + (pezzo.errore || '') ; classe = 'err'; }
+  else if (pezzo.stato === 'errore') { sotto = testoErrorePezzo(pezzo.errore); classe = 'err'; }
   else if (pezzo.archiviato) { sotto = 'audio archiviato il ' + dataSenzaAnno(pezzo.archiviato) + ' · ' + pezzo.ora; }
   else if (!pezzo.audio) { sotto = 'esempio, senza audio · ' + pezzo.ora; }
   else if (opzioni.dentroSezione) { sotto = pezzo.ora; }
   else { sotto = (pezzo.sezione ? nomeSezione(pezzo.sezione) : 'da smistare') + ' · ' + pezzo.ora; }
   const spento = !pezzo.audio;
+  // Riprova solo quando ha senso: l'audio c'è ancora e l'errore non è di quelli che si ripetono uguali.
+  const riprova = pezzo.stato === 'errore' && pezzo.audio && !errorePermanente(pezzo.errore);
   return '<div class="audio' + (opzioni.dentroSezione ? ' sotto' : '') + '">' +
     '<button class="play' + (spento ? ' spento' : '') + (suona ? ' suona' : '') + '" data-az="riascolta" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Riascolta">' + (suona ? '❚❚' : '▶') + '</button>' +
     '<button class="n" data-az="vai-sezione" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '"><div class="t">' + h(nome) + '</div><div class="s ' + classe + '">' + h(sotto) + '</div></button>' +
-    '<span class="d">' + durataBreve(pezzo.durata) + '</span>' +
+    (riprova ? '<button class="riprova" data-az="pezzo-riprova" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '">Riprova</button>' : '<span class="d">' + durataBreve(pezzo.durata) + '</span>') +
     // La ✕ in fondo alla riga: una registrazione venuta male si butta e si rifà, sempre.
     '<button class="x-riga" data-az="pezzo-elimina" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Elimina la registrazione">✕</button></div>';
+}
+/* Gli errori che si ripetono uguali a ogni tentativo: riprovare non serve, si dice
+   cosa fare. Gli altri (rete, servizio occupato) si riprovano. */
+function errorePermanente(errore) { return /\b(400|401|403|413)\b|Manca la chiave/.test(String(errore || '')); }
+function testoErrorePezzo(errore) {
+  const e = String(errore || '');
+  if (/\b40[13]\b/.test(e)) return 'chiave non valida: controlla il Modo tecnico';
+  if (/\b413\b/.test(e)) return 'registrazione troppo grande';
+  if (/\b400\b/.test(e)) return 'file non accettato';
+  return 'non riuscito: ' + e;
+}
+/* Il lavoro di quel pezzo torna in coda, dello stesso tipo. Se non c'è più (coda
+   svuotata dal Modo tecnico) si ricrea: senza testo grezzo una trascrizione, con il
+   testo il passo dopo — il riordino, o il rilievo se il pezzo era un rilievo. */
+function riprovaPezzo(sop, pezzo) {
+  const loc = leggiLocale();
+  const l = loc.coda.find(function (x) { return x.pezzo === pezzo.id; });
+  if (l) { l.stato = 'in_attesa'; l.tentativi = 0; l.prossimo = 0; l.errore = null; salvaLocale(); }
+  else if (pezzo.audio || pezzo.grezzo) {
+    const rilievo = pezzo.sezione === 'rilievi_ordine' || pezzo.sezione === 'rilievi_contabilita';
+    const etichetta = pezzo.titolo || 'Registrazione delle ' + pezzo.ora;
+    if (!pezzo.grezzo) accoda({ tipo: 'trascrizione', per: rilievo ? 'rilievo' : 'sopralluogo', sop: sop.id, pezzo: pezzo.id, sezione: rilievo ? pezzo.sezione : undefined, etichetta: etichetta });
+    else if (rilievo) accoda({ tipo: 'rilievo', sop: sop.id, pezzo: pezzo.id, sezione: pezzo.sezione, etichetta: etichetta });
+    else accoda({ tipo: 'riordino', sop: sop.id, pezzo: pezzo.id, etichetta: etichetta });
+  } else return false;
+  pezzo.stato = pezzo.grezzo ? 'trascritto' : 'in_coda';
+  pezzo.errore = null;
+  salva('sopralluogo', sop);
+  return true;
 }
 
 /* Gli audio in una scatola alta tre righe, che scorre dentro di sé: dieci registrazioni
@@ -3127,14 +3639,10 @@ function vistaAziende() {
   /* I cantieri stanno dentro la loro azienda, non in un elenco a parte: si vede subito
      chi ha cosa, e si entra dritti nel cantiere senza passare dalla scheda dell'impresa. */
   const rigaCantiere = function (c) {
-    const sop = sopralluogoDiOggi(c.codice);
-    let stato;
-    if (c.stato === 'chiuso') stato = 'chiuso';
-    else if (sop) stato = 'fatto alle ' + sop.ora + ' · ' + sop.pezzi.length + ' audio';
-    else stato = 'da fare';
+    const st = statoCantiere(c);
     return '<button class="riga" data-az="vai" data-a="#/cantiere/' + h(c.id) + '">' +
-      '<span class="desc">' + h(c.nome) + '<small>' + h(c.committente || '') + (c.committente ? ' · ' : '') + h(stato) + '</small></span>' +
-      (c.stato === 'chiuso' ? '<span class="pill grigia">chiuso</span>' : (sop ? '<span class="pill ok">✓</span>' : '<span class="pill att">oggi</span>')) +
+      '<span class="desc">' + h(c.nome) + '<small>' + h([c.committente, st.mini].filter(Boolean).join(' · ')) + '</small></span>' +
+      '<span class="pill ' + st.pill + '">' + h(st.nome) + '</span>' +
       '<span class="frec">›</span></button>';
   };
   /* La riga dell'azienda apre e chiude i suoi cantieri: con più aziende in
@@ -3144,7 +3652,7 @@ function vistaAziende() {
   aziende.forEach(function (a) {
     const cant = cantieriDiAzienda(a.codice).sort(function (x, z) { return x.nome.localeCompare(z.nome); });
     const attivi = cant.filter(function (c) { return c.stato !== 'chiuso'; });
-    const daFare = attivi.filter(function (c) { return !sopralluogoDiOggi(c.codice); }).length;
+    const daFare = attivi.filter(function (c) { return statoCantiere(c).nome === 'da fare'; }).length;
     const chiave = 'azienda-' + a.codice;
     const memoria = leggiLocale().tendine;
     const aperta = Object.prototype.hasOwnProperty.call(memoria, chiave) ? !!memoria[chiave] : aziende.length === 1;
@@ -3235,10 +3743,10 @@ function vistaDashboard(idAzienda) {
   });
   const attivi = tutti.filter(function (c) { return c.stato !== 'chiuso'; });
   const chiusi = tutti.filter(function (c) { return c.stato === 'chiuso'; });
-  const daFare = [], fatti = [];
-  attivi.forEach(function (c) { (sopralluogoDiOggi(c.codice) ? fatti : daFare).push(c); });
+  const daFare = [], inCorso = [], fatti = [];
+  attivi.forEach(function (c) { const n = statoCantiere(c).nome; (n === 'da fare' ? daFare : n === 'in corso' ? inCorso : fatti).push(c); });
   const ordina = function (a, b) { return a.nome.localeCompare(b.nome); };
-  daFare.sort(ordina); fatti.sort(ordina); chiusi.sort(ordina);
+  daFare.sort(ordina); inCorso.sort(ordina); fatti.sort(ordina); chiusi.sort(ordina);
 
   const az = idAzienda && idAzienda !== 'senza' ? azienda(idAzienda) : null;
   const senza = idAzienda === 'senza';
@@ -3261,16 +3769,8 @@ function vistaDashboard(idAzienda) {
   if (lavoriFalliti) html += '<div class="avviso rosso">' + lavoriFalliti + (lavoriFalliti === 1 ? ' lavoro non riuscito' : ' lavori non riusciti') + ': guarda la coda nel modo sviluppatore.</div>';
 
   function cardCantiere(c) {
-    const sop = sopralluogoDiOggi(c.codice);
-    const ultimi = sopralluoghiDi(c.codice);
-    let stato, mini;
-    if (sop) {
-      stato = '<span class="pill ok">✓ ' + h(sop.ora) + '</span>';
-      mini = sop.pezzi.length + ' audio · ' + sezioniPiene(sop.sezioni).length + ' sezioni';
-    } else {
-      stato = c.stato === 'chiuso' ? '<span class="pill grigia">chiuso</span>' : '<span class="pill att">da fare</span>';
-      mini = ultimi.length ? 'ultimo: ' + (ultimi[0].giorno === oggi ? 'oggi' : nomeGiornoRelativo(ultimi[0].giorno).toLowerCase() + (Date.now() - daISO(ultimi[0].giorno).getTime() > 6 * 86400000 ? ' ' + dataSenzaAnno(ultimi[0].giorno) : '')) : 'nessun sopralluogo';
-    }
+    const st = statoCantiere(c);
+    const stato = '<span class="pill ' + st.pill + '">' + h(st.nome) + '</span>', mini = st.mini;
     /* Due righe invece di tre: il nome con lo stato in fondo alla sua riga,
        e sotto tutto il resto in una frase sola. A destra non resta vuoto. */
     // I tre puntini in fondo alla riga del titolo; la voce Elimina scende sotto, nella card.
@@ -3289,10 +3789,11 @@ function vistaDashboard(idAzienda) {
   if (!attivi.length && !chiusi.length) {
     html += '<div class="vuoto-stato">' + (f ? 'Nessun cantiere trovato.' : 'Nessun cantiere. Tocca “＋ cantiere” per aprirne uno.') + '</div>';
   }
-  if (daFare.length) html += '<div class="eti">Da fare oggi <span class="n">' + daFare.length + '</span></div>' + daFare.map(cardCantiere).join('');
-  if (fatti.length) html += '<div class="eti">Già fatti <span class="n">' + fatti.length + '</span></div>' + fatti.map(cardCantiere).join('');
+  if (daFare.length) html += '<div class="eti">Da fare <span class="n">' + daFare.length + '</span></div>' + daFare.map(cardCantiere).join('');
+  if (inCorso.length) html += '<div class="eti">In corso <span class="n">' + inCorso.length + '</span></div>' + inCorso.map(cardCantiere).join('');
+  if (fatti.length) html += '<div class="eti">Fatti <span class="n">' + fatti.length + '</span></div>' + fatti.map(cardCantiere).join('');
   if (chiusi.length) html += tendina('chiusi', 'Cantieri chiusi (' + chiusi.length + ')', chiusi.map(cardCantiere).join(''));
-  if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="parla-dashboard"><span class="ico ico-microfono"></span> Detta un sopralluogo</button></div>';
+  if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="parla-dashboard"' + (idAzienda ? ' data-azienda="' + h(idAzienda) + '"' : '') + '><span class="ico ico-microfono"></span> Detta un sopralluogo</button></div>';
   return html;
 }
 
@@ -3313,8 +3814,8 @@ function vistaCantiere(id) {
     sotto: h(c.committente) + (c.indirizzo ? ' · ' + h(c.indirizzo) : ''),
     destra: '<button class="pill ' + (c.stato === 'chiuso' ? 'grigia' : 'cod') + '" data-az="vai" data-a="#/modifica-cantiere/' + h(c.id) + '">' + (c.stato === 'chiuso' ? 'chiuso' : 'modifica') + '</button>' });
   // "giorni" conta le giornate, non i passaggi: tre sopralluoghi in un giorno sono un giorno.
-  html += '<div class="numeri"><div class="n"><div class="v">' + giornateDi(c.codice).length + '</div><div class="k">giorni</div></div>' +
-    '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">verbali</div></div>' +
+  html += '<div class="numeri"><div class="n"><div class="v">' + giornateDi(c.codice).length + '</div><div class="k">' + plurale(giornateDi(c.codice).length, 'giorno', 'giorni') + '</div></div>' +
+    '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">' + plurale(nVerbali, 'verbale', 'verbali') + '</div></div>' +
     '<div class="n"><div class="v fatto">' + h(compatto(totale)) + '</div><div class="k">contabilità €</div></div></div>';
   // Un cantiere chiuso ha la sua relazione in testa, prima dei giorni: è la cosa che si va a leggere.
   const rel = c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
@@ -3323,7 +3824,7 @@ function vistaCantiere(id) {
       // La card si tocca per leggere la relazione; i tre tasti sotto fanno il resto.
       const pdfRel = pdfConChiave('relazione:' + rel.codice);
       html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
-        '<div class="fila"><span class="pill ok">chiuso</span><span class="mini">' + rel.giorni.length + (rel.giorni.length === 1 ? ' giorno · ' : ' giorni · ') + h(euro(rel.numeri.totale)) + '</span></div></div>' +
+        '<div class="fila"><span class="pill ok">chiuso</span><span class="mini">' + rel.giorni.length + ' ' + plurale(rel.giorni.length, 'giorno', 'giorni') + ' · ' + h(euro(rel.numeri.totale)) + '</span></div></div>' +
         '<div class="griglia tre">' +
         '<button class="btn" data-az="vai" data-a="' + (pdfRel ? '#/leggi/' + h(pdfRel.id) : '#/relazione/' + h(rel.id)) + '">Visualizza</button>' +
         tastoEsporta('rel-' + rel.id) +
@@ -3351,19 +3852,21 @@ function vistaCantiere(id) {
      presi non conta più, una volta che sono qui. */
   // Un rilievo appena dettato da qui si fa vedere qui, prima del resto.
   html += cardRilieviNuovi({ cantiere: c.codice });
+  /* Ordini, bolle, verbali e rilievi di tutto il lavoro stanno in quattro tendine,
+     due per riga: compaiono solo se dentro c'è qualcosa, e dentro si scorre. */
   const rilCant = String(c.rilievi || '').trim();
-  const docCant = documentiDelCantiere(c.codice);
-  if (rilCant || docCant.length) {
-    html += '<div class="card"><div class="card-capo">Del cantiere' +
-      (rilCant ? '<button class="dx" data-az="rilievo-cantiere-svuota" data-id="' + h(c.id) + '">svuota i rilievi</button>' : '') + '</div>' +
-      (rilCant ? '<div class="card-corpo">' + testoElenco(c.rilievi, true) + '</div>' : '');
-    docCant.forEach(function (v) {
-      html += '<button class="riga" data-az="vai" data-a="#/foto/' + h(v.sop.id) + '/' + h(v.f.id) + '">' +
-        '<span class="desc">' + h(GENERI[v.f.genere] || 'Documento') + '<small>' + h(dataSenzaAnno(v.f.giorno)) + ', ' + h(oraCorta(v.f.ora)) + (v.f.formato === 'pdf' ? ' · ' + h(paginePdf(v.f)) : '') + '</small></span>' +
-        '<span class="frec">›</span></button>';
-    });
-    html += '</div>';
-  }
+  const docCant = documentiTutti(c);
+  const verbCant = verbaliDiGiornata(c.codice);
+  html += grigliaTendine([
+    tendinaOrdini(c),
+    docCant.length ? tendina('bolle-' + c.id, 'Bolle',
+      '<div class="card">' + scorrevole(docCant.map(rigaDocumentoHtml).join('')) +
+      '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="vai" data-a="#/documenti/' + h(c.id) + '">Cerca nelle bolle</button></div></div>', docCant.length) : '',
+    verbCant.length ? tendina('verbali-' + c.id, 'Verbali', strisciaVerbaliGiornata(c), verbCant.length) : '',
+    rilCant ? tendina('rilievi-' + c.id, 'Rilievi',
+      '<div class="card">' + scorrevole('<div class="card-corpo">' + testoElenco(c.rilievi, true) + '</div>') +
+      '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="rilievo-cantiere-svuota" data-id="' + h(c.id) + '">svuota i rilievi</button></div></div>', righeElenco(c.rilievi).length) : ''
+  ]);
   if (c.stato !== 'chiuso') {
     html += '<div class="card"><div class="griglia">' +
       '<button class="btn" data-az="detta-rilievo" data-cantiere="' + h(c.id) + '" data-sezione="rilievi_ordine"><span class="ico ico-righello"></span> Rilievo d\'ordine</button>' +
@@ -3372,9 +3875,6 @@ function vistaCantiere(id) {
       '</div></div>' + ingressiDocumento(null);
   }
 
-  /* I verbali di giornata in prima linea: sono i documenti che si vanno a cercare,
-     e stanno prima dei giorni perché sono quelli che si mandano fuori. */
-  html += strisciaVerbaliGiornata(c);
   /* Le giornate, dalla più recente, raggruppate per mese. Una riga per data: i
      passaggi di un giorno stanno dentro la giornata, non nell'elenco — se no
      "Oggi" compariva tre volte. La riga si apre sul primo passaggio del giorno,
@@ -3415,7 +3915,7 @@ function vistaCantiere(id) {
     '<div class="card">' +
     '<button class="riga" data-az="vai" data-a="#/contabilita/' + h(c.id) + '"><span class="desc">Contabilità<small>' + (cont ? cont.righe.length + ' righe · ' + h(euro(totale)) : 'ancora vuota') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/note/' + h(c.id) + '"><span class="desc">Note del cantiere<small>' + h(primaRiga(c.note) || 'nessuna nota') + '</small></span><span class="frec">›</span></button>' +
-    '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listino prezzi<small>' + listinoTutto().length + ' voci</small></span><span class="frec">›</span></button>' +
+    '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listini<small>' + h(listiniDelCantiere(c).map(function (l) { return l.nome; }).join(' · ') || 'nessuno') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/pdf/' + h(c.id) + '"><span class="desc">PDF archiviati<small>' + (pdfDi(c.codice).length ? pdfDi(c.codice).length + ' documenti · ' + h(pesoFile(pdfDi(c.codice).reduce(function (t, p) { return t + (p.peso || 0); }, 0))) : 'ancora nessuno') + '</small></span><span class="frec">›</span></button>' +
     '</div>');
   // In fondo, come nel giorno: l'azione grande a sinistra, "Chiudi" stretto a destra. Chiuso, al posto di Detta c'è la relazione, e Riapri.
@@ -3424,8 +3924,8 @@ function vistaCantiere(id) {
       html += '<div class="barra">' + (rel ? '<button class="az verde" data-az="vai" data-a="#/relazione/' + h(rel.id) + '">Apri la relazione</button>' : '<button class="az verde" data-az="relazione-genera" data-id="' + h(c.id) + '">Scrivi la relazione</button>') +
         '<button class="az stretta" data-az="riapri-cantiere" data-id="' + h(c.id) + '">Riapri</button></div>';
     } else {
-      html += '<div class="barra"><button class="az verde" data-az="parla-cantiere" data-id="' + h(c.id) + '"><span class="ico ico-microfono"></span> Detta un sopralluogo</button>' +
-        '<button class="az stretta" data-az="chiudi-cantiere" data-id="' + h(c.id) + '">Chiudi</button></div>';
+      html += '<div class="barra larga"><button class="az verde" data-az="parla-cantiere" data-id="' + h(c.id) + '"><span class="ico ico-microfono"></span> Detta un sopralluogo</button>' +
+        '<button class="az stretta" data-az="chiudi-cantiere" data-id="' + h(c.id) + '">Chiudi cantiere</button></div>';
     }
   }
   return html;
@@ -3482,16 +3982,24 @@ function vistaGiornata(id) {
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(g.giorno), sotto: h(c.nome),
     destra: '<span class="pill att">vuota</span>' });
   html += '<div class="avanz"><div class="r">' +
-    (vg
-      ? '<button class="pill ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>'
-      : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">Scrivi il verbale di giornata</button>') +
+    '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>' +
     '<span class="dx">0 audio · 0:00 | 0 foto</span></div></div>';
+  if (vg) html += cardVerbaleGiornata(vg);
   html += '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">nessuno</span></div><div class="doc-fila">' +
     '<div class="doc-mini piu"><button class="q vuota" data-az="giornata-sopralluogo-nuovo" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '"><span class="ora">＋</span><span class="nm">sopralluogo</span></button></div>' +
     '</div></div>';
   return html;
 }
 
+// La card del verbale di giornata: il nome su una riga sola, e i tre tasti.
+function cardVerbaleGiornata(vg) {
+  return '<div class="card"><div class="card-capo"><span class="et">' + h(titoloVerbale(vg, true)) + '</span><span class="dx">verbale di giornata</span></div>' +
+    '<div class="griglia tre">' +
+    '<button class="btn" data-az="verbale-vedi" data-id="' + h(vg.id) + '">Visualizza</button>' +
+    tastoEsporta('vg-' + vg.id) +
+    '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">Modifica</button></div>' +
+    vociEsporta('vg-' + vg.id, 'verbale-esporta', vg.id, 'verbale-scarica', vg.id) + '</div>';
+}
 function vistaGiornoInCorso(s, c) {
   const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
   const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id) ||
@@ -3504,24 +4012,15 @@ function vistaGiornoInCorso(s, c) {
      in un documento solo, quello che si manda fuori, e si scrive sempre: chi non ha
      ancora il verbale entra con i suoi appunti — a destra audio, parlato e foto. */
   const vg = verbaleDiGiornata(s.cantiere, s.giorno);
+  // Un tasto solo, sempre verde: scrive il verbale la prima volta, lo aggiorna dopo. Il nome sta nella card sotto.
   html += '<div class="avanz"><div class="r">' +
-    (vg
-      ? '<button class="pill ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
-        '<button class="pill cod" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button>'
-      : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button>') +
+    '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>' +
     '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
 
   /* La barra del verbale di giornata: è della giornata, non del passaggio, quindi sta qui
      qualunque sopralluogo sia aperto sotto. Visualizza apre il PDF se c'è, se no il testo.
      Il verbale di sopralluogo ha il suo tasto nella striscia e i suoi puntini. */
-  if (vg) {
-    html += '<div class="card"><div class="card-capo">' + h(titoloVerbale(vg, true)) + '<span class="dx">verbale di giornata</span></div>' +
-      '<div class="griglia tre">' +
-      '<button class="btn" data-az="verbale-vedi" data-id="' + h(vg.id) + '">Visualizza</button>' +
-      tastoEsporta('vg-' + vg.id) +
-      '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">Modifica</button></div>' +
-      vociEsporta('vg-' + vg.id, 'verbale-esporta', vg.id, 'verbale-scarica', vg.id) + '</div>';
-  }
+  if (vg) html += cardVerbaleGiornata(vg);
 
   if (String(s.sezioni.da_smistare || '').trim()) {
     html += '<div class="card gialla"><div class="card-capo gialla">Da smistare</div>' +
@@ -3539,13 +4038,18 @@ function vistaGiornoInCorso(s, c) {
   html += ingressiFoto(s);
   html += cardDaAssegnare(s);
   html += cardRilieviNuovi({ sop: s.id });
-  html += cardFotoGiorno(s, !!s.chiuso);
-  /* Rilievi e documenti stanno chiusi: sono lo strumento di un momento, non la cosa
-     che si guarda entrando nella giornata. Il numero sulla linguetta dice se dentro
-     c'è qualcosa, così non serve aprirla per saperlo. */
+  /* Le tendine della giornata, due per riga, solo quelle che hanno qualcosa dentro:
+     gli ordini nati oggi, il confronto delle bolle lette oggi, le foto, i rilievi e
+     i documenti. Una giornata senza niente dettato non ne ha nessuna. */
   const nStrumenti = righeSezione(s, 'rilievi_ordine') + righeSezione(s, 'rilievi_contabilita') + documentiDi(s).length;
-  html += tendina('strumenti-' + s.id, 'Rilievi e documenti',
-    cardStrumenti(s), nStrumenti || null) + ingressiDocumento(s);
+  html += grigliaTendine([
+    tendinaOrdiniOggi(s, c),
+    tendinaConfronto(s, c),
+    cardFotoGiorno(s, !!s.chiuso),
+    nStrumenti ? tendina('strumenti-' + s.id, 'Rilievi e documenti', cardStrumenti(s), nStrumenti) : ''
+  ]);
+  // I tre tasti restano sempre in vista: sono loro che fanno nascere rilievi e bolle.
+  html += tastiStrumenti(s) + ingressiDocumento(s);
   if (s.pezzi.length) {
     html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">' + s.pezzi.length + ' · tocca per sentire</span></div>' +
       listaAudio(s, s.pezzi.slice().reverse()) + '</div>';
@@ -3567,7 +4071,7 @@ function vistaGiornoInCorso(s, c) {
   /* Solo dettare e fotografare. Il verbale si scrive dai puntini del sopralluogo,
      nella striscia in alto; una volta scritto, ogni correzione ci passa da sola. */
   if (!REG.attiva) {
-    html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '"><span class="ico ico-microfono"></span> ' + (s.pezzi.length ? 'Continua' : 'Detta') + '</button>' +
+    html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(s.id) + '"><span class="ico ico-microfono"></span> Detta</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(s.id) + '"><span class="ico ico-fotocamera"></span> Foto</button></div>';
   }
   return html;
@@ -3748,7 +4252,8 @@ function strisciaSopralluoghi(s) {
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   });
-  html += '<div class="doc-mini piu"><button class="q vuota" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '"><span class="ora">＋</span><span class="nm">un altro</span></button></div>';
+  // Un altro passaggio si apre solo oggi: sui giorni passati non nascono sopralluoghi nuovi.
+  if (s.giorno === oggiISO()) html += '<div class="doc-mini piu"><button class="q vuota" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '"><span class="ora">＋</span><span class="nm">un altro</span></button></div>';
   // Il verbale di giornata sta nella riga in testa alla giornata, non qui.
   return html + '</div></div>';
 }
@@ -3819,25 +4324,48 @@ function apriScanner(el, idIngresso) {
 
 function righeSezione(s, k) { const t = String(s.sezioni[k] || '').trim(); return t ? righeElenco(t).length : 0; }
 
-/* I quattro tasti su una fila sola che scorre: rilievi e documenti si prendono
-   con lo stesso gesto e finiscono tutti nella giornata, quindi stanno insieme.
-   Sotto, le scansioni già prese. */
-function cardStrumenti(s) {
+/* I tre tasti su una fila sola che scorre: rilievi e documenti si prendono con lo
+   stesso gesto e finiscono tutti nella giornata, quindi stanno insieme. Stanno
+   sempre in vista, fuori dalla tendina: sono loro che fanno nascere le cose. */
+function tastiStrumenti(s) {
   const doc = documentiDi(s);
   const nOrd = righeSezione(s, 'rilievi_ordine'), nCont = righeSezione(s, 'rilievi_contabilita');
   const n = function (q) { return q ? ' · ' + q : ''; };
-  let html = '<div class="card">' +
-    (doc.length ? filaFoto(s, doc, { doc: true }) : '') +
-    '<div class="griglia">' +
+  return '<div class="card"><div class="griglia">' +
     (REG.attiva ? '' :
       '<button class="btn" data-az="detta-rilievo" data-id="' + h(s.id) + '" data-sezione="rilievi_ordine"><span class="ico ico-righello"></span> Rilievo d\'ordine' + n(nOrd) + '</button>' +
       '<button class="btn" data-az="detta-rilievo" data-id="' + h(s.id) + '" data-sezione="rilievi_contabilita"><span class="ico ico-calcolatrice"></span> Rilievo da contabilità' + n(nCont) + '</button>') +
     '<button class="btn" data-az="doc-scansiona" data-id="' + h(s.id) + '" data-genere="bolla"><span class="ico ico-documento"></span> Bolla' + n(doc.filter(function (f) { return f.genere === 'bolla'; }).length) + '</button>' +
-    '</div>';
-  const daPortare = (nOrd || nCont || doc.length);
-  html += (daPortare ? '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="al-cantiere" data-id="' + h(s.id) + '">porta nel cantiere</button></div>' : '') +
-    '</div>';
-  return html;
+    '</div></div>';
+}
+// Dentro la tendina: le scansioni già prese, e il tasto per portare tutto nel cantiere.
+function cardStrumenti(s) {
+  const doc = documentiDi(s);
+  return '<div class="card">' + (doc.length ? filaFoto(s, doc, { doc: true }) : '') +
+    '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="al-cantiere" data-id="' + h(s.id) + '">porta nel cantiere</button></div></div>';
+}
+/* Le righe d'ordine nate oggi, in tutta la giornata: la tendina c'è solo se ce ne sono. */
+function tendinaOrdiniOggi(s, c) {
+  if (!c.codice) return '';
+  const righe = ordiniDi(c).filter(function (o) { return o.giorno === s.giorno; });
+  if (!righe.length) return '';
+  const diff = righe.filter(function (o) { return mancante(o) > 0; }).length;
+  return tendina('ordini-' + s.id, 'Ordini di oggi', '<div class="card">' + scorrevole(righe.map(function (o) { return rigaOrdineHtml(c, o); }).join('')) + '</div>',
+    diff ? { n: diff, att: true } : righe.length);
+}
+/* Il confronto delle bolle lette oggi: per ognuna la riga di riepilogo e, sotto,
+   riga per riga cosa era a ordine e cosa è arrivato. */
+function tendinaConfronto(s, c) {
+  if (!c.codice) return '';
+  const bolle = [];
+  sopralluoghiDelGiorno(s.cantiere, s.giorno).forEach(function (x) {
+    documentiDi(x).forEach(function (f) { if (f.genere === 'bolla' && f.letta) bolle.push({ sop: x, f: f }); });
+  });
+  if (!bolle.length) return '';
+  const diff = bolle.reduce(function (t, b) { return t + confrontoBolla(c, b.f).diff; }, 0);
+  return tendina('confronto-' + s.id, 'Confronto',
+    '<div class="card">' + scorrevole(bolle.map(function (b) { return dettaglioConfrontoHtml(c, b.sop, b.f); }).join('')) + '</div>',
+    diff ? { n: diff, att: true } : bolle.length);
 }
 
 
@@ -3863,7 +4391,7 @@ function cardFotoGiorno(s, conVerbale) {
   if (foto.length) {
     const tutte = nelPdf === foto.length;
     // La spunta "nel PDF" c'è sempre: una foto marcata entra nel verbale di giornata anche se questo passaggio non ha il suo verbale.
-    html += tendina('foto-' + s.id, 'Foto di questo sopralluogo',
+    html += tendina('foto-' + s.id, 'Foto',
       '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
       filaFoto(s, foto, { segna: true }) +
       // Solo il tasto piccolo, a destra: il conteggio in testa dice già com'è messa.
@@ -4030,6 +4558,8 @@ function generaRelazione(c, esistente) {
     codice: cont ? cont.codice : '',
     note: cont ? String(cont.note || '') : '',
     totale: totaleContabilita(cont),
+    // Sconto e IVA del documento, copiati: la relazione fa gli stessi conti della contabilità.
+    sconto: cont ? Number(cont.sconto) || 0 : 0, iva: cont ? Number(cont.iva) || 0 : 0,
     righe: (cont ? cont.righe : []).map(function (r) {
       return { codice: r.codice, descrizione: r.descrizione, quantita: r.quantita, um: r.um, prezzo: r.prezzo, importo: r.importo, dacompletare: !!r.dacompletare };
     })
@@ -4141,8 +4671,8 @@ function vistaRelazione(id) {
     '<div class="card-piede">Scritta il ' + h(dataSenzaAnno(rel.generata)) + ' alle ' + h(oraDaISO(rel.generata)) + '</div></div>';
   // I numeri, come nella giornata chiusa; il totale è l'unico verde, le giornate aperte l'unico giallo
   html += '<div class="numeri sei">' +
-    '<div class="n"><div class="v">' + (n.giorni || 0) + '</div><div class="k">giorni</div></div>' +
-    '<div class="n"><div class="v">' + (n.verbali || 0) + '</div><div class="k">verbali</div></div>' +
+    '<div class="n"><div class="v">' + (n.giorni || 0) + '</div><div class="k">' + plurale(n.giorni, 'giorno', 'giorni') + '</div></div>' +
+    '<div class="n"><div class="v">' + (n.verbali || 0) + '</div><div class="k">' + plurale(n.verbali, 'verbale', 'verbali') + '</div></div>' +
     '<div class="n"><div class="v' + (n.aperte ? ' att' : '') + '">' + (n.aperte || 0) + '</div><div class="k">non chiuse</div></div>' +
     '<div class="n"><div class="v">' + (n.foto || 0) + '</div><div class="k">foto</div></div>' +
     '<div class="n"><div class="v">' + h(durataLunga(n.parlato)) + '</div><div class="k">parlato</div></div>' +
@@ -4173,7 +4703,7 @@ function vistaRelazione(id) {
   html += '<div class="eti">Contabilità' + (daCompletare ? '<span class="n" style="color:var(--gold)">' + daCompletare + ' da completare</span>' : '') + '</div>';
   if (cont.righe.length) html += '<div class="card">' + cont.righe.map(function (r) { return rigaContabilitaHtml(r, { lettura: true }); }).join('') + '</div>';
   else html += '<div class="vuoto-stato">Nessuna riga di contabilità.</div>';
-  html += '<div class="totale"><span class="eti">Totale</span><span class="cifra">' + h(euro(cont.totale)) + '</span></div>';
+  html += totaliContabilitaHtml(cont, 'Totale');
   if (String(cont.note || '').trim()) html += '<div class="card"><div class="card-capo spenta">Note della contabilità</div><div class="card-corpo">' + h(cont.note) + '</div></div>';
   // L'elenco dei giorni: una riga per giornata, si tocca e si va al giorno
   html += '<div class="eti">Giorni<span class="n">' + rel.giorni.length + '</span></div>';
@@ -4250,7 +4780,9 @@ function vistaFoto(sopId, fotoId) {
         ? '<div class="foto-vuota scan"><span class="ico ico-documento"></span>' + h(paginePdf(f)) + '<small>scansione del telefono: entra nel verbale com\'è</small></div>'
         : '<img data-foto="' + h(f.file) + '" alt="">')
       : '<div class="foto-vuota">Foto archiviata' + (f.archiviato ? ' il ' + h(dataSenzaAnno(f.archiviato)) : '') + ': è nei File del telefono.</div>') +
-    '<div class="foto-dati">' + h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(titoloSopralluogo(s)) + '</div></div>';
+    // Quello che si è letto sulla bolla, sotto l'immagine: fornitore, numero, data, e com'è andato il confronto.
+    '<div class="foto-dati">' + (intestazioneBolla(f) ? '<b>' + h(intestazioneBolla(f)) + '</b><br>' : '') + (f.letta && c.codice ? riepilogoBollaHtml(c, f) + '<br>' : '') +
+    h(dataEstesa(f.giorno)) + ' alle ' + h(f.ora) + '<br>' + h(titoloSopralluogo(s)) + '</div></div>';
   html += '<div class="card"><div class="card-capo' + (String(f.referto || '').trim() ? '' : ' spenta') + '">Referto' + (st.testo ? '<span class="dx ' + st.classe + '">' + h(st.testo) + '</span>' : '') + '</div>' +
     '<textarea class="corpo" data-campo="referto-foto" data-id="' + h(f.id) + '" data-sop="' + h(s.id) + '" placeholder="' + (doc ? 'Detta o scrivi cosa c\'è su questo documento' : 'Detta o scrivi cosa si vede') + '">' + h(f.referto || '') + '</textarea>' +
     (f.grezzo ? '<div class="card-piede">« ' + h(f.grezzo) + ' »</div>' : '') + '</div>';
@@ -4259,6 +4791,8 @@ function vistaFoto(sopId, fotoId) {
     SEZIONI.map(function (z) { return '<button class="btn' + (z.chiave === sezione ? ' btn-ok' : '') + '" data-az="foto-sezione" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
     '</div></div>';
   html += '<div class="modulo">' +
+    // La bolla si può far rileggere: quello che c'è nel referto resta, il letto nuovo va sotto.
+    (f.genere === 'bolla' && statoLavoroFoto(f).stato !== 'lettura' ? '<button class="btn" style="margin-bottom:8px" data-az="bolla-rileggi" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '"><span class="ico ico-lente"></span> Rileggi la bolla</button>' : '') +
     (f.genere ? '<button class="btn' + (f.cantiere ? ' btn-ok' : '') + '" style="margin-bottom:8px" data-az="foto-cantiere" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.cantiere ? '✓ Vale per tutto il cantiere' : 'Vale per tutto il cantiere') + '</button>' : '') +
     '<button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>' +
     '<button class="btn btn-rosso medio" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" style="margin-top:12px">' + (doc ? 'Elimina il documento' : 'Elimina la foto') + '</button></div>';
@@ -4275,12 +4809,12 @@ function vistaContabilita(idCantiere) {
   if (!c) return vistaDashboard();
   const cont = contabilitaDi(c.codice);
   const righe = cont ? cont.righe : [];
-  const totale = totaleContabilita(cont);
   const loc = leggiLocale();
   const proposte = loc.proposte.filter(function (p) { return p.cantiere === c.id; });
   const inCoda = loc.coda.filter(function (l) { return l.cantiere === c.id && (l.per === 'contabilita' || l.tipo === 'contabilita'); });
+  const daSistemare = righe.filter(function (r) { return r.dacompletare || r.umListino; }).length;
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Contabilità', sotto: h(c.nome),
-    destra: righe.some(function (r) { return r.dacompletare; }) ? '<span class="pill att">da completare</span>' : '' });
+    destra: daSistemare ? '<span class="pill att">' + daSistemare + ' da sistemare</span>' : '' });
   inCoda.forEach(function (l) {
     html += '<div class="avviso" style="color:var(--muted);border-color:var(--line);background:var(--surface)">' +
       (l.stato === 'fallito' ? 'Riga dettata non riuscita: ' + h(l.errore || '') : (l.stato === 'in_corso' ? 'Sto leggendo la riga dettata…' : 'Riga dettata in coda (' + h(l.etichetta || '') + ')')) + '</div>';
@@ -4295,26 +4829,93 @@ function vistaContabilita(idCantiere) {
   });
   if (righe.length) {
     html += '<div class="card">' + righe.map(function (r) { return rigaContabilitaHtml(r, { cont: cont.id }); }).join('') + '</div>';
+    // La stessa voce si somma: una vista in più, le righe restano come sono.
+    html += grigliaTendine([tendina('pervoce-' + c.id, 'Per voce', '<div class="card">' + scorrevole(perVoceHtml(righe)) + '</div>', perVoce(righe).length)]);
   } else if (!proposte.length) {
     html += '<div class="vuoto-stato">Nessuna riga. Premi il bottone verde e di\' per esempio: «Inserisci intonaco civile, 25 metri quadrati».</div>';
   }
-  html += '<div class="totale"><span class="eti">Totale progressivo</span><span class="cifra">' + h(euro(totale)) + '</span></div>';
-  html += '<div class="modulo"><label class="eticampo">Note</label><textarea class="campo auto" data-campo="note-contabilita" data-id="' + h(c.id) + '" placeholder="Note del documento">' + h(cont ? cont.note : '') + '</textarea></div>';
+  html += totaliContabilitaHtml(cont, 'Totale progressivo');
+  // Sconto e IVA del documento: con tutti e due a zero in fondo resta solo il totale.
+  html += '<div class="modulo"><div class="due"><div><label class="eticampo">Sconto o ribasso %</label><input class="campo" inputmode="decimal" data-campo="sconto-contabilita" data-id="' + h(c.id) + '" value="' + h(cont && cont.sconto ? numeroIt(cont.sconto) : '') + '" placeholder="0"></div>' +
+    '<div><label class="eticampo">IVA %</label><select class="campo" data-campo="iva-contabilita" data-id="' + h(c.id) + '">' + opzioniIva(cont ? cont.iva : 0, !!(cont && cont.ivaMano)) + '</select></div></div>' +
+    (cont && cont.ivaMano ? '<input class="campo" inputmode="decimal" data-campo="iva-mano-contabilita" data-id="' + h(c.id) + '" value="' + h(cont.iva ? numeroIt(cont.iva) : '') + '" placeholder="aliquota a mano">' : '') +
+    '<label class="eticampo">Note</label><textarea class="campo auto" data-campo="note-contabilita" data-id="' + h(c.id) + '" placeholder="Note del documento">' + h(cont ? cont.note : '') + '</textarea>' +
+    (righe.length ? '<button class="btn medio" data-az="contabilita-csv" data-id="' + h(c.id) + '" style="margin-top:12px"><span class="ico ico-invio"></span> Esporta in foglio di calcolo</button>' : '') + '</div>';
   if (!REG.attiva) {
     html += '<div class="barra"><button class="az verde" data-az="detta-contabilita" data-id="' + h(c.id) + '"><span class="ico ico-microfono"></span> Aggiungi una riga</button>' +
       '<button class="az stretta" data-az="riga-nuova" data-id="' + h(c.id) + '">＋ a mano</button></div>';
   }
   return html;
 }
+// L'aliquota: le tre di sempre, o una scritta a mano.
+function opzioniIva(iva, mano) {
+  iva = Number(iva) || 0;
+  const fisse = [[0, 'nessuna'], [22, '22%'], [10, '10%'], [4, '4%']];
+  const aMano = mano || fisse.every(function (o) { return o[0] !== iva; });
+  return fisse.map(function (o) { return '<option value="' + o[0] + '"' + (!aMano && o[0] === iva ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+    '<option value="mano"' + (aMano ? ' selected' : '') + '>a mano' + (aMano && iva ? ' (' + numeroIt(iva) + '%)' : '') + '</option>';
+}
+/* I conti del documento: totale lavori, sconto, imponibile, IVA, totale. Le righe
+   senza prezzo non contano, come prima. */
+function contiContabilita(cont) {
+  const lavori = totaleContabilita(cont);
+  const pSconto = cont ? Number(cont.sconto) || 0 : 0, pIva = cont ? Number(cont.iva) || 0 : 0;
+  const sconto = Math.round(lavori * pSconto) / 100;
+  const imponibile = Math.round((lavori - sconto) * 100) / 100;
+  const iva = Math.round(imponibile * pIva) / 100;
+  return { lavori: lavori, pSconto: pSconto, sconto: sconto, imponibile: imponibile, pIva: pIva, iva: iva, totale: Math.round((imponibile + iva) * 100) / 100 };
+}
+// In fondo: solo il totale se sconto e IVA sono a zero, se no i cinque numeri.
+function totaliContabilitaHtml(cont, etichetta) {
+  const k = contiContabilita(cont);
+  if (!k.pSconto && !k.pIva) return '<div class="totale"><span class="eti">' + h(etichetta) + '</span><span class="cifra">' + h(euro(k.lavori)) + '</span></div>';
+  const r = function (nome, val, classe) { return '<div class="conto' + (classe ? ' ' + classe : '') + '"><span>' + h(nome) + '</span><span>' + h(euro(val)) + '</span></div>'; };
+  return '<div class="totale conti"><div class="conti-righe">' +
+    r('Totale lavori', k.lavori) + (k.pSconto ? r('Sconto ' + numeroIt(k.pSconto) + '%', -k.sconto) : '') + r('Imponibile', k.imponibile) +
+    (k.pIva ? r('IVA ' + numeroIt(k.pIva) + '%', k.iva) : '') + '</div>' +
+    '<div class="conto finale"><span class="eti">Totale</span><span class="cifra">' + h(euro(k.totale)) + '</span></div></div>';
+}
+/* Le righe che vengono dalla stessa voce di listino stanno insieme; quelle senza
+   voce si mettono insieme per descrizione uguale. Quantità e importo sommati. */
+function perVoce(righe) {
+  const gruppi = {};
+  righe.forEach(function (r) {
+    const k = r.dallistino ? 'v:' + r.dallistino : 'd:' + senzaAccenti(r.descrizione || '');
+    const g = gruppi[k] || (gruppi[k] = { chiave: k, descrizione: r.descrizione, um: r.um, voce: r.dallistino || '', righe: 0, quantita: 0, importo: 0, misto: false });
+    g.righe++; g.quantita += Number(r.quantita) || 0; g.importo += Number(r.importo) || 0;
+    if (r.um && g.um && r.um !== g.um) g.misto = true;
+  });
+  return valori(gruppi).sort(function (a, b) { return b.importo - a.importo; });
+}
+function perVoceHtml(righe) {
+  return perVoce(righe).map(function (g) {
+    return '<div class="voceriga"><div class="desc">' + h(g.descrizione || '(senza descrizione)') + '</div>' +
+      '<div class="conti"><span>' + g.righe + (g.righe === 1 ? ' riga' : ' righe') + '</span><span>' + h(numeroIt(Math.round(g.quantita * 100) / 100)) + ' ' + (g.misto ? '(unità miste)' : h(g.um || '')) + '</span>' +
+      (g.voce ? '<span class="targa">listino</span>' : '') + '<span class="importo">' + h(euro(g.importo)) + '</span></div></div>';
+  }).join('');
+}
+/* La contabilità in un CSV per Excel italiano: una riga per voce, punto e virgola,
+   decimali con la virgola. Il sopralluogo è quello del giorno in cui la riga è nata. */
+function csvContabilita(c, cont) {
+  const cella = function (v) { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const num = function (n) { return String(Number(n) || 0).replace('.', ','); };
+  const righe = [['Data', 'Sopralluogo', 'Descrizione', 'Codice voce listino', 'Quantità', 'Unità', 'Prezzo unitario', 'Importo']];
+  (cont ? cont.righe : []).forEach(function (r) {
+    const sop = r.giorno ? sopralluoghiDelGiorno(c.codice, r.giorno)[0] : null;
+    righe.push([r.giorno ? r.giorno.split('-').reverse().join('/') : '', sop ? sop.codice : '', r.descrizione || '', r.dallistino || '', num(r.quantita), r.um || '', num(r.prezzo), num(r.importo)]);
+  });
+  return String.fromCharCode(0xFEFF) + righe.map(function (r) { return r.map(cella).join(';'); }).join('\r\n');
+}
 function rigaContabilitaHtml(r, rif) {
   // Nella relazione la riga è una copia e si legge soltanto: stesso disegno, ma non è un bottone.
   const tag = rif.lettura ? 'div' : 'button';
   const attr = rif.lettura ? '' : (rif.proposta ? ' data-az="riga-modifica" data-proposta="' + h(rif.proposta) + '" data-indice="' + rif.indice + '"' : ' data-az="riga-modifica" data-cont="' + h(rif.cont) + '" data-id="' + h(r.codice) + '"');
-  return '<' + tag + ' class="voceriga' + (r.dacompletare ? ' dacompletare' : '') + '"' + attr + '>' +
+  return '<' + tag + ' class="voceriga' + (r.dacompletare ? ' dacompletare' : '') + (r.umListino ? ' umdiversa' : '') + '"' + attr + '>' +
     '<div class="desc">' + h(r.descrizione || '(senza descrizione)') + '</div>' +
     '<div class="conti">' + (r.codice ? '' : '<span class="codice">nuova</span>') + '<span>' + h(numeroIt(r.quantita)) + ' ' + h(r.um || '') + '</span>' +
     '<span>× ' + h(euro(r.prezzo)) + '</span>' + (r.dallistino ? '<span class="targa">listino</span>' : '') +
-    '<span class="importo">' + (r.dacompletare ? 'da completare' : h(euro(r.importo))) + '</span></div></' + tag + '>';
+    '<span class="importo">' + (r.dacompletare ? 'da completare' : h(euro(r.importo))) + '</span></div>' +
+    (r.umListino ? '<div class="avvertenza">unità diversa: listino ' + h(r.umListino) + ', dettato ' + h(r.um || '—') + '</div>' : '') + '</' + tag + '>';
 }
 
 function ricalcolaRiga(r) {
@@ -4330,13 +4931,22 @@ function apriRigaContabilita(riga, rif) {
   const um = riga.um || '';
   const opzioniUm = ['', 'm', 'm²', 'm³', 'kg', 'q', 't', 'n', 'h', 'corpo', 'l'];
   if (um && opzioniUm.indexOf(um) === -1) opzioniUm.push(um);
+  // Il listino in cui entrerebbe la voce: il primo collegato al cantiere.
+  const c = rif.cantiere ? cantiere(rif.cantiere) : null;
+  const dest = c ? listiniDelCantiere(c)[0] : null;
   apriFoglio(
     '<h2>' + (riga.codice ? h(primaRiga(riga.descrizione) || 'Riga') : 'Riga nuova') + '</h2>' +
     '<label class="eticampo">Descrizione lavorazione</label><input class="campo" id="r-desc" value="' + h(riga.descrizione) + '" autocomplete="off">' +
     '<div class="due" style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Quantità</label><input class="campo" id="r-qta" inputmode="decimal" value="' + h(numeroIt(riga.quantita)) + '"></div>' +
     '<div style="flex:1"><label class="eticampo">Unità</label><select class="campo" id="r-um">' + opzioniUm.map(function (u) { return '<option value="' + h(u) + '"' + (u === um ? ' selected' : '') + '>' + (u || '—') + '</option>'; }).join('') + '</select></div></div>' +
+    // Unità diversa da quella del listino: si dice, e con un tocco si prende quella del listino.
+    (riga.umListino ? '<div class="avvertenza">unità diversa: listino ' + h(riga.umListino) + ', dettato ' + h(um || '—') + '</div>' +
+      '<button class="btn medio" data-az="riga-um-listino" style="margin-top:8px">Usa ' + h(riga.umListino) + ' come nel listino</button>' : '') +
     '<label class="eticampo">Prezzo unitario €</label><input class="campo" id="r-prezzo" inputmode="decimal" value="' + h(riga.prezzo ? numeroIt(riga.prezzo) : '') + '" placeholder="0,00">' +
     '<button class="btn medio" data-az="riga-cerca-listino" style="margin-top:12px"><span class="ico ico-lente"></span> Cerca nel listino</button>' +
+    /* Il listino impara: una riga gialla completata a mano può entrare nel listino con
+       un tocco — descrizione, unità e prezzo — e la volta dopo si trova da sola. */
+    (riga.dacompletare && !riga.dallistino && dest ? '<button class="btn medio" data-az="riga-nel-listino" style="margin-top:8px"><span class="ico ico-documento"></span> Metti questa voce nel listino <b>' + h(dest.nome) + '</b></button>' : '') +
     '<div class="righe"><button class="btn btn-ok" data-az="riga-salva">Salva</button>' +
     (riga.codice ? '<button class="btn btn-rosso" data-az="riga-elimina">Elimina</button>' : '') + '</div>' +
     '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>'
@@ -4350,6 +4960,8 @@ function leggiRigaDalFoglio() {
   r.quantita = leggiNumero(document.getElementById('r-qta').value, ',');
   if (isNaN(r.quantita)) r.quantita = 0;
   r.um = document.getElementById('r-um').value;
+  // Messa l'unità del listino, la riga non è più da sistemare.
+  if (r.umListino && r.um === r.umListino) delete r.umListino;
   const p = leggiNumero(document.getElementById('r-prezzo').value, ',');
   r.prezzo = isNaN(p) ? 0 : p;
   return ricalcolaRiga(r);
@@ -4363,7 +4975,7 @@ function salvaRigaAperta() {
   } else {
     const c = cantiere(rif.cantiere);
     const cont = contabilitaOCrea(c.codice);
-    if (!r.codice) { r.codice = codiceNuovo('VOCE'); cont.righe.push(r); }
+    if (!r.codice) { r.codice = codiceNuovo('VOCE'); r.giorno = r.giorno || oggiISO(); cont.righe.push(r); }
     else { const i = cont.righe.findIndex(function (x) { return x.codice === r.codice; }); if (i === -1) cont.righe.push(r); else cont.righe[i] = r; }
     salva('contabilita', cont);
   }
@@ -4381,49 +4993,315 @@ function apriSceltaListino() {
   disegnaSceltaListino();
 }
 function disegnaSceltaListino() {
-  const voci = filtroListinoScelta ? cercaListinoLocale(filtroListinoScelta).map(function (r) { return r.voce; }) : [];
-  const elenco = (voci.length ? voci : listinoTutto()).slice(0, 60);
+  // Le voci dei listini di questo cantiere, nel loro ordine: il primo listino prima, il Generale in fondo.
+  const tutte = listiniDelCantiere(cantiere(RIGA_APERTA.rif.cantiere)).reduce(function (t, l) { return t.concat(vociDi(l.codice)); }, []);
+  const voci = filtroListinoScelta ? cercaListinoLocale(filtroListinoScelta, tutte).map(function (r) { return r.voce; }) : [];
+  const elenco = (voci.length ? voci : tutte).slice(0, 60);
   apriFoglio(
     '<h2>Cerca nel listino</h2>' +
     '<div class="cerca" style="margin:0 0 12px"><span class="ico ico-lente"></span> <input type="search" id="scelta-cerca" placeholder="Cerca nella descrizione" value="' + h(filtroListinoScelta) + '" data-campo="filtro-scelta" autocomplete="off" autofocus></div>' +
     '<div class="lista">' + (elenco.length ? elenco.map(function (v) {
       return '<button class="riga" data-az="scegli-voce" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + h(v.um) + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
-    }).join('') : '<div class="vuoto-stato">' + (listinoTutto().length ? 'Nessuna voce trovata.' : 'Il listino è vuoto.') + '</div>') + '</div>' +
+    }).join('') : '<div class="vuoto-stato">' + (tutte.length ? 'Nessuna voce trovata.' : 'Il listino è vuoto.') + '</div>') + '</div>' +
     '<button class="btn" data-az="scelta-annulla">Torna alla riga</button>'
   );
 }
 
-/* ---------------- LISTINO ---------------- */
-let filtroListino = '';
-function vistaListino(idCantiere, sotto) {
+/* ---------------- ORDINI ---------------- */
+/* Le righe d'ordine stanno nel cantiere: il materiale si ordina per il lavoro,
+   non per il giorno. Ogni riga sa da quale sopralluogo e da quale giorno è nata,
+   e passa per tre stati con un tocco sulla pastiglia. */
+const STATI_ORDINE = [
+  { id: 'da_ordinare', nome: 'da ordinare', pill: 'att' },
+  { id: 'ordinato',    nome: 'ordinato',    pill: 'blu' },
+  { id: 'arrivato',    nome: 'arrivato',    pill: 'ok'  }
+];
+function ordiniDi(c) { return (c && c.ordini) || []; }
+function ordineDi(c, id) { return ordiniDi(c).find(function (o) { return o.id === id; }) || null; }
+function daOrdinare(c) { return ordiniDi(c).filter(function (o) { return o.stato === 'da_ordinare'; }); }
+// "3 pz · 120x150 cm": la quantità solo se è stata detta.
+function contiOrdine(o) {
+  return [o.quantita ? numeroIt(o.quantita) + (o.um ? ' ' + o.um : '') : (o.um || ''), o.misure || ''].filter(Boolean).join(' · ');
+}
+// "3 pz Finestre 120x150 cm": la riga come si scrive a un fornitore, quantità davanti.
+function rigaOrdineTesto(o) {
+  return [o.quantita ? numeroIt(o.quantita) + (o.um ? ' ' + o.um : '') : '', o.descrizione, o.misure || ''].filter(Boolean).join(' ');
+}
+// Arrivata meno merce di quanta era a ordine: la riga lo dice, e resta gialla.
+function mancante(o) { return o.stato === 'arrivato' && o.arrivata != null && o.quantita > o.arrivata ? o.quantita - o.arrivata : 0; }
+// "l'11 settembre", "il 12 settembre": come delGiorno, ma con l'articolo.
+function ilGiorno(iso) { return delGiorno(iso).replace(/^dell'/, "l'").replace(/^del /, 'il '); }
+// Un documento del cantiere, cercato per id in tutti i suoi sopralluoghi.
+function documentoDi(c, fotoId) {
+  const sops = sopralluoghiDi(c.codice);
+  for (let i = 0; i < sops.length; i++) {
+    const f = trovaFoto(sops[i], fotoId);
+    if (f) return { sop: sops[i], f: f };
+  }
+  return null;
+}
+// "con DDT 4471", o "con la bolla del 10/09" se il numero non si è letto.
+function conBolla(f) { return f.numero ? 'DDT ' + f.numero : 'la bolla del ' + (dataBollaBreve(f) || giornoMese(f.giorno)); }
+
+/* Tutto quello che sta negli Ordini, in un elenco solo: le righe del cantiere
+   e la merce arrivata senza ordine. Le differenze — arrivato meno di quanto
+   ordinato, o arrivato senza ordine — stanno in cima; poi le righe per stato. */
+function vociOrdini(c) {
+  const voci = [];
+  sopralluoghiDi(c.codice).forEach(function (s) {
+    documentiDi(s).forEach(function (f) {
+      (f.senzaOrdine || []).forEach(function (x) { voci.push({ tipo: 'senza', sop: s, f: f, x: x, diff: true, testo: x.descrizione }); });
+    });
+  });
+  ordiniDi(c).forEach(function (o) { voci.push({ tipo: 'riga', o: o, diff: mancante(o) > 0, testo: o.descrizione }); });
+  const peso = function (v) { return v.diff ? 0 : 1 + STATI_ORDINE.findIndex(function (s) { return v.o && s.id === v.o.stato; }); };
+  return voci.sort(function (a, b) { return peso(a) - peso(b); });
+}
+function differenzeOrdini(c) { return vociOrdini(c).filter(function (v) { return v.diff; }).length; }
+// Il numero sulla linguetta: le differenze in giallo, se no le righe aperte.
+function numeroOrdini(c) {
+  const diff = differenzeOrdini(c);
+  return diff ? { n: diff, att: true } : ordiniDi(c).filter(function (o) { return o.stato !== 'arrivato'; }).length;
+}
+function listaOrdiniHtml(c, voci) {
+  return voci.map(function (v) { return v.tipo === 'senza' ? rigaSenzaOrdineHtml(c, v) : rigaOrdineHtml(c, v.o); }).join('');
+}
+/* Due tocchi sulla stessa riga: la descrizione apre la riga, la pastiglia cambia
+   lo stato. Una riga con una differenza è gialla, dice quanto manca e con quale
+   bolla è arrivato; toccandola escono i due tasti, come i puntini delle card. */
+function rigaOrdineHtml(c, o) {
+  const st = STATI_ORDINE.find(function (s) { return s.id === o.stato; }) || STATI_ORDINE[0];
+  const rif = 'data-cantiere="' + h(c.id) + '" data-id="' + h(o.id) + '"';
+  const manca = mancante(o);
+  const chiave = 'ord-' + o.id, aperto = PUNTI_APERTI === chiave;
+  let sotto = h(contiOrdine(o)) + (o.giorno ? ' · rilievo ' + h(giornoMese(o.giorno)) : '');
+  let voci = '';
+  if (manca) {
+    const bolle = Object.keys(o.arrivi || {}).map(function (id) { return documentoDi(c, id); }).filter(Boolean);
+    sotto = 'ordinati ' + h(numeroIt(o.quantita)) + (o.um ? ' ' + h(o.um) : '') + (o.giorno ? ' ' + h(ilGiorno(o.giorno)) : '') +
+      ' · arrivati ' + h(numeroIt(o.arrivata)) + (bolle.length ? ' con ' + h(bolle.map(function (b) { return conBolla(b.f); }).join(', ')) : '');
+    if (aperto) voci = '<div class="esp-voci"><button class="voce-m" data-az="ordine-modifica" ' + rif + '><b>Correggi l\'ordine</b></button>' +
+      bolle.map(function (b) { return '<button class="voce-m" data-az="vai" data-a="#/foto/' + h(b.sop.id) + '/' + h(b.f.id) + '"><b>Vai alla bolla</b><small>' + h(conBolla(b.f)) + '</small></button>'; }).join('') + '</div>';
+  }
+  return '<div class="ordine' + (manca ? ' diff' : '') + '">' +
+    '<button class="desc" data-az="' + (manca ? 'menu-punti' : 'ordine-modifica') + '" data-chiave="' + h(chiave) + '" ' + rif + '>' + h(o.descrizione) + '<small>' + sotto + '</small></button>' +
+    (manca
+      ? '<span class="stato"><span class="meno">−' + h(numeroIt(manca)) + '</span></span>'
+      : '<button class="stato" data-az="ordine-stato" ' + rif + ' aria-label="Cambia stato"><span class="pill ' + st.pill + '">' + h(st.nome) + '</span></button>') +
+    '</div>' + voci;
+}
+// Merce arrivata senza essere a ordine: gialla come le differenze; con un tocco entra fra le righe, già arrivata.
+function rigaSenzaOrdineHtml(c, v) {
+  const chiave = 'senza-' + v.x.id, aperto = PUNTI_APERTI === chiave;
+  return '<div class="ordine diff">' +
+    '<button class="desc" data-az="menu-punti" data-chiave="' + h(chiave) + '">' + h(v.x.descrizione) + '<small>arrivati ' + h(contiOrdine(v.x)) + ' con ' + h(conBolla(v.f)) + ' · non a ordine</small></button>' +
+    '<span class="stato"><span class="pill att">senza ordine</span></span></div>' +
+    (aperto ? '<div class="esp-voci"><button class="voce-m" data-az="ordine-da-bolla" data-sop="' + h(v.sop.id) + '" data-foto="' + h(v.f.id) + '" data-id="' + h(v.x.id) + '"><b>Aggiungi come arrivata</b></button>' +
+      '<button class="voce-m" data-az="vai" data-a="#/foto/' + h(v.sop.id) + '/' + h(v.f.id) + '"><b>Vai alla bolla</b><small>' + h(conBolla(v.f)) + '</small></button></div>' : '');
+}
+// La tendina Ordini del cantiere: le voci che scorrono, e in piede la strada per la pagina.
+function tendinaOrdini(c) {
+  const voci = vociOrdini(c);
+  if (!voci.length) return '';
+  return tendina('ordini-' + c.id, 'Ordini',
+    '<div class="card">' + scorrevole(listaOrdiniHtml(c, voci)) +
+    '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="vai" data-a="#/ordini/' + h(c.id) + '">Cerca e filtra negli ordini</button></div></div>', numeroOrdini(c));
+}
+
+/* La pagina degli ordini: ricerca sulla descrizione, filtri di stato, le righe
+   complete, e in fondo la lista da mandare al fornitore. */
+let filtroOrdini = '', statoOrdini = 'tutti';
+const FILTRI_ORDINI = [['tutti', 'tutti'], ['differenza', 'differenza'], ['da_ordinare', 'da ordinare'], ['ordinato', 'ordinato'], ['arrivato', 'arrivato']];
+function vistaOrdini(idCantiere) {
   const c = cantiere(idCantiere);
   if (!c) return vistaDashboard();
-  if (sotto === 'carica') return vistaCaricaListino(c);
-  const tutte = listinoTutto();
-  const voci = filtroListino ? cercaListinoLocale(filtroListino).map(function (r) { return r.voce; }) : tutte;
-  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Listino prezzi', sotto: tutte.length + ' voci · ' + h(c.nome) });
-  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nella descrizione" value="' + h(filtroListino) + '" data-campo="filtro-listino" autocomplete="off"></div>';
-  html += '<div class="modulo"><button class="btn medio" data-az="vai" data-a="#/listino/' + h(c.id) + '/carica"><span class="ico ico-documento"></span> Carica listino da file</button>' +
-    // Svuotare tutto in un colpo: un listino sbagliato o di prova si butta senza toccare le voci una per una.
-    (tutte.length ? '<button class="btn medio btn-rosso" data-az="listino-svuota" style="margin-top:8px"><span class="ico ico-cestino"></span> Svuota il listino</button>' : '') + '</div>';
-  if (voci.length) {
-    html += '<div class="card" style="margin-top:12px">' + voci.slice(0, 200).map(function (v) {
-      return '<button class="riga" data-az="voce-modifica" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + (v.rif ? h(v.rif) + ' · ' : '') + h(v.um || '—') + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
-    }).join('') + '</div>';
-    if (voci.length > 200) html += '<div class="vuoto-stato">Mostrate le prime 200: cerca per restringere.</div>';
-  } else {
-    html += '<div class="vuoto-stato">' + (filtroListino ? 'Nessuna voce trovata.' : 'Il listino è vuoto. Aggiungi una voce, o carica un file.') + '</div>';
-  }
-  html += '<div class="barra"><button class="az verde" data-az="voce-nuova">＋ Aggiungi voce</button></div>';
+  const q = senzaAccenti(filtroOrdini.trim());
+  const voci = vociOrdini(c).filter(function (v) {
+    if (q && senzaAccenti(v.testo).indexOf(q) === -1) return false;
+    if (statoOrdini === 'tutti') return true;
+    if (statoOrdini === 'differenza') return v.diff;
+    return v.o && v.o.stato === statoOrdini;
+  });
+  const diff = differenzeOrdini(c);
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Ordini', sotto: h(c.nome),
+    destra: diff ? '<span class="pill att">' + diff + (diff === 1 ? ' differenza' : ' differenze') + '</span>' : '' });
+  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nella descrizione" value="' + h(filtroOrdini) + '" data-campo="filtro-ordini" autocomplete="off"></div>';
+  html += '<div class="periodi">' + FILTRI_ORDINI.map(function (f) {
+    return '<button class="pill cod' + (statoOrdini === f[0] ? ' on' : '') + '" data-az="ordini-filtro" data-stato="' + f[0] + '">' + h(f[1]) + '</button>';
+  }).join('') + '</div>';
+  if (voci.length) html += '<div class="card">' + listaOrdiniHtml(c, voci) + '</div>';
+  else html += '<div class="vuoto-stato">' + (ordiniDi(c).length ? 'Nessuna riga con questi filtri.' : 'Nessuna riga. Le righe nascono dal tasto «Rilievo d\'ordine», nel cantiere o nella giornata.') + '</div>';
+  if (!REG.attiva && daOrdinare(c).length) html += '<div class="barra"><button class="az verde" data-az="ordine-lista" data-id="' + h(c.id) + '"><span class="ico ico-invio"></span> Lista da ordinare</button></div>';
   return html;
 }
-function apriVoceListino(v) {
-  VOCE_APERTA = v || { descrizione: '', um: '', prezzo: 0 };
+
+/* ---------------- DOCUMENTI ---------------- */
+// Tutti i documenti del cantiere, dal più recente, con il sopralluogo in cui stanno.
+function documentiTutti(c) {
+  const lista = [];
+  sopralluoghiDi(c.codice).forEach(function (s) { documentiDi(s).forEach(function (f) { lista.push({ sop: s, f: f }); }); });
+  return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
+}
+// La riga di un documento: genere e fornitore sopra, data e numero sotto.
+function rigaDocumentoHtml(v) {
+  const f = v.f;
+  return '<button class="riga" data-az="vai" data-a="#/foto/' + h(v.sop.id) + '/' + h(f.id) + '">' +
+    '<span class="desc">' + h(GENERI[f.genere] || 'Documento') + (f.fornitore ? ' · ' + h(f.fornitore) : '') +
+    '<small>' + h(dataSenzaAnno(f.giorno)) + ', ' + h(oraCorta(f.ora)) + (f.numero ? ' · n. ' + h(f.numero) : '') + (f.formato === 'pdf' ? ' · ' + h(paginePdf(f)) : '') + '</small></span>' +
+    '<span class="frec">›</span></button>';
+}
+/* La pagina delle bolle: ricerca su fornitore, numero, referto e righe lette;
+   l'elenco per data, dalla più recente. Toccando si apre il documento. */
+let filtroDoc = '';
+function vistaDocumenti(idCantiere) {
+  const c = cantiere(idCantiere);
+  if (!c) return vistaDashboard();
+  const q = senzaAccenti(filtroDoc.trim());
+  const tutti = documentiTutti(c);
+  const lista = q ? tutti.filter(function (v) {
+    return senzaAccenti([intestazioneBolla(v.f), v.f.referto, (v.f.senzaOrdine || []).map(function (x) { return x.descrizione; }).join(' ')].join(' ')).indexOf(q) !== -1;
+  }) : tutti;
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Bolle', sotto: h(c.nome) });
+  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Fornitore, numero, una parola del referto" value="' + h(filtroDoc) + '" data-campo="filtro-doc" autocomplete="off"></div>';
+  if (lista.length) html += '<div class="card">' + lista.map(rigaDocumentoHtml).join('') + '</div>';
+  else html += '<div class="vuoto-stato">' + (tutti.length ? 'Nessun documento con «' + h(filtroDoc) + '».' : 'Nessun documento. Le bolle si scansionano dal tasto «Bolla», nel cantiere o nella giornata.') + '</div>';
+  return html;
+}
+
+// Il foglio per correggere una riga, campo per campo: lo stesso della contabilità.
+let ORDINE_APERTO = null;
+function apriRigaOrdine(c, o) {
+  const um = o.um || '';
+  const opzioniUm = ['', 'pz', 'm', 'm²', 'm³', 'kg', 'q', 't', 'corpo'];
+  if (um && opzioniUm.indexOf(um) === -1) opzioniUm.push(um);
+  apriFoglio(
+    '<h2>' + h(primaRiga(o.descrizione) || 'Riga') + '</h2>' +
+    '<label class="eticampo">Descrizione</label><input class="campo" id="o-desc" value="' + h(o.descrizione) + '" autocomplete="off">' +
+    '<div class="due" style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Quantità</label><input class="campo" id="o-qta" inputmode="decimal" value="' + h(numeroIt(o.quantita)) + '"></div>' +
+    '<div style="flex:1"><label class="eticampo">Unità</label><select class="campo" id="o-um">' + opzioniUm.map(function (u) { return '<option value="' + h(u) + '"' + (u === um ? ' selected' : '') + '>' + (u || '—') + '</option>'; }).join('') + '</select></div></div>' +
+    '<label class="eticampo">Misure</label><input class="campo" id="o-mis" value="' + h(o.misure || '') + '" placeholder="120x150 cm" autocomplete="off">' +
+    '<div class="righe"><button class="btn btn-ok" data-az="ordine-salva">Salva</button>' +
+    '<button class="btn btn-rosso" data-az="ordine-elimina">Elimina</button></div>' +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>'
+  );
+  ORDINE_APERTO = { cantiere: c.id, id: o.id };
+}
+
+/* La lista per il fornitore: una riga per prodotto, come nel rilievo — prima la
+   quantità, poi la cosa, poi le misure. Solo le righe ancora da ordinare. */
+function testoListaOrdine(c) {
+  return daOrdinare(c).map(rigaOrdineTesto).join('\n');
+}
+// Lo stesso in CSV per Excel italiano: punto e virgola, decimali con la virgola, BOM per gli accenti.
+function csvListaOrdine(c) {
+  const cella = function (v) { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const righe = [['Descrizione', 'Quantità', 'Unità', 'Misure', 'Data rilievo']];
+  daOrdinare(c).forEach(function (o) {
+    righe.push([o.descrizione, String(o.quantita || 0).replace('.', ','), o.um || '', o.misure || '', o.giorno ? o.giorno.split('-').reverse().join('/') : '']);
+  });
+  return String.fromCharCode(0xFEFF) + righe.map(function (r) { return r.map(cella).join(';'); }).join('\r\n');
+}
+function apriListaOrdine(c) {
+  apriFoglio(
+    '<h2>Lista da ordinare</h2>' +
+    '<textarea class="corpo" id="o-lista" readonly>' + h(testoListaOrdine(c)) + '</textarea>' +
+    '<div class="righe"><button class="btn btn-ok" data-az="ordine-copia">Copia</button>' +
+    '<button class="btn" data-az="ordine-csv" data-id="' + h(c.id) + '">Scarica CSV</button></div>' +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Chiudi</button>'
+  );
+  const t = document.getElementById('o-lista');
+  if (t) cresciTextarea(t);
+}
+// Copia negli appunti; se il telefono non lo permette, seleziona il testo e lo dice.
+async function copiaTesto(testo, campo) {
+  try { await navigator.clipboard.writeText(testo); avvisa('Copiato', 'ok'); return; } catch (e) { /* si prova con la selezione */ }
+  if (campo) {
+    campo.focus(); campo.select();
+    try { if (document.execCommand('copy')) { avvisa('Copiato', 'ok'); return; } } catch (e) { /* neanche così */ }
+  }
+  avvisa('Non riesco a copiare: il testo è selezionato', 'att');
+}
+
+/* ---------------- LISTINO ---------------- */
+/* Tre schermate: i listini del cantiere, un listino con le sue voci a capitoli,
+   il caricamento da file. La rotta è #/listino/<cantiere>[/<listino>[/carica]]. */
+let filtroListino = '';
+function vistaListino(idCantiere, idListino, sotto) {
+  const c = cantiere(idCantiere);
+  if (!c) return vistaDashboard();
+  if (!idListino) return vistaListini(c);
+  const l = leggiTutto().listini[idListino];
+  if (!l) return vistaListini(c);
+  if (sotto === 'carica') return vistaCaricaListino(c, l);
+  const tutte = vociDi(l.codice);
+  let html = testata({ indietro: '#/listino/' + c.id, titolo: l.nome, sotto: h([l.riferimento, tutte.length + ' voci', c.nome].filter(Boolean).join(' · ')),
+    destra: '<button class="pill cod" data-az="listino-modifica" data-id="' + h(l.id) + '">modifica</button>' });
+  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nella descrizione" value="' + h(filtroListino) + '" data-campo="filtro-listino" autocomplete="off"></div>';
+  html += '<div class="modulo"><button class="btn medio" data-az="vai" data-a="#/listino/' + h(c.id) + '/' + h(l.id) + '/carica"><span class="ico ico-documento"></span> Carica da file</button>' +
+    // Svuotare tutto in un colpo: un listino sbagliato o di prova si butta senza toccare le voci una per una.
+    (tutte.length ? '<button class="btn medio btn-rosso" data-az="listino-svuota" data-id="' + h(l.id) + '" style="margin-top:8px"><span class="ico ico-cestino"></span> Svuota il listino</button>' : '') + '</div>';
+  if (filtroListino) {
+    // La ricerca guarda tutto, anche dentro i capitoli chiusi: i risultati escono in un elenco solo.
+    const voci = cercaListinoLocale(filtroListino, tutte).map(function (r) { return r.voce; });
+    html += voci.length ? '<div class="card" style="margin-top:12px">' + voci.slice(0, 200).map(rigaVoceHtml).join('') + '</div>' : '<div class="vuoto-stato">Nessuna voce trovata.</div>';
+    if (voci.length > 200) html += '<div class="vuoto-stato">Mostrate le prime 200: cerca per restringere.</div>';
+  } else if (tutte.length) {
+    /* Le voci per capitolo, in tendine chiuse con il numero sulla linguetta; le voci
+       senza capitolo chiudono l'elenco. Stessa griglia delle altre schermate. */
+    const capitoli = {};
+    tutte.forEach(function (v) { const k = String(v.capitolo || '').trim() || 'Senza capitolo'; (capitoli[k] = capitoli[k] || []).push(v); });
+    const nomi = Object.keys(capitoli).filter(function (k) { return k !== 'Senza capitolo'; }).sort(function (a, b) { return a.localeCompare(b); });
+    if (capitoli['Senza capitolo']) nomi.push('Senza capitolo');
+    html += grigliaTendine(nomi.map(function (k) {
+      return tendina('cap-' + l.id + '-' + senzaAccenti(k).replace(/\W+/g, '-'), k, '<div class="card">' + scorrevole(capitoli[k].map(rigaVoceHtml).join('')) + '</div>', capitoli[k].length);
+    }));
+  } else {
+    html += '<div class="vuoto-stato">Il listino è vuoto. Aggiungi una voce, o carica un file.</div>';
+  }
+  html += '<div class="barra"><button class="az verde" data-az="voce-nuova" data-listino="' + h(l.codice) + '">＋ Aggiungi voce</button></div>';
+  return html;
+}
+function rigaVoceHtml(v) {
+  return '<button class="riga" data-az="voce-modifica" data-id="' + h(v.id) + '"><span class="desc">' + h(v.descrizione) + '<small>' + (v.rif ? h(v.rif) + ' · ' : '') + h(v.um || '—') + '</small></span><span class="dx">' + h(euro(v.prezzo)) + '</span></button>';
+}
+/* I listini che valgono per questo cantiere, nell'ordine in cui si cerca, e sotto
+   gli altri. Si toccano per entrare; l'ordine si decide nella scheda del cantiere. */
+function vistaListini(c) {
+  listinoGeneraleOCrea();
+  const miei = listiniDelCantiere(c);
+  const altri = listiniTutti().filter(function (l) { return miei.indexOf(l) === -1; });
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: 'Listini', sotto: h(c.nome),
+    destra: '<button class="pill cod" data-az="vai" data-a="#/modifica-cantiere/' + h(c.id) + '">scegli</button>' });
+  const riga = function (l, i) {
+    return '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '/' + h(l.id) + '"><span class="desc">' + (i != null ? '<span class="targa">' + (i + 1) + '°</span> ' : '') + h(l.nome) +
+      '<small>' + h([l.riferimento, vociDi(l.codice).length + ' voci', l.generale ? 'vale per tutti i cantieri' : ''].filter(Boolean).join(' · ')) + '</small></span><span class="frec">›</span></button>';
+  };
+  html += '<div class="card"><div class="card-capo">Di questo cantiere<span class="dx">in ordine di ricerca</span></div>' + miei.map(riga).join('') + '</div>';
+  if (altri.length) html += '<div class="card"><div class="card-capo spenta">Altri listini</div>' + altri.map(function (l) { return riga(l, null); }).join('') + '</div>';
+  html += '<div class="barra"><button class="az verde" data-az="listino-nuovo">＋ Nuovo listino</button></div>';
+  return html;
+}
+// Nome e riferimento di un listino: nuovo, o da cambiare.
+let LISTINO_APERTO = null;
+function apriListinoForm(l) {
+  LISTINO_APERTO = l || { nome: '', riferimento: '' };
+  apriFoglio(
+    '<h2>' + (l ? 'Listino' : 'Nuovo listino') + '</h2>' +
+    '<label class="eticampo">Nome</label><input class="campo" id="l-nome" value="' + h(LISTINO_APERTO.nome) + '" placeholder="es. Prezzario regionale" autocomplete="off"' + (l ? '' : ' autofocus') + '>' +
+    '<label class="eticampo">Anno o riferimento</label><input class="campo" id="l-rif" value="' + h(LISTINO_APERTO.riferimento || '') + '" placeholder="es. 2026" autocomplete="off">' +
+    '<div class="righe"><button class="btn btn-ok" data-az="listino-salva">Salva</button>' +
+    (l && !l.generale ? '<button class="btn btn-rosso" data-az="listino-elimina">Elimina</button>' : '') + '</div>' +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>'
+  );
+}
+function apriVoceListino(v, codiceListino) {
+  VOCE_APERTA = v || { descrizione: '', um: '', prezzo: 0, capitolo: '', listino: codiceListino };
   apriFoglio(
     '<h2>' + (v ? 'Voce del listino' : 'Nuova voce') + '</h2>' +
     '<label class="eticampo">Descrizione</label><input class="campo" id="v-desc" value="' + h(VOCE_APERTA.descrizione) + '" autocomplete="off"' + (v ? '' : ' autofocus') + '>' +
     '<div style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Unità</label><input class="campo" id="v-um" value="' + h(VOCE_APERTA.um) + '" placeholder="m², kg, h…" autocomplete="off"></div>' +
     '<div style="flex:1"><label class="eticampo">Prezzo unitario €</label><input class="campo" id="v-prezzo" inputmode="decimal" value="' + h(VOCE_APERTA.prezzo ? numeroIt(VOCE_APERTA.prezzo) : '') + '"></div></div>' +
+    '<label class="eticampo">Capitolo</label><input class="campo" id="v-cap" value="' + h(VOCE_APERTA.capitolo || '') + '" placeholder="es. Murature" autocomplete="off">' +
     '<div class="righe"><button class="btn btn-ok" data-az="voce-salva">Salva</button>' + (v ? '<button class="btn btn-rosso" data-az="voce-elimina">Elimina</button>' : '') + '</div>' +
     '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>'
   );
@@ -4436,23 +5314,30 @@ async function salvaVoceAperta() {
   v.um = await normalizzaUm(document.getElementById('v-um').value);
   const p = leggiNumero(document.getElementById('v-prezzo').value, ',');
   v.prezzo = isNaN(p) ? 0 : p;
+  v.capitolo = document.getElementById('v-cap').value.trim();
+  if (!v.listino) v.listino = listinoGeneraleOCrea().codice;
   salva('listino', v);
   chiudiFoglio();
   avvisa('Salvato', 'ok');
   aggiornaVista();
 }
 
-/* ---- caricamento da file: il listino lo legge Claude ---- */
-const IMPORT = { passo: 'file', nome: '', righe: [], schema: null, errore: '', esempi: [], daClaude: false };
+/* ---- caricamento da file: il listino lo legge Claude ----
+   Da CSV e TXT come sempre; da Excel con SheetJS; da PDF con testo con pdf.js;
+   da PDF scansionato o foto con Claude, una pagina alla volta. Tutte le strade
+   portano alle stesse righe, alla stessa conferma e allo stesso import. */
+const IMPORT = { passo: 'file', nome: '', righe: [], schema: null, errore: '', esempi: [], daClaude: false, listino: '', confronto: null };
+const PAGINE_MAX = 30;
 
-function vistaCaricaListino(c) {
-  let html = testata({ indietro: '#/listino/' + c.id, titolo: 'Carica listino', sotto: h(IMPORT.nome || 'da un file CSV') });
+function vistaCaricaListino(c, l) {
+  const qui = '#/listino/' + h(c.id) + '/' + h(l.id);
+  let html = testata({ indietro: qui, titolo: 'Carica listino', sotto: h(IMPORT.nome ? IMPORT.nome + ' → ' + l.nome : 'in ' + l.nome) });
   if (IMPORT.passo === 'file') {
-    html += '<div class="modulo"><p style="color:var(--text-2);margin:8px 0 16px">Scegli il file del prezzario esportato dal foglio di calcolo, in formato CSV. L\'app legge le prime righe, capisce com\'è fatto e ti chiede solo conferma.</p>' +
-      '<input type="file" id="file-listino" accept=".csv,.txt,text/csv,text/plain" hidden data-campo="file-listino">' +
+    html += '<div class="modulo"><p style="color:var(--text-2);margin:8px 0 16px">Scegli il file del prezzario: un foglio di calcolo (CSV, Excel), un PDF, o la foto delle pagine. L\'app legge com\'è fatto e ti chiede solo conferma.</p>' +
+      '<input type="file" id="file-listino" accept=".csv,.txt,.xlsx,.xls,.pdf,image/*" multiple hidden data-campo="file-listino" data-listino="' + h(l.codice) + '">' +
       '<button class="btn btn-ok" data-az="scegli-file">Scegli il file</button></div>';
   } else if (IMPORT.passo === 'lettura') {
-    html += '<div class="vuoto-stato">Sto leggendo com\'è fatto il file…</div>';
+    html += '<div class="vuoto-stato">' + h(IMPORT.errore || 'Sto leggendo com\'è fatto il file…') + '</div>';
   } else if (IMPORT.passo === 'conferma') {
     const s = IMPORT.schema;
     const int = IMPORT.righe[s.riga_intestazione] || [];
@@ -4460,7 +5345,7 @@ function vistaCaricaListino(c) {
     html += '<div class="card"><div class="card-capo' + (IMPORT.daClaude ? '' : ' spenta') + '">' + (IMPORT.daClaude ? 'Ho capito così' : 'Scelta a mano') + '</div>' +
       '<div class="card-corpo" style="font-size:17px">Intestazione alla riga ' + (s.riga_intestazione + 1) + '\nDescrizione ← ' + h(nomeCol(s.colonne.descrizione)) + '\nUnità ← ' + h(nomeCol(s.colonne.um)) + '\nPrezzo ← ' + h(nomeCol(s.colonne.prezzo)) + '\nCodice ← ' + h(nomeCol(s.colonne.codice)) + '\nDecimali con ' + (s.decimali === ',' ? 'la virgola' : 'il punto') + '</div>' +
       '<div class="card-capo spenta">Tre righe lette</div>' +
-      (IMPORT.esempi.length ? IMPORT.esempi.map(function (e) { return '<div class="riga" style="min-height:52px"><span class="desc">' + h(e.descrizione) + '<small>' + h(e.rif ? e.rif + ' · ' : '') + h(e.um || '—') + '</small></span><span class="dx">' + h(euro(e.prezzo)) + '</span></div>'; }).join('') : '<div class="card-corpo" style="color:var(--gold)">Con queste colonne non esce nessuna riga buona: correggi con “Cambia”.</div>') +
+      (IMPORT.esempi.length ? IMPORT.esempi.map(function (e) { return '<div class="riga" style="min-height:52px"><span class="desc">' + h(e.descrizione) + '<small>' + h([e.rif, e.capitolo, e.um || '—'].filter(Boolean).join(' · ')) + '</small></span><span class="dx">' + h(euro(e.prezzo)) + '</span></div>'; }).join('') : '<div class="card-corpo" style="color:var(--gold)">Con queste colonne non esce nessuna riga buona: correggi con “Cambia”.</div>') +
       '</div>';
     if (IMPORT.errore) html += '<div class="avviso">' + h(IMPORT.errore) + '</div>';
     html += '<div class="modulo"><button class="btn btn-ok" data-az="import-carica"' + (IMPORT.esempi.length ? '' : ' disabled') + '>Carica</button>' +
@@ -4481,9 +5366,23 @@ function vistaCaricaListino(c) {
     }
     html += '<div class="anteprima">' + h(IMPORT.righe.slice(0, 8).map(function (r, i) { return (i + 1) + '  ' + r.join(' | '); }).join('\n')) + '</div></div>';
     html += '<div class="modulo"><button class="btn btn-ok" data-az="import-conferma-manuale">Vedi come viene</button></div>';
+  } else if (IMPORT.passo === 'riepilogo') {
+    /* Il listino ha già delle voci: prima di scrivere si dice cosa cambia. Le righe
+       di contabilità già scritte non si toccano in nessun caso. */
+    const k = IMPORT.confronto;
+    html += '<div class="card"><div class="card-capo">Cosa cambia in ' + h(l.nome) + '</div>' +
+      '<div class="card-corpo" style="font-size:17px">' + k.nuove.length + ' voci nuove\n' + k.uguali + ' uguali\n' + k.cambiate.length + ' cambiate di prezzo</div>' +
+      (k.cambiate.length ? '<div class="card-capo spenta">Prezzi che cambiano</div>' + scorrevole(k.cambiate.map(function (x) {
+        const pct = x.vecchio.prezzo ? Math.round((x.nuovo.prezzo - x.vecchio.prezzo) / x.vecchio.prezzo * 1000) / 10 : 0;
+        return '<div class="riga" style="min-height:52px"><span class="desc">' + h(x.nuovo.descrizione) + '<small>' + h(euro(x.vecchio.prezzo)) + ' → ' + h(euro(x.nuovo.prezzo)) + '</small></span>' +
+          '<span class="dx ' + (pct > 0 ? 'att' : '') + '">' + (pct > 0 ? '+' : '') + h(numeroIt(pct, 1)) + '%</span></div>';
+      }).join('')) : '') + '</div>';
+    html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Le righe di contabilità già scritte non cambiano: tengono il prezzo che hanno.</div>';
+    html += '<div class="modulo"><button class="btn btn-ok" data-az="import-tutto">Importa tutto</button>' +
+      '<button class="btn" data-az="import-nuove" style="margin-top:8px"' + (k.nuove.length ? '' : ' disabled') + '>Solo le ' + k.nuove.length + ' voci nuove</button></div>';
   } else if (IMPORT.passo === 'fatto') {
     html += '<div class="card"><div class="card-capo">Caricato</div><div class="card-corpo">' + h(IMPORT.esito) + '</div></div>' +
-      '<div class="modulo"><button class="btn btn-ok" data-az="vai" data-a="#/listino/' + h(c.id) + '">Vai al listino</button></div>';
+      '<div class="modulo"><button class="btn btn-ok" data-az="vai" data-a="' + qui + '">Vai al listino</button></div>';
   }
   return html;
 }
@@ -4519,16 +5418,156 @@ function leggiCSV(testo) {
   return righe;
 }
 
-async function avviaImportListino(file) {
+/* SheetJS serve solo a leggere un Excel: si scarica la prima volta che serve, da
+   cdnjs come pdf.js. */
+let SHEETJS = null;
+function caricaSheetJs() {
+  if (SHEETJS) return SHEETJS;
+  SHEETJS = new Promise(function (ok, no) {
+    if (window.XLSX) return ok(window.XLSX);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = function () { ok(window.XLSX); };
+    s.onerror = function () { SHEETJS = null; no(new Error('serve la rete la prima volta')); };
+    document.head.appendChild(s);
+  });
+  return SHEETJS;
+}
+// Un foglio Excel diventa righe di celle; se i fogli sono più d'uno si chiede quale.
+async function righeDaExcel(file) {
+  const XLSX = await caricaSheetJs();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const nomi = wb.SheetNames.filter(function (n) { return XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1 }).length; });
+  if (!nomi.length) return [];
+  let nome = nomi[0];
+  if (nomi.length > 1) {
+    nome = await new Promise(function (ok) {
+      apriFoglio('<h2>Quale foglio?</h2>' + nomi.map(function (n) { return '<button class="btn" data-az="import-foglio" data-nome="' + h(n) + '">' + h(n) + '</button>'; }).join('') +
+        '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
+      IMPORT.scegliFoglio = ok;
+    });
+    IMPORT.scegliFoglio = null;
+    if (!nome) return null;
+  }
+  return XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: false, defval: '' })
+    .map(function (r) { return r.map(function (x) { return String(x == null ? '' : x).trim(); }); })
+    .filter(function (r) { return r.some(Boolean); });
+}
+/* Il testo di un PDF, riga per riga: i pezzi di testo si mettono insieme per
+   altezza, e dentro la riga si stacca una cella dall'altra dove c'è un vuoto.
+   Le colonne le dà la riga più piena: ogni cella va nella colonna che comincia
+   più vicino a lei, così un titolo di capitolo resta sotto "descrizione". */
+async function righeDaPdf(doc) {
+  const righe = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const tc = await (await doc.getPage(n)).getTextContent();
+    const linee = {};
+    tc.items.forEach(function (i) {
+      if (!i.str.trim()) return;
+      const y = Math.round(i.transform[5] / 3);
+      (linee[y] = linee[y] || []).push({ x: i.transform[4], fine: i.transform[4] + i.width, s: i.str });
+    });
+    Object.keys(linee).map(Number).sort(function (a, b) { return b - a; }).forEach(function (y) {
+      const pezzi = linee[y].sort(function (a, b) { return a.x - b.x; });
+      const celle = [];
+      pezzi.forEach(function (p, i) {
+        if (i && p.x - pezzi[i - 1].fine < 6) { celle[celle.length - 1].s += ' ' + p.s; celle[celle.length - 1].fine = p.fine; }
+        else celle.push({ x: p.x, fine: p.fine, s: p.s });
+      });
+      righe.push(celle);
+    });
+  }
+  const guida = righe.reduce(function (m, r) { return r.length > m.length ? r : m; }, []);
+  const colonne = guida.map(function (c) { return c.x; });
+  return righe.map(function (r) {
+    const out = colonne.map(function () { return ''; });
+    r.forEach(function (c) {
+      let k = 0;
+      colonne.forEach(function (x, i) { if (Math.abs(x - c.x) < Math.abs(colonne[k] - c.x)) k = i; });
+      out[k] = (out[k] ? out[k] + ' ' : '') + c.s.trim();
+    });
+    return out;
+  }).filter(function (r) { return r.some(Boolean); });
+}
+
+async function avviaImportListino(file, codiceListino) {
   IMPORT.nome = file.name;
-  if (/\.xlsx?$/i.test(file.name)) { IMPORT.passo = 'file'; avvisa('Per adesso solo CSV', 'att'); aggiornaVista(); return; }
-  const testo = await file.text();
-  IMPORT.righe = leggiCSV(testo);
+  IMPORT.listino = codiceListino;
   IMPORT.errore = '';
   IMPORT.daClaude = false;
-  if (!IMPORT.righe.length) { avvisa('File vuoto', 'err'); IMPORT.passo = 'file'; aggiornaVista(); return; }
+  IMPORT.confronto = null;
   IMPORT.passo = 'lettura';
   aggiornaVista();
+  let righe = null;
+  try {
+    if (/\.xlsx?$/i.test(file.name)) righe = await righeDaExcel(file);
+    else if (ePdf(file)) {
+      const lib = await caricaPdfJs();
+      const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+      righe = await righeDaPdf(doc);
+      // Poco testo vuol dire scansione: le pagine le legge Claude.
+      if (righe.reduce(function (t, r) { return t + r.join('').length; }, 0) < 60) { await importaDaImmagini(paginePdf(doc), codiceListino); return; }
+    } else if (/^image\//.test(file.type)) { await importaDaImmagini([file], codiceListino); return; }
+    else righe = leggiCSV(await file.text());
+  } catch (e) { avvisa('Non riesco a leggere il file: ' + e.message, 'err'); IMPORT.passo = 'file'; aggiornaVista(); return; }
+  if (righe === null) { IMPORT.passo = 'file'; aggiornaVista(); return; }
+  IMPORT.righe = righe;
+  if (!IMPORT.righe.length) { avvisa('File vuoto', 'err'); IMPORT.passo = 'file'; aggiornaVista(); return; }
+  await leggiSchemaImport();
+}
+// Le pagine di un PDF, da disegnare una alla volta quando servono (al massimo PAGINE_MAX).
+function paginePdf(doc) {
+  const pagine = [];
+  for (let n = 1; n <= Math.min(doc.numPages, PAGINE_MAX); n++) {
+    pagine.push(async function () {
+      const pagina = await doc.getPage(n);
+      const base = pagina.getViewport({ scale: 1 });
+      const vista = pagina.getViewport({ scale: LATO_LETTURA / Math.max(base.width, base.height) });
+      const tela = document.createElement('canvas');
+      tela.width = Math.round(vista.width); tela.height = Math.round(vista.height);
+      await pagina.render({ canvasContext: tela.getContext('2d'), viewport: vista }).promise;
+      return (await blobDaTela(tela, QUALITA_LETTURA)).blob;
+    });
+  }
+  return pagine;
+}
+/* Le pagine fotografate le legge Claude, una per volta. Prima si dice quante sono
+   e quanto costano, e si conferma una volta sola. Le voci lette prendono la strada
+   delle righe di un foglio: quattro colonne fisse, e la stessa conferma di sempre. */
+async function importaDaImmagini(pagine, codiceListino) {
+  pagine = pagine.slice(0, PAGINE_MAX);
+  if (!chiaveAnthropic()) { avvisa('Manca la chiave Anthropic', 'err'); IMPORT.passo = 'file'; aggiornaVista(); return; }
+  // Una pagina a 1200 px sono circa 1800 token in ingresso; le voci in uscita, circa 1500.
+  const spesa = spesaStimata({ ingresso: pagine.length * 1800, uscita: pagine.length * 1500, cacheLettura: 0, cacheScrittura: 0 });
+  const ok = await chiedi('Leggo ' + pagine.length + (pagine.length === 1 ? ' pagina' : ' pagine') + '?', 'Le legge Claude una per volta. Spesa stimata: ' + euro(spesa) + '.', 'Leggi');
+  chiudiFoglio();
+  if (!ok) { IMPORT.passo = 'file'; aggiornaVista(); return; }
+  const righe = [['codice', 'descrizione', 'um', 'prezzo']];
+  for (let i = 0; i < pagine.length; i++) {
+    IMPORT.errore = 'Leggo la pagina ' + (i + 1) + ' di ' + pagine.length + '…';
+    aggiornaVista();
+    let blob;
+    try { blob = typeof pagine[i] === 'function' ? await pagine[i]() : (await riduciFoto(pagine[i], LATO_LETTURA, QUALITA_LETTURA)).blob; }
+    catch (e) { avvisa('Pagina ' + (i + 1) + ' non leggibile', 'att'); continue; }
+    try {
+      const r = estraiJSON(await chiamaClaude(REGOLE_LISTINO_IMMAGINE, [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: await blobInBase64(blob) } }], 4000));
+      (r && Array.isArray(r.righe) ? r.righe : []).forEach(function (x) {
+        if (!x || !String(x.descrizione || '').trim()) return;
+        righe.push([String(x.codice || '').trim(), String(x.descrizione).trim(), String(x.um || '').trim(), x.prezzo == null ? '' : String(x.prezzo)]);
+      });
+    } catch (e) { avvisa('Pagina ' + (i + 1) + ': ' + e.message, 'err'); }
+  }
+  IMPORT.errore = '';
+  IMPORT.righe = righe;
+  if (righe.length < 2) { avvisa('Nessuna voce letta', 'err'); IMPORT.passo = 'file'; aggiornaVista(); return; }
+  IMPORT.schema = { riga_intestazione: 0, colonne: { codice: 0, descrizione: 1, um: 2, prezzo: 3 }, decimali: '.', migliaia: null, riga_categoria: 'il prezzo è vuoto' };
+  IMPORT.daClaude = true;
+  IMPORT.esempi = applicaSchemaListino(IMPORT.righe, IMPORT.schema).slice(0, 3);
+  IMPORT.passo = 'conferma';
+  aggiornaVista();
+}
+// Le righe ci sono: Claude dice com'è fatto il file, se no si scelgono le colonne a mano.
+async function leggiSchemaImport() {
   const prime = IMPORT.righe.slice(0, 30).map(function (r, i) { return i + ': ' + r.join(' ; '); }).join('\n');
   let schema = null;
   if (chiaveAnthropic() && navigator.onLine) {
@@ -4564,36 +5603,69 @@ function indovinaSchemaLocale(righe) {
   righe.slice(0, 15).forEach(function (r, i) { const n = r.filter(Boolean).length; if (n > max) { max = n; ri = i; } });
   const int = righe[ri] || [];
   const trova = function (re) { const i = int.findIndex(function (x) { return re.test(senzaAccenti(x)); }); return i === -1 ? null : i; };
-  return { riga_intestazione: ri, colonne: { codice: trova(/^(cod|codice|art|tariffa)/), descrizione: trova(/descr|voce|lavoraz/), um: trova(/^(u\.?m\.?|unit)/), prezzo: trova(/prez|importo|euro|€/) }, decimali: ',', migliaia: '.', riga_categoria: '' };
+  const cp = trova(/prez|importo|euro|€/);
+  // Da un Excel i numeri arrivano col punto: se nella colonna del prezzo non c'è mai una virgola, i decimali sono col punto.
+  const prezzi = cp == null ? [] : righe.slice(ri + 1, ri + 40).map(function (r) { return r[cp] || ''; });
+  const punto = prezzi.some(function (x) { return /^\d+\.\d+$/.test(x); }) && !prezzi.some(function (x) { return /,\d+$/.test(x); });
+  return { riga_intestazione: ri, colonne: { codice: trova(/^(cod|codice|art|tariffa)/), descrizione: trova(/descr|voce|lavoraz/), um: trova(/^(u\.?m\.?|unit)/), prezzo: cp }, decimali: punto ? '.' : ',', migliaia: punto ? null : '.', riga_categoria: '' };
 }
 
 /* Si applica lo schema a tutto il file, senza altre chiamate.
-   Una riga senza prezzo leggibile è un titolo di categoria, o rumore: si salta. */
+   Una riga con la descrizione e senza prezzo è un titolo di categoria: diventa il
+   capitolo delle voci che seguono. Una riga senza descrizione è rumore: si salta. */
 function applicaSchemaListino(righe, s) {
   const out = [];
   const cd = s.colonne.descrizione, cu = s.colonne.um, cp = s.colonne.prezzo, cc = s.colonne.codice;
   if (cd == null || cp == null) return out;
+  let capitolo = '';
   for (let i = s.riga_intestazione + 1; i < righe.length; i++) {
     const r = righe[i];
     const desc = (r[cd] || '').trim();
+    if (!desc) continue;
     const prezzo = leggiNumero(r[cp], s.decimali, s.migliaia);
-    if (!desc || isNaN(prezzo) || prezzo <= 0) continue;
+    if (isNaN(prezzo) || prezzo <= 0) { if (!(cu != null && (r[cu] || '').trim())) capitolo = desc; continue; }
     const um = cu != null ? normalizzaUmLocale(r[cu] || '') || (r[cu] || '').trim() : '';
-    out.push({ descrizione: desc, um: um, prezzo: Math.round(prezzo * 100) / 100, rif: cc != null ? (r[cc] || '').trim() : '' });
+    out.push({ descrizione: desc, um: um, prezzo: Math.round(prezzo * 100) / 100, rif: cc != null ? (r[cc] || '').trim() : '', capitolo: capitolo });
   }
   return out;
 }
+/* Cosa cambierebbe nel listino con queste voci: nuove, uguali, cambiate di prezzo.
+   La stessa descrizione vale come la stessa voce. */
+function confrontaImport(voci, codiceListino) {
+  const esistenti = {};
+  vociDi(codiceListino).forEach(function (v) { esistenti[senzaAccenti(v.descrizione)] = v; });
+  const k = { nuove: [], uguali: 0, cambiate: [] };
+  voci.forEach(function (n) {
+    const v = esistenti[senzaAccenti(n.descrizione)];
+    if (!v) k.nuove.push(n);
+    else if (Math.abs((v.prezzo || 0) - n.prezzo) < 0.005) k.uguali++;
+    else k.cambiate.push({ vecchio: v, nuovo: n });
+  });
+  return k;
+}
+// Dalla conferma: su un listino pieno prima il riepilogo, su uno vuoto si scrive subito.
 function importaListino() {
   const voci = applicaSchemaListino(IMPORT.righe, IMPORT.schema);
   if (!voci.length) { avvisa('Nessuna riga leggibile', 'err'); return; }
+  if (vociDi(IMPORT.listino).length) {
+    IMPORT.confronto = confrontaImport(voci, IMPORT.listino);
+    IMPORT.passo = 'riepilogo';
+    aggiornaVista();
+    return;
+  }
+  scriviImport(voci, false);
+}
+/* Le voci entrano nel listino scelto. La stessa descrizione già presente si
+   aggiorna (due voci uguali con prezzi diversi confondono), a meno che si sia
+   scelto di prendere solo le nuove. Le righe di contabilità non si toccano. */
+function scriviImport(voci, soloNuove) {
   const esistenti = {};
-  listinoTutto().forEach(function (v) { esistenti[senzaAccenti(v.descrizione)] = v; });
+  vociDi(IMPORT.listino).forEach(function (v) { esistenti[senzaAccenti(v.descrizione)] = v; });
   let nuove = 0, aggiornate = 0;
   voci.forEach(function (n) {
-    const k = senzaAccenti(n.descrizione);
-    // La stessa descrizione già presente si aggiorna: due voci uguali con prezzi diversi confondono.
-    if (esistenti[k]) { const v = esistenti[k]; v.um = n.um || v.um; v.prezzo = n.prezzo; v.rif = n.rif || v.rif; salva('listino', v); aggiornate++; }
-    else { salva('listino', { descrizione: n.descrizione, um: n.um, prezzo: n.prezzo, rif: n.rif }); nuove++; }
+    const v = esistenti[senzaAccenti(n.descrizione)];
+    if (v) { if (soloNuove) return; v.um = n.um || v.um; v.prezzo = n.prezzo; v.rif = n.rif || v.rif; if (n.capitolo) v.capitolo = n.capitolo; salva('listino', v); aggiornate++; }
+    else { salva('listino', { descrizione: n.descrizione, um: n.um, prezzo: n.prezzo, rif: n.rif, capitolo: n.capitolo, listino: IMPORT.listino }); nuove++; }
   });
   IMPORT.esito = 'Lette ' + voci.length + ' voci da ' + IMPORT.nome + ': ' + nuove + ' nuove, ' + aggiornate + ' aggiornate.';
   IMPORT.passo = 'fatto';
@@ -4616,7 +5688,7 @@ function vistaNote(idCantiere) {
 /* ---------------- CERCA NEI DOCUMENTI ---------------- */
 let filtroDocumenti = '';
 function vistaCerca() {
-  let html = testata({ indietro: '#/', titolo: 'Cerca nei documenti', sotto: 'sopralluoghi, verbali, contabilità' });
+  let html = testata({ indietro: '#/', titolo: 'Cerca nei documenti', sotto: 'sopralluoghi, verbali, contabilità, bolle' });
   html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Una parola: ferro, ponteggio, Rossi…" value="' + h(filtroDocumenti) + '" data-campo="filtro-documenti" autocomplete="off" autofocus></div>';
   const q = senzaAccenti(filtroDocumenti.trim());
   if (q.length < 2) { html += '<div class="vuoto-stato">Scrivi almeno due lettere.</div>'; return html; }
@@ -4640,6 +5712,13 @@ function vistaCerca() {
     CHIAVI_SEZIONI.forEach(function (k) {
       const st = stralcio(v.sezioni[k]);
       if (st) risultati.push({ cantiere: v.cantiere, cosa: v.nome || (v.giornata ? 'Giornata' : 'Verbale'), giorno: v.giorno, dove: nomeSezione(k), testo: st, a: s ? '#/giorno/' + s.id : '#/verbale/' + v.id });
+    });
+  });
+  // I documenti: per fornitore e numero letti sulla bolla, e per il testo del referto.
+  valori(db.sopralluoghi).forEach(function (s) {
+    documentiDi(s).forEach(function (f) {
+      const st = stralcio(intestazioneBolla(f)) || stralcio(f.referto);
+      if (st) risultati.push({ cantiere: s.cantiere, cosa: GENERI[f.genere] || 'Documento', giorno: f.giorno, dove: 'Documento', testo: st, a: '#/foto/' + s.id + '/' + f.id });
     });
   });
   valori(db.contabilita).forEach(function (c) {
@@ -4683,8 +5762,24 @@ function vistaCantiereForm(id, idAzienda) {
     '<div class="due"><div><label class="eticampo">Stato</label><select class="campo" id="c-stato"><option value="attivo"' + (v.stato !== 'chiuso' ? ' selected' : '') + '>attivo</option><option value="chiuso"' + (v.stato === 'chiuso' ? ' selected' : '') + '>chiuso</option></select></div>' +
     '<div><label class="eticampo">Aperto il</label><input class="campo" id="c-aperto" type="date" value="' + h(v.aperto || '') + '"></div></div>' +
     '</div>';
+  /* I listini di questo cantiere: si toccano per scegliere, e l'ordine del tocco è
+     l'ordine in cui si cerca. Il Generale vale sempre, per ultimo, e non si sceglie. */
+  FORM_LISTINI = (v.listini || []).slice();
+  html += '<div class="card"><div class="card-capo">Listini<span class="dx">nell\'ordine in cui si cerca</span></div><div id="c-listini">' + righeListiniForm() + '</div></div>';
   html += '<div class="barra"><button class="az verde" data-az="cantiere-salva" data-id="' + h(c ? c.id : '') + '">Salva</button></div>';
   return html;
+}
+let FORM_LISTINI = [];
+function righeListiniForm() {
+  const scelti = listiniTutti().filter(function (l) { return !l.generale; });
+  if (!scelti.length) return '<div class="card-corpo" style="color:var(--muted)">Solo il Generale. I listini si creano dalla scheda Listini del cantiere.</div>';
+  return scelti.map(function (l) {
+    const i = FORM_LISTINI.indexOf(l.codice);
+    return '<div class="riga lis"><button class="desc" data-az="cantiere-listino" data-codice="' + h(l.codice) + '">' +
+      (i !== -1 ? '<span class="targa">' + (i + 1) + '°</span> ' : '') + h(l.nome) + '<small>' + h([l.riferimento, vociDi(l.codice).length + ' voci'].filter(Boolean).join(' · ')) + '</small></button>' +
+      (i > 0 ? '<button class="pill cod" data-az="cantiere-listino-su" data-codice="' + h(l.codice) + '" aria-label="Sposta su">↑</button>' : '') +
+      '<span class="pill ' + (i !== -1 ? 'ok' : 'grigia') + '">' + (i !== -1 ? 'sì' : 'no') + '</span></div>';
+  }).join('') + '<div class="card-piede">Il Generale vale sempre, per ultimo.</div>';
 }
 
 /* ============================================================
@@ -5580,7 +6675,7 @@ function disegnaRelazionePdf(rel, a) {
   // I numeri in una riga, e il totale sotto in grassetto
   const conta = function (q, uno, tanti) { return (q || 0) + ' ' + ((q || 0) === 1 ? uno : tanti); };
   a.scrivi(conta(n.giorni, 'giorno di sopralluogo', 'giorni di sopralluogo') + ', ' + conta(n.verbali, 'verbale chiuso', 'verbali chiusi') + ', ' + conta(n.aperte, 'giornata non chiusa', 'giornate non chiuse') + ', ' + (n.foto || 0) + ' foto, ' + (n.documenti || 0) + ' documenti, ' + durataLunga(n.parlato) + ' di parlato', 11, a.normale);
-  a.scrivi('Contabilità: ' + euro(n.totale), 12, a.grassetto);
+  a.scrivi('Contabilità: ' + euro(contiContabilita(rel.contabilita).totale), 12, a.grassetto);
   if (String(rel.inBreve || '').trim()) { titolo('IN BREVE'); a.scrivi(rel.inBreve, 11, a.normale); }
   // Il riepilogo per sezione: le sezioni vuote non si stampano
   titolo('RIEPILOGO PER SEZIONE');
@@ -5612,8 +6707,16 @@ function disegnaRelazionePdf(rel, a) {
     a.giu(3);
   });
   const daCompletare = cont.righe.filter(function (r) { return r.dacompletare; }).length;
-  a.giu(4); a.spazio(40);
-  a.scrivi('TOTALE   ' + euro(cont.totale), 13, a.grassetto);
+  // In fondo i conti: solo il totale se sconto e IVA sono a zero, se no tutti e cinque
+  const k = contiContabilita(cont);
+  a.giu(4); a.spazio(k.pSconto || k.pIva ? 100 : 40);
+  if (k.pSconto || k.pIva) {
+    a.scrivi('Totale lavori   ' + euro(k.lavori), 11, a.normale, grigio);
+    if (k.pSconto) a.scrivi('Sconto ' + numeroIt(k.pSconto) + '%   -' + euro(k.sconto), 11, a.normale, grigio);
+    a.scrivi('Imponibile   ' + euro(k.imponibile), 11, a.normale, grigio);
+    if (k.pIva) a.scrivi('IVA ' + numeroIt(k.pIva) + '%   ' + euro(k.iva), 11, a.normale, grigio);
+  }
+  a.scrivi('TOTALE   ' + euro(k.totale), 13, a.grassetto);
   if (daCompletare) a.scrivi(daCompletare + (daCompletare === 1 ? ' riga senza prezzo non conta' : ' righe senza prezzo non contano') + ' nel totale.', 10, a.normale, giallo);
   if (String(cont.note || '').trim()) a.scrivi('Note: ' + cont.note, 10, a.normale, grigio);
   // L'elenco dei giorni, dal primo all'ultimo; le giornate non chiuse marcate
@@ -6108,7 +7211,7 @@ let tocchiTitolo = 0, timerTocchi = null;
 
 const AZIONI = {
   'vai': function (el) { vai(el.dataset.a); },
-  'chiudi-foglio': function () { chiudiFoglio(); if (attesaConferma) { attesaConferma(false); attesaConferma = null; } },
+  'chiudi-foglio': function () { chiudiFoglio(); if (attesaConferma) { attesaConferma(false); attesaConferma = null; } if (IMPORT.scegliFoglio) IMPORT.scegliFoglio(null); },
   'chiudi-foglio-velo': function (el, ev) { if (ev.target === el) AZIONI['chiudi-foglio'](); },
   'conferma-si': function () { if (attesaConferma) { const f = attesaConferma; attesaConferma = null; f(true); } },
   'conferma-no': function () { chiudiFoglio(); if (attesaConferma) { const f = attesaConferma; attesaConferma = null; f(false); } },
@@ -6151,6 +7254,16 @@ const AZIONI = {
     salvaLocale();
     aggiornaVista();
   },
+  // Dal foglio del microfono: si riparte dalla stessa destinazione, dentro il tocco, senza timer (iPhone se no nega).
+  'microfono-riprova': function () { chiudiFoglio(); const d = MIC_DESTINAZIONE; MIC_DESTINAZIONE = null; if (d) return avviaRegistrazione(d); },
+  // Riprova sulla riga dell'audio fallito: il suo lavoro torna in coda, dello stesso tipo.
+  'pezzo-riprova': function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const p = s && s.pezzi.find(function (x) { return x.id === el.dataset.id; });
+    if (!p) return;
+    if (riprovaPezzo(s, p)) { avvisa('Riprovo', 'ok'); elaboraCoda(); }
+    aggiornaVista();
+  },
   'pezzo-elimina': async function (el) {
     const s = sopralluogo(el.dataset.sop);
     const p = s && s.pezzi.find(function (x) { return x.id === el.dataset.id; });
@@ -6178,13 +7291,30 @@ const AZIONI = {
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.classList.remove('lampeggia'); void card.offsetWidth; card.classList.add('lampeggia');
   },
-  'parla-dashboard': function () {
-    const loc = leggiLocale();
-    let c = loc.ultimoCantiere ? cantiere(loc.ultimoCantiere) : null;
-    if (!c || c.stato === 'chiuso') c = valori(leggiTutto().cantieri).filter(function (x) { return x.stato !== 'chiuso'; }).sort(function (a, b) { return a.nome.localeCompare(b.nome); })[0] || null;
-    if (!c) { avvisa('Apri prima un cantiere', 'att'); vai('#/nuovo-cantiere'); return; }
-    dettaSu(c);
+  /* Da Aziende o da un'azienda: i cantieri attivi (dell'azienda, o tutti). Uno solo
+     parte subito; due o più si scelgono da un foglio. Il tocco sul cantiere è il
+     gesto dell'utente: il microfono parte da lì, senza timer in mezzo. */
+  'parla-dashboard': function (el) {
+    const idAz = el.dataset.azienda;
+    const base = idAz === 'senza' ? cantieriSenzaAzienda() : (idAz ? cantieriDiAzienda((azienda(idAz) || {}).codice) : valori(leggiTutto().cantieri));
+    const attivi = base.filter(function (x) { return x.stato !== 'chiuso'; }).sort(function (a, b) { return a.nome.localeCompare(b.nome); });
+    if (!attivi.length) { avvisa('Apri prima un cantiere', 'att'); vai('#/nuovo-cantiere'); return; }
+    if (attivi.length === 1) { dettaSu(attivi[0]); return; }
+    const tasto = function (c) { return '<button class="btn scelta" data-az="detta-cantiere-scelto" data-id="' + h(c.id) + '"><b>' + h(c.nome) + '</b><small>' + h(c.committente || '') + '</small></button>'; };
+    let html = '';
+    if (idAz) html = attivi.map(tasto).join('');
+    else {
+      // Da tutte le aziende: un'etichetta per azienda, e in fondo i cantieri senza azienda.
+      aziendeTutte().forEach(function (a) {
+        const suoi = attivi.filter(function (c) { return c.azienda === a.codice; });
+        if (suoi.length) html += '<label class="eticampo">' + h(a.nome) + '</label>' + suoi.map(tasto).join('');
+      });
+      const senza = attivi.filter(function (c) { return !aziendaPerCodice(c.azienda); });
+      if (senza.length) html += (html ? '<label class="eticampo">Senza azienda</label>' : '') + senza.map(tasto).join('');
+    }
+    apriFoglio('<h2>Su quale cantiere?</h2>' + html + '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
   },
+  'detta-cantiere-scelto': function (el) { const c = cantiere(el.dataset.id); chiudiFoglio(); if (c) return dettaSu(c); },
   'parla-cantiere': function (el) { const c = cantiere(el.dataset.id); if (c) dettaSu(c); },
   'nuovo-sopralluogo': function (el) { const c = cantiere(el.dataset.id); if (!c) return; const s = sopralluogoPerDettare(c); vai('#/giorno/' + s.id); },
   'detta': function (el) {
@@ -6257,6 +7387,7 @@ const AZIONI = {
   'sopralluogo-nuovo': function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
+    if (s.giorno !== oggiISO()) { avvisa('Sui giorni passati non si aprono sopralluoghi', 'att'); return; }
     const c = cantierePerCodice(s.cantiere);
     if (!c) return;
     const n = creaSopralluogo(c, s.giorno, oraAdesso());
@@ -6438,6 +7569,35 @@ const AZIONI = {
   'foto-scatta': function (el) { const f = document.getElementById('file-foto-scatta'); apriFotocamera(el.dataset.id || (f ? f.dataset.id : '')); },
   'fotocamera-scatta': function () { return scattaFotocamera(); },
   'fotocamera-chiudi': function () { chiudiFotocamera(); },
+  // Il ritaglio della bolla: raddrizza, tieni com'è, o lascia perdere.
+  'ritaglio-ok': function () { avvisa('Raddrizzo…'); setTimeout(function () { chiudiRitaglio('tela'); }, 30); },
+  'ritaglio-salta': function () { chiudiRitaglio('salta'); },
+  'ritaglio-chiudi': function () { chiudiRitaglio(null); },
+  // La bolla si rilegge: stessa strada della prima volta, dalla coda.
+  'bolla-rileggi': function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.id);
+    if (!f) return;
+    accoda({ tipo: 'bolla', sop: s.id, foto: f.id, etichetta: nomeFoto(f) });
+    avvisa('Rileggo la bolla…');
+    aggiornaVista();
+  },
+  // Merce arrivata senza ordine: entra fra le righe del cantiere, già arrivata.
+  'ordine-da-bolla': function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s && trovaFoto(s, el.dataset.foto);
+    const x = f && (f.senzaOrdine || []).find(function (y) { return y.id === el.dataset.id; });
+    const c = s && cantierePerCodice(s.cantiere);
+    if (!x || !c) return;
+    c.ordini = c.ordini || [];
+    const arrivi = {}; arrivi[f.id] = x.quantita;
+    c.ordini.push({ id: nuovoId(), descrizione: x.descrizione, quantita: x.quantita, um: x.um, misure: '', stato: 'arrivato', arrivata: x.quantita, arrivi: arrivi, sop: s.codice, giorno: f.giorno, ora: f.ora });
+    f.senzaOrdine = f.senzaOrdine.filter(function (y) { return y !== x; });
+    salva('cantiere', c);
+    salva('sopralluogo', s);
+    avvisa('Aggiunta, già arrivata', 'ok');
+    aggiornaVista();
+  },
   'foto-rullino': function () { const f = document.getElementById('file-foto-rullino'); if (f) f.click(); },
   'foto-sezione': function (el) {
     const s = sopralluogo(el.dataset.sop);
@@ -6527,7 +7687,88 @@ const AZIONI = {
     avvisa('Eliminata', 'ok');
     aggiornaVista();
   },
+  // Le righe d'ordine: lo stato gira con un tocco, il resto passa dal foglio.
+  'ordine-stato': function (el) {
+    const c = cantiere(el.dataset.cantiere), o = ordineDi(c, el.dataset.id);
+    if (!o) return;
+    const i = STATI_ORDINE.findIndex(function (s) { return s.id === o.stato; });
+    o.stato = STATI_ORDINE[(i + 1) % STATI_ORDINE.length].id;
+    salva('cantiere', c);
+    aggiornaVista();
+  },
+  'ordine-modifica': function (el) {
+    const c = cantiere(el.dataset.cantiere), o = ordineDi(c, el.dataset.id);
+    if (o) apriRigaOrdine(c, o);
+  },
+  'ordine-salva': function () {
+    const c = ORDINE_APERTO && cantiere(ORDINE_APERTO.cantiere), o = ORDINE_APERTO && ordineDi(c, ORDINE_APERTO.id);
+    if (!o) { chiudiFoglio(); return; }
+    o.descrizione = document.getElementById('o-desc').value.trim();
+    const q = leggiNumero(document.getElementById('o-qta').value, ',');
+    o.quantita = isNaN(q) ? 0 : q;
+    o.um = document.getElementById('o-um').value;
+    o.misure = document.getElementById('o-mis').value.trim();
+    salva('cantiere', c);
+    chiudiFoglio();
+    ORDINE_APERTO = null;
+    avvisa('Salvato', 'ok');
+    aggiornaVista();
+  },
+  'ordine-elimina': async function () {
+    const c = ORDINE_APERTO && cantiere(ORDINE_APERTO.cantiere), o = ORDINE_APERTO && ordineDi(c, ORDINE_APERTO.id);
+    chiudiFoglio();
+    if (!o) return;
+    const ok = await chiedi('Eliminare la riga?', o.descrizione, 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    c.ordini = c.ordini.filter(function (x) { return x.id !== o.id; });
+    salva('cantiere', c);
+    ORDINE_APERTO = null;
+    avvisa('Eliminata', 'ok');
+    aggiornaVista();
+  },
+  'ordine-lista': function (el) { const c = cantiere(el.dataset.id); if (c) apriListaOrdine(c); },
+  'ordini-filtro': function (el) { statoOrdini = el.dataset.stato; aggiornaVista(); },
+  // Il listino scelto per una riga dettata: va sul lavoro in coda, che sia ancora la trascrizione o già la riga.
+  'listino-scelto': function (el) {
+    const loc = leggiLocale();
+    loc.coda.forEach(function (l) { if (l.id === el.dataset.lavoro || l.origine === el.dataset.lavoro) l.listino = el.dataset.listino; });
+    salvaLocale();
+    chiudiFoglio();
+  },
+  'ordine-copia': function () { const t = document.getElementById('o-lista'); if (t) copiaTesto(t.value, t); },
+  'ordine-csv': function (el) {
+    const c = cantiere(el.dataset.id);
+    if (!c) return;
+    scaricaBlob(new Blob([csvListaOrdine(c)], { type: 'text/csv;charset=utf-8' }), 'ordine-' + oggiISO() + '.csv');
+  },
   'riga-cerca-listino': function () { if (RIGA_APERTA) apriSceltaListino(); },
+  // Il listino impara: la riga completata a mano entra nel primo listino del cantiere, e la riga resta agganciata alla voce.
+  'riga-nel-listino': async function () {
+    if (!RIGA_APERTA) return;
+    const r = leggiRigaDalFoglio();
+    if (!r.descrizione) { avvisa('Manca la descrizione', 'att'); return; }
+    if (!(r.prezzo > 0)) { avvisa('Prima il prezzo', 'att'); return; }
+    const c = cantiere(RIGA_APERTA.rif.cantiere);
+    const dest = c && listiniDelCantiere(c)[0];
+    if (!dest) return;
+    const v = salva('listino', { descrizione: r.descrizione, um: await normalizzaUm(r.um), prezzo: r.prezzo, capitolo: '', listino: dest.codice });
+    r.dallistino = v.codice;
+    avvisa('Nel listino ' + dest.nome, 'ok');
+    salvaRigaAperta();
+  },
+  // L'unità del listino al posto di quella dettata: la riga non è più da sistemare.
+  'riga-um-listino': function () {
+    if (!RIGA_APERTA) return;
+    const r = RIGA_APERTA.riga;
+    r.um = r.umListino; delete r.umListino;
+    apriRigaContabilita(r, RIGA_APERTA.rif);
+  },
+  'contabilita-csv': function (el) {
+    const c = cantiere(el.dataset.id);
+    if (!c) return;
+    scaricaBlob(new Blob([csvContabilita(c, contabilitaDi(c.codice))], { type: 'text/csv;charset=utf-8' }), 'contabilita-' + nomeFile(c.nome) + '-' + oggiISO() + '.csv');
+  },
   'scelta-annulla': function () { if (RIGA_APERTA) apriRigaContabilita(RIGA_APERTA.riga, RIGA_APERTA.rif); else chiudiFoglio(); },
   'scegli-voce': function (el) {
     const v = leggiTutto().listino[el.dataset.id];
@@ -6543,7 +7784,7 @@ const AZIONI = {
     const c = p && cantiere(p.cantiere);
     if (!c) return;
     const cont = contabilitaOCrea(c.codice);
-    p.righe.forEach(function (r) { r.codice = codiceNuovo('VOCE'); cont.righe.push(ricalcolaRiga(r)); });
+    p.righe.forEach(function (r) { r.codice = codiceNuovo('VOCE'); r.giorno = p.creato ? dataLocaleISO(new Date(p.creato)) : oggiISO(); cont.righe.push(ricalcolaRiga(r)); });
     salva('contabilita', cont);
     loc.proposte = loc.proposte.filter(function (x) { return x.id !== p.id; });
     salvaLocale();
@@ -6558,11 +7799,43 @@ const AZIONI = {
     aggiornaVista();
   },
   // --- listino ---
-  'voce-nuova': function () { apriVoceListino(null); },
-  'listino-svuota': async function () {
-    const tutte = listinoTutto();
+  'voce-nuova': function (el) { apriVoceListino(null, el.dataset.listino); },
+  // --- i listini: nuovo, nome, elimina ---
+  'listino-nuovo': function () { apriListinoForm(null); },
+  'listino-modifica': function (el) { const l = leggiTutto().listini[el.dataset.id]; if (l) apriListinoForm(l); },
+  'listino-salva': function () {
+    const l = LISTINO_APERTO;
+    if (!l) return;
+    l.nome = document.getElementById('l-nome').value.trim();
+    if (!l.nome) { avvisa('Manca il nome', 'att'); return; }
+    l.riferimento = document.getElementById('l-rif').value.trim();
+    salva('listini', l);
+    LISTINO_APERTO = null;
+    chiudiFoglio();
+    avvisa('Salvato', 'ok');
+    aggiornaVista();
+  },
+  // Via il listino e le sue voci; i cantieri che lo usavano tornano al Generale. Le righe di contabilità restano.
+  'listino-elimina': async function () {
+    const l = LISTINO_APERTO;
+    if (!l || !l.id || l.generale) return;
+    chiudiFoglio();
+    const n = vociDi(l.codice).length;
+    const ok = await chiedi('Eliminare ' + l.nome + '?', 'Si cancellano il listino e le sue ' + n + ' voci. Le righe di contabilità già scritte restano come sono.', 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    vociDi(l.codice).forEach(function (v) { cancella('listino', v.id); });
+    valori(leggiTutto().cantieri).forEach(function (c) { if (c.listini && c.listini.indexOf(l.codice) !== -1) { c.listini = c.listini.filter(function (k) { return k !== l.codice; }); salva('cantiere', c); } });
+    cancella('listini', l.id);
+    LISTINO_APERTO = null;
+    avvisa('Eliminato', 'ok');
+    if (ROTTA.nome === 'listino') vai('#/listino/' + ROTTA.parametri[0]); else aggiornaVista();
+  },
+  'listino-svuota': async function (el) {
+    const l = leggiTutto().listini[el.dataset.id];
+    const tutte = l ? vociDi(l.codice) : [];
     if (!tutte.length) return;
-    const ok = await chiedi('Svuotare il listino?', 'Si cancellano tutte e ' + tutte.length + ' le voci. Le righe di contabilità già scritte restano come sono, col prezzo che hanno adesso.', 'Svuota il listino', 'rosso');
+    const ok = await chiedi('Svuotare ' + l.nome + '?', 'Si cancellano tutte e ' + tutte.length + ' le voci. Le righe di contabilità già scritte restano come sono, col prezzo che hanno adesso.', 'Svuota il listino', 'rosso');
     chiudiFoglio();
     if (!ok) return;
     tutte.forEach(function (v) { cancella('listino', v.id); });
@@ -6586,6 +7859,9 @@ const AZIONI = {
   },
   'scegli-file': function () { const f = document.getElementById('file-listino'); if (f) f.click(); },
   'import-carica': function () { importaListino(); },
+  'import-tutto': function () { scriviImport(applicaSchemaListino(IMPORT.righe, IMPORT.schema), false); },
+  'import-nuove': function () { scriviImport(applicaSchemaListino(IMPORT.righe, IMPORT.schema), true); },
+  'import-foglio': function (el) { chiudiFoglio(); if (IMPORT.scegliFoglio) IMPORT.scegliFoglio(el.dataset.nome); },
   'import-cambia': function () { IMPORT.passo = 'manuale'; aggiornaVista(); },
   'import-conferma-manuale': function () {
     IMPORT.daClaude = false;
@@ -6658,9 +7934,20 @@ const AZIONI = {
     c.aperto = document.getElementById('c-aperto').value || oggiISO();
     // Chiudere o riaprire dal modulo vale come farlo dalla scheda: la data di chiusura segue lo stato.
     if (c.stato === 'chiuso') { if (!c.chiuso) c.chiuso = oggiISO(); } else c.chiuso = null;
+    c.listini = FORM_LISTINI.slice();
     salva('cantiere', c);
     avvisa('Salvato', 'ok');
     vai('#/cantiere/' + c.id);
+  },
+  // I listini nella scheda: un tocco sceglie o toglie, la freccia sposta su. Si ridisegna solo quel pezzo: i campi scritti restano.
+  'cantiere-listino': function (el) {
+    const i = FORM_LISTINI.indexOf(el.dataset.codice);
+    if (i === -1) FORM_LISTINI.push(el.dataset.codice); else FORM_LISTINI.splice(i, 1);
+    document.getElementById('c-listini').innerHTML = righeListiniForm();
+  },
+  'cantiere-listino-su': function (el) {
+    const i = FORM_LISTINI.indexOf(el.dataset.codice);
+    if (i > 0) { FORM_LISTINI.splice(i - 1, 0, FORM_LISTINI.splice(i, 1)[0]); document.getElementById('c-listini').innerHTML = righeListiniForm(); }
   },
   'cantiere-elimina': async function (el) {
     const c = cantiere(el.dataset.id);
@@ -6714,14 +8001,14 @@ const AZIONI = {
   },
   'coda-riprova': function () {
     const loc = leggiLocale();
-    loc.coda.forEach(function (l) { if (l.stato === 'fallito' || l.stato === 'in_corso') { l.stato = 'in_attesa'; l.tentativi = 0; l.prossimo = 0; l.errore = null; } });
-    salvaLocale();
-    // I pezzi segnati in errore tornano in coda anche nell'elenco degli audio.
-    valori(leggiTutto().sopralluoghi).forEach(function (s) {
-      let toccato = false;
-      s.pezzi.forEach(function (p) { if (p.stato === 'errore' && loc.coda.some(function (l) { return l.pezzo === p.id; })) { p.stato = p.grezzo ? 'trascritto' : 'in_coda'; p.errore = null; toccato = true; } });
-      if (toccato) salva('sopralluogo', s);
+    // I lavori di un pezzo passano da riprovaPezzo, così la logica sta in un posto solo; gli altri (foto, contabilità, note) si rimettono in attesa qui.
+    loc.coda.filter(function (l) { return l.stato === 'fallito' || l.stato === 'in_corso'; }).forEach(function (l) {
+      const s = l.pezzo ? sopralluogo(l.sop) : null;
+      const p = s && s.pezzi.find(function (x) { return x.id === l.pezzo; });
+      if (p) riprovaPezzo(s, p);
+      else { l.stato = 'in_attesa'; l.tentativi = 0; l.prossimo = 0; l.errore = null; }
     });
+    salvaLocale();
     avvisa('Riprovo', 'ok');
     aggiornaVista();
     elaboraCoda();
@@ -6821,6 +8108,8 @@ function suCampo(el, evento) {
   const campo = el.dataset.campo;
   if (campo === 'filtro-cantieri') { filtroCantieri = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-listino') { filtroListino = el.value; aggiornaVista(); return; }
+  if (campo === 'filtro-ordini') { filtroOrdini = el.value; aggiornaVista(); return; }
+  if (campo === 'filtro-doc') { filtroDoc = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-documenti') { filtroDocumenti = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-scelta') { filtroListinoScelta = el.value; disegnaSceltaListino(); return; }
   if (campo === 'sezione') {
@@ -6882,6 +8171,25 @@ function suCampo(el, evento) {
     salvaConCalma('cont-' + c.id, function () { const cont = contabilitaOCrea(c.codice); cont.note = el.value; salva('contabilita', cont); });
     return;
   }
+  // Sconto e IVA: si salvano subito e i conti in fondo si rifanno.
+  if (campo === 'sconto-contabilita' || campo === 'iva-mano-contabilita') {
+    const c = cantiere(el.dataset.id);
+    if (!c || evento !== 'input') return;
+    const n = leggiNumero(el.value, ',');
+    salvaConCalma('cont-' + campo + c.id, function () { const cont = contabilitaOCrea(c.codice); cont[campo === 'sconto-contabilita' ? 'sconto' : 'iva'] = isNaN(n) ? 0 : n; salva('contabilita', cont); aggiornaVista(); });
+    return;
+  }
+  if (campo === 'iva-contabilita' && evento === 'change') {
+    const c = cantiere(el.dataset.id);
+    if (!c) return;
+    const cont = contabilitaOCrea(c.codice);
+    // "a mano" apre il campo per scrivere l'aliquota; le altre scelte la mettono subito.
+    cont.ivaMano = el.value === 'mano';
+    if (!cont.ivaMano) cont.iva = Number(el.value) || 0;
+    salva('contabilita', cont);
+    aggiornaVista();
+    return;
+  }
   if (campo === 'note-cantiere') {
     const c = cantiere(el.dataset.id);
     if (!c) return;
@@ -6891,8 +8199,15 @@ function suCampo(el, evento) {
     return;
   }
   if (campo === 'file-listino' && evento === 'change') {
-    const f = el.files && el.files[0];
-    if (f) avviaImportListino(f);
+    const scelti = Array.prototype.slice.call(el.files || []);
+    const codice = el.dataset.listino;
+    el.value = '';
+    if (!scelti.length) return;
+    // Più foto insieme sono le pagine di uno stesso prezzario.
+    const p = scelti.length > 1 && scelti.every(function (f) { return /^image\//.test(f.type); })
+      ? (IMPORT.nome = scelti.length + ' foto', IMPORT.listino = codice, IMPORT.errore = '', IMPORT.confronto = null, IMPORT.passo = 'lettura', aggiornaVista(), importaDaImmagini(scelti, codice))
+      : avviaImportListino(scelti[0], codice);
+    p.catch(function (e) { avvisa('Errore: ' + e.message, 'err'); IMPORT.passo = 'file'; aggiornaVista(); });
     return;
   }
   if (campo === 'file-foto' && evento === 'change') {
@@ -6989,6 +8304,7 @@ function avvio() {
   if (!archivioEsiste()) { inserisciDatiEsempio(); }
   else if (!conta(db.cantieri) && db.soloEsempio) { inserisciDatiEsempio(); }
   sistemaAziende();
+  migraListini();
   ripescaDaAssegnare();
 
   leggiRotta();
@@ -7096,7 +8412,7 @@ function avvio() {
   // La copia online: si legge senza token, e se c'è qualcosa da mandare si manda.
   if (navigator.onLine && repoGitHub()) {
     scaricaGitHub().then(function (cambiato) {
-      if (cambiato) { sistemaAziende(); avvisa('Aggiornato da GitHub', 'ok'); aggiornaVista(); }
+      if (cambiato) { sistemaAziende(); migraListini(); avvisa('Aggiornato da GitHub', 'ok'); aggiornaVista(); }
       if (leggiLocale().github.daMandare) programmaInvioGitHub();
     }).catch(function () { /* il file può non esserci ancora: non è un errore */ });
   }
