@@ -5292,6 +5292,16 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
   return await doc.save();
 }
 
+/* I sopralluoghi da cui un verbale prende foto e documenti: uno solo per il verbale di un
+   sopralluogo; per la giornata tutti i passaggi, nell'ordine di v.sopralluoghi, o per ora
+   se un verbale di giornata vecchio non lo porta. Lo stato del sopralluogo non conta. */
+function sopralluoghiDelVerbale(v, sops) {
+  if (!v.giornata) return sops.filter(function (x) { return x.codice === v.sopralluogo; });
+  if (!(v.sopralluoghi || []).length) return sopralluoghiDelGiorno(v.cantiere, v.giorno);
+  return v.sopralluoghi.map(function (k) { return sops.find(function (x) { return x.codice === k; }); })
+    .filter(Boolean);
+}
+
 /* Le foto marcate dei verbali richiesti, ricompresse per la stampa e già incorporate nel
    documento: { idVerbale: { chiaveSezione: [ { foto, img } ] } }. Una foto il cui file non
    c'è più (archiviata) entra lo stesso, senza immagine: il referto è informazione. */
@@ -5299,9 +5309,7 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
   const per = {};
   const sops = valori(leggiTutto().sopralluoghi);
   for (const v of verbali) {
-    const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
-    if (!s) continue;
-    for (const f of fotoNormali(s)) {
+    for (const s of sopralluoghiDelVerbale(v, sops)) for (const f of fotoNormali(s)) {
       if (!f.nelPdf) continue;
       const k = sezioneFoto(f);
       if (soloSezione && k !== soloSezione) continue;
@@ -5358,9 +5366,7 @@ async function preparaDocumentiPdf(doc, verbali) {
   const per = {};
   const sops = valori(leggiTutto().sopralluoghi);
   for (const v of verbali) {
-    const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
-    if (!s) continue;
-    for (const f of documentiDi(s)) {
+    for (const s of sopralluoghiDelVerbale(v, sops)) for (const f of documentiDi(s)) {
       if (!f.nelPdf) continue;
       let img = null, pagine = null, fallito = false;
       if (f.file) {
