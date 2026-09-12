@@ -1404,6 +1404,8 @@ Object.assign(AZIONI, {
     avvisa('Preparo il verbale di settimana…');
     const p = await pdfPeriodo(c, lunediDi(oggiISO()), oggiISO());
     if (!p) { avvisa('Nessun verbale in questa settimana', 'att'); return; }
+    // Fatto il PDF, il tasto della domenica sparisce e la settimana entra fra i verbali del cantiere.
+    aggiornaVista();
     apriFoglioPdfFatto(p, null);
   },
   'pdf-apri': function (el) { vai('#/leggi/' + el.dataset.id); },

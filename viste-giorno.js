@@ -416,15 +416,18 @@ function vistaGiornoInCorso(s, c) {
   ]);
   // I tre tasti restano sempre in vista: sono loro che fanno nascere rilievi e bolle.
   html += tastiStrumenti(s) + ingressiDocumento(s);
-  if (s.pezzi.length) {
-    html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">' + s.pezzi.length + ' · tocca per sentire</span></div>' +
-      listaAudio(s, s.pezzi.slice().reverse()) + '</div>';
+  /* Gli audio si mostrano finché servono: in coda, in lavorazione, o falliti. Trascritti e
+     cancellati, spariscono dalla giornata: il loro testo è nelle sezioni e nella dettatura originale. */
+  const pezziVivi = s.pezzi.filter(function (p) { return p.audio || (p.stato && p.stato !== 'riordinato'); });
+  if (pezziVivi.length) {
+    html += '<div class="card"><div class="card-capo">Audio di oggi<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' +
+      listaAudio(s, pezziVivi.slice().reverse()) + '</div>';
   }
   const fotoPer = fotoPerSezione(s);
   const vuote = [];
   SEZIONI.forEach(function (z) {
     const testo = s.sezioni[z.chiave] || '';
-    const pezziQui = s.pezzi.filter(function (p) { return (p.sezioni || []).indexOf(z.chiave) !== -1 || p.sezione === z.chiave; });
+    const pezziQui = pezziVivi.filter(function (p) { return (p.sezioni || []).indexOf(z.chiave) !== -1 || p.sezione === z.chiave; });
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
@@ -445,11 +448,39 @@ function vistaGiornoInCorso(s, c) {
 
 /* I verbali di giornata del cantiere, uno di fianco all'altro. Stesse card, stessi
    tre puntini: Visualizza, Modifica, Esporta, Scarica. */
+/* Cosa sta nella casella dei verbali: i verbali di settimana (i PDF di periodo del
+   cantiere) e, fra quelli di giornata, solo i giorni che nessuna settimana ha già
+   raccolto. Ogni settimana la casella si svuota; i PDF di giornata restano in
+   "PDF archiviati". */
+function verbaliInVista(c) {
+  const settimane = pdfDi(c.codice).filter(function (p) { return p.tipo === 'periodo'; }).map(function (p) {
+    const k = String(p.chiave || '').split(':');
+    return { pdf: p, dal: k[2] || '', al: k[3] || '' };
+  }).sort(function (a, b) { return b.al.localeCompare(a.al); });
+  const giornate = verbaliDiGiornata(c.codice).filter(function (v) {
+    return !settimane.some(function (w) { return v.giorno >= w.dal && v.giorno <= w.al; });
+  });
+  return { settimane: settimane, giornate: giornate };
+}
 function strisciaVerbaliGiornata(c) {
-  const lista = verbaliDiGiornata(c.codice);
-  if (!lista.length) return '';
-  return '<div class="card"><div class="card-capo">Verbali di giornata<span class="dx">' + lista.length + '</span></div>' +
-    '<div class="doc-fila">' + lista.map(function (v) {
+  const vista = verbaliInVista(c);
+  const lista = vista.giornate;
+  if (!lista.length && !vista.settimane.length) return '';
+  // La card di un verbale di settimana: si tocca per leggere il PDF, i puntini per mandarlo fuori o buttarlo.
+  const cardSettimana = function (w) {
+    const aperto = PUNTI_APERTI === w.pdf.id;
+    return '<div class="doc-mini fatto' + (aperto ? ' menu' : '') + '">' +
+      '<div class="q"><span class="ora">Settimana</span><span class="nm">' + h(giornoMese(w.dal) + ' – ' + giornoMese(w.al)) + '</span></div>' +
+      (aperto
+        ? '<div class="voci"><button class="voce-m" data-az="pdf-manda" data-id="' + h(w.pdf.id) + '">Esporta</button>' +
+          '<button class="voce-m" data-az="pdf-fuori" data-id="' + h(w.pdf.id) + '">Scarica</button>' +
+          '<button class="voce-m rossa" data-az="pdf-elimina" data-id="' + h(w.pdf.id) + '">Elimina</button></div>'
+        : '<button class="vedi" data-az="pdf-apri" data-id="' + h(w.pdf.id) + '">Visualizza</button>') +
+      '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-verbale" data-id="' + h(w.pdf.id) + '" aria-label="Altro">⋯</button>' +
+      '</div>';
+  };
+  return '<div class="card"><div class="card-capo">Verbali<span class="dx">' + (vista.settimane.length + lista.length) + '</span></div>' +
+    '<div class="doc-fila">' + vista.settimane.map(cardSettimana).join('') + lista.map(function (v) {
       const suoNome = String(v.nome || '').trim();
       const aperto = PUNTI_APERTI === v.id;
       return '<div class="doc-mini' + (aperto ? ' menu' : '') + '">' +

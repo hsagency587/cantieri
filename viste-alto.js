@@ -222,8 +222,8 @@ function vistaCantiere(id) {
     html += '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p><div class="sotto">' + h(giornoMese(oggi) + '/' + oggi.slice(2, 4)) + '</div></div></div>';
   }
   /* La domenica, il verbale di settimana: il PDF da lunedì a oggi di questo cantiere.
-     Compare solo se nella settimana c'è almeno un verbale da mettere dentro. */
-  if (daISO(oggi).getDay() === 0 && c.stato !== 'chiuso' && verbaliDelPeriodo(c.codice, lunediDi(oggi), oggi).length) {
+     Compare solo se nella settimana c'è almeno un verbale da mettere dentro, e sparisce una volta fatto. */
+  if (daISO(oggi).getDay() === 0 && c.stato !== 'chiuso' && verbaliDelPeriodo(c.codice, lunediDi(oggi), oggi).length && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)) {
     html += '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale di settimana</p><div class="sotto">' + h(giornoMese(lunediDi(oggi)) + ' – ' + giornoMese(oggi)) + '</div></div></div>';
   }
   /* Rilievi e bolle si prendono pensando al cantiere, non alla giornata: qui il tasto sta
@@ -241,7 +241,7 @@ function vistaCantiere(id) {
      due per riga: compaiono solo se dentro c'è qualcosa, e dentro si scorre. */
   const rilCant = String(c.rilievi || '').trim();
   const docCant = documentiTutti(c);
-  const verbCant = verbaliDiGiornata(c.codice);
+  const vistaVerbali = verbaliInVista(c); const verbCant = vistaVerbali.settimane.concat(vistaVerbali.giornate);
   html += grigliaTendine([
     tendinaOrdini(c),
     docCant.length ? tendina('bolle-' + c.id, 'Bolle',
