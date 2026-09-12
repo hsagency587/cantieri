@@ -1069,3 +1069,14 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 /* "Libera memoria": una riga sottile, il colore dell'avviso, niente di più. */
 .riga-memoria{display:flex;align-items:center;justify-content:center;width:100%;min-height:28px;margin-bottom:var(--s2);padding:0 var(--s4);background:transparent;border:1px solid color-mix(in srgb, var(--gold) 55%, transparent);border-radius:var(--radius-p);color:var(--gold);font-size:var(--t1);font-weight:600}
 .riga-memoria:active{background:color-mix(in srgb, var(--gold) 12%, transparent)}
+
+/* Le freccette delle file che scorrono. Stanno dentro la fila, larghe zero e appiccicate
+   ai bordi (sticky), così non spostano niente; il segno vero è il cerchietto assoluto.
+   Compaiono solo dal lato dove c'è altra roba: lo dice la classe che mette lo script. */
+.frec-s{position:sticky;flex:0 0 0;width:0;align-self:stretch;z-index:2;display:none;pointer-events:none}
+.frec-s.sx{left:0}
+.frec-s.dx{right:0}
+.piu-sx > .frec-s.sx,.piu-dx > .frec-s.dx{display:block}
+.frec-s i{position:absolute;top:50%;transform:translateY(-50%);width:26px;height:26px;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-style:normal;font-size:22px;line-height:1;padding-bottom:3px;color:var(--text);background:color-mix(in srgb, var(--surface-2) 88%, transparent);border:1px solid var(--line);border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.frec-s.sx i{left:2px}
+.frec-s.dx i{right:2px}

@@ -2292,6 +2292,7 @@ function apriFoglio(html, opzioni) {
   const f = document.getElementById('finestra');
   f.innerHTML = '<div class="velo" data-az="chiudi-foglio-velo"><div class="foglio" role="dialog">' + html + '</div></div>';
   f.hidden = false;
+  segnaScorrimento(f);
   if (opzioni && opzioni.pieno) f.firstChild.className = 'velo';
   const primo = f.querySelector('[autofocus]');
   if (primo) setTimeout(function () { primo.focus(); }, 50);
@@ -3011,6 +3012,7 @@ function disegna() {
   vista.querySelectorAll('textarea.corpo, textarea.campo.auto').forEach(cresciTextarea);
   // Le foto arrivano da IndexedDB dopo: la schermata è già disegnata.
   caricaImmagini(vista);
+  segnaScorrimento(vista);
   // Le pagine del PDF si disegnano dopo, quando il contenitore ha una larghezza.
   if (ROTTA.nome === 'leggi') mostraPdfDentro(ROTTA.parametri[0]);
 }
@@ -3018,6 +3020,26 @@ function cresciTextarea(t) {
   t.style.height = 'auto';
   t.style.height = Math.max(60, t.scrollHeight + 2) + 'px';
 }
+/* Le file che scorrono di lato — foto, sopralluoghi, verbali, tasti dei rilievi, tinte —
+   hanno due freccette ai bordi, e ognuna si vede solo se da quella parte c'è altra roba.
+   Stanno dentro la fila, appiccicate ai bordi (sticky): così nessun contenitore va
+   avvolto e il CSS delle file resta com'è. Toccarle fa scorrere di una schermata. */
+function segnaScorrimento(radice) {
+  radice.querySelectorAll('.griglia, .doc-fila, .foto-fila, .tinte').forEach(function (fila) {
+    if (fila.querySelector('.frec-s')) return;
+    fila.insertAdjacentHTML('afterbegin', '<span class="frec-s sx" data-az="scorri" data-verso="-1" aria-hidden="true"><i>‹</i></span>');
+    fila.insertAdjacentHTML('beforeend', '<span class="frec-s dx" data-az="scorri" data-verso="1" aria-hidden="true"><i>›</i></span>');
+    const aggiorna = function () {
+      fila.classList.toggle('piu-sx', fila.scrollLeft > 2);
+      fila.classList.toggle('piu-dx', fila.scrollLeft + fila.clientWidth < fila.scrollWidth - 2);
+    };
+    fila.addEventListener('scroll', aggiorna, { passive: true });
+    aggiorna();
+  });
+}
+window.addEventListener('resize', function () {
+  document.querySelectorAll('.frec-s.sx').forEach(function (el) { el.parentElement.dispatchEvent(new Event('scroll')); });
+});
 
 // ---- pezzi comuni ----
 function testata(o) {
@@ -6090,6 +6112,11 @@ const AZIONI = {
     applicaColori();
     disegna();
   },
+  // La freccetta di una fila: scorre di quasi una schermata, verso dove indica.
+  'scorri': function (el) {
+    const fila = el.parentElement;
+    fila.scrollBy({ left: Number(el.dataset.verso) * fila.clientWidth * 0.8, behavior: 'smooth' });
+  },
   'tendina': function (el) {
     const loc = leggiLocale();
     loc.tendine[el.dataset.chiave] = !loc.tendine[el.dataset.chiave];
@@ -6101,7 +6128,12 @@ const AZIONI = {
        subito dopo la riga intera. */
     let box = el.nextElementSibling;
     if (!box || box.hasAttribute('data-az')) box = el.parentElement ? el.parentElement.nextElementSibling : null;
-    if (box) { box.hidden = !aperta; box.querySelectorAll('textarea.corpo').forEach(cresciTextarea); }
+    if (box) {
+      box.hidden = !aperta;
+      box.querySelectorAll('textarea.corpo').forEach(cresciTextarea);
+      // Le file dentro erano nascoste: le freccette si ricalcolano adesso che hanno una larghezza.
+      box.querySelectorAll('.frec-s.sx').forEach(function (f) { f.parentElement.dispatchEvent(new Event('scroll')); });
+    }
   },
   'riascolta': function (el) { riascolta(el.dataset.sop, el.dataset.id); },
   // Apre o richiude una lista di audio lunga. La scelta sta con le tendine, così regge il ridisegno.
