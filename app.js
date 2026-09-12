@@ -3344,9 +3344,16 @@ function vistaGiornoInCorso(s, c) {
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' · ' + h(oraCorta(s.ora)) : ''), tocca: 'modifica-testata', id: s.id,
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
       (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
-  // Solo la riga con audio, parlato e foto: niente barra di avanzamento né conteggio delle sezioni.
-  html += '<div class="avanz"><div class="r"><span class="dx">' +
-    (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div></div>';
+  /* Una riga sola in testa: a sinistra il verbale di giornata — mette insieme i passaggi
+     in un documento solo, quello che si manda fuori, e si scrive sempre: chi non ha
+     ancora il verbale entra con i suoi appunti — a destra audio, parlato e foto. */
+  const vg = verbaleDiGiornata(s.cantiere, s.giorno);
+  html += '<div class="avanz"><div class="r">' +
+    (vg
+      ? '<button class="link" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
+        '<button class="link" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button>'
+      : '<button class="link" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button>') +
+    '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
 
   /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
      e ogni correzione passa da sola nel verbale. Da qui si esce col PDF o si va a correggere il verbale. */
@@ -3374,10 +3381,10 @@ function vistaGiornoInCorso(s, c) {
   /* I sopralluoghi della giornata, uno di fianco all'altro come le foto: si scorre
      di lato e si salta da un passaggio all'altro senza tornare al cantiere. */
   html += strisciaSopralluoghi(s);
+  // Il rullino sta subito sotto i sopralluoghi, come ingresso; le foto si vedono già in alto.
+  html += ingressiFoto(s);
   html += cardDaAssegnare(s);
   html += cardRilieviNuovi({ sop: s.id });
-  // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
-  // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
   html += cardFotoGiorno(s, !!s.chiuso);
   /* Rilievi e documenti stanno chiusi: sono lo strumento di un momento, non la cosa
      che si guarda entrando nella giornata. Il numero sulla linguetta dice se dentro
@@ -3553,7 +3560,6 @@ async function rinominaSopralluogo(idSop) {
    In coda, il tasto per aprire un altro sopralluogo nello stesso giorno. */
 function strisciaSopralluoghi(s) {
   const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
-  const vg = verbaleDiGiornata(s.cantiere, s.giorno);
   let html = '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">' + fratelli.length + (fratelli.length === 1 ? ' passaggio' : ' passaggi') + '</span></div>' +
     '<div class="doc-fila">';
   fratelli.forEach(function (x) {
@@ -3582,16 +3588,8 @@ function strisciaSopralluoghi(s) {
       '</div>';
   });
   html += '<div class="doc-mini piu"><button class="q vuota" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '"><span class="ora">＋</span><span class="nm">un altro</span></button></div>';
-  html += '</div>';
-  /* Il verbale di giornata mette insieme i passaggi in un documento solo, quello che
-     si manda fuori. Si scrive sempre: chi non ha ancora il verbale entra con i suoi appunti. */
-  if (vg) {
-    html += '<div class="griglia"><button class="btn btn-ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
-      '<button class="btn" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button></div>';
-  } else {
-    html += '<div class="griglia"><button class="btn btn-ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button></div>';
-  }
-  return html + '</div>';
+  // Il verbale di giornata sta nella riga in testa alla giornata, non qui.
+  return html + '</div></div>';
 }
 
 /* Le registrazioni che aspettano di sapere dove vanno. Finché sono qui il loro testo
@@ -3696,8 +3694,7 @@ function cardFotoGiornata(s) {
 }
 
 /* Le foto di questo sopralluogo, in una tendina chiusa: la galleria della giornata sta
-   sopra e le mostra già tutte. Sotto restano i due ingressi nascosti: la fotocamera
-   (capture) e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
+   sopra e le mostra già tutte. Gli ingressi (fotocamera e rullino) stanno sotto la striscia. */
 function cardFotoGiorno(s, conVerbale) {
   const foto = fotoNormali(s);
   const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
@@ -3712,7 +3709,6 @@ function cardFotoGiorno(s, conVerbale) {
       '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' +
       '</div>', foto.length);
   }
-  html += ingressiFoto(s);
   return html;
 }
 
