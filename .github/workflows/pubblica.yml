@@ -29,8 +29,8 @@ jobs:
 
       - name: Controlla che i file si leggano
         run: |
-          node --check app.js
-          node --check sw.js
+          # Tutti i file .js della cartella, quanti sono in quel momento: un file nuovo si controlla da solo.
+          for f in *.js; do node --check "$f"; done
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
 
       - name: Alza il numero della cache
