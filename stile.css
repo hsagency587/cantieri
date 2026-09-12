@@ -1202,3 +1202,5 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .avanz .r button.pill{flex:1 1 auto;min-height:30px;text-align:center;justify-content:center}
 /* La giornata in corso, nell'elenco del cantiere: barra e sfondo nel colore di ciò che si consulta, come la sua pastiglia. */
 .giorno.oggi{background:color-mix(in srgb, var(--azione) 6%, transparent);box-shadow:inset 2px 0 0 var(--azione)}
+/* Dentro una tendina aperta il contenuto va a tutta larghezza, come la tendina stessa: niente rientro. */
+.tendine > div > .card{margin-left:0;margin-right:0}
