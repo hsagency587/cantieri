@@ -1207,7 +1207,8 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 /* Le due card "＋" del cantiere, una di fianco all'altra: una riga sola. */
 .due-card{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)}
 .due-card > .card{margin:0}
-.due-card .card.piu .titolo{font-size:var(--t2)}
+.due-card .card.piu .titolo{font-size:var(--t2);white-space:nowrap;letter-spacing:-.02em}
+.due-card .card.piu .card-in{padding-left:var(--s2);padding-right:var(--s2);justify-content:center}
 
 /* La testa della card del sopralluogo e un tasto: apre quel passaggio. Stessa forma della testa
    non-tasto, riempie la card cosi la riga del verbale resta in fondo. */

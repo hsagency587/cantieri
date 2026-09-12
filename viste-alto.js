@@ -227,7 +227,7 @@ function vistaCantiere(id) {
   const cardOggi = !sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso'
     ? '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p></div></div>' : '';
   const cardSett = finestraSettimana && c.stato !== 'chiuso' && verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunediDi(oggi) && v.giorno <= oggi; }).length >= 2 && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)
-    ? '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale di settimana</p></div></div>' : '';
+    ? '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale settimanale</p></div></div>' : '';
   html += cardOggi && cardSett ? '<div class="due-card">' + cardOggi + cardSett + '</div>' : cardOggi + cardSett;
   /* Rilievi e bolle si prendono pensando al cantiere, non alla giornata: qui il tasto sta
      in chiaro, e quello che si detta o si scansiona finisce nel giorno di oggi. */
