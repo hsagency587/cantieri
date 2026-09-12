@@ -3458,8 +3458,8 @@ function vistaGiornata(id) {
     destra: '<span class="pill att">vuota</span>' });
   html += '<div class="avanz"><div class="r">' +
     (vg
-      ? '<button class="link" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>'
-      : '<button class="link" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">Scrivi il verbale di giornata</button>') +
+      ? '<button class="pill ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>'
+      : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">Scrivi il verbale di giornata</button>') +
     '<span class="dx">0 audio · 0:00 | 0 foto</span></div></div>';
   html += '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">nessuno</span></div><div class="doc-fila">' +
     '<div class="doc-mini piu"><button class="q vuota" data-az="giornata-sopralluogo-nuovo" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '"><span class="ora">＋</span><span class="nm">sopralluogo</span></button></div>' +
@@ -3481,9 +3481,9 @@ function vistaGiornoInCorso(s, c) {
   const vg = verbaleDiGiornata(s.cantiere, s.giorno);
   html += '<div class="avanz"><div class="r">' +
     (vg
-      ? '<button class="link" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
-        '<button class="link" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button>'
-      : '<button class="link" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button>') +
+      ? '<button class="pill ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
+        '<button class="pill cod" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button>'
+      : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button>') +
     '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
 
   /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
@@ -3708,12 +3708,12 @@ function strisciaSopralluoghi(s) {
       '<div class="q">' +
       '<span class="ora">' + h(suoNome || x.ora) + '</span>' +
       (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '') + '</div>' +
-      /* Visualizza: la prima volta apre il sopralluogo qui sotto; sul sopralluogo già
-         aperto apre il suo verbale (il PDF se c'è), e se non è scritto chiede di scriverlo. */
+      /* Visualizza apre il sopralluogo qui sotto. Su quello già aperto il tasto si chiama
+         "Verbale di sopralluogo": apre il suo PDF se c'è, e se non è scritto chiede di scriverlo. */
       (aperto
         ? '<div class="voci">' + vociMenuSopralluogo(x) + '</div>'
         : (qui
-          ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Visualizza</button>'
+          ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Verbale di sopralluogo</button>'
           : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>')) +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
