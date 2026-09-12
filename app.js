@@ -3511,18 +3511,16 @@ function vistaGiornoInCorso(s, c) {
       : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button>') +
     '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
 
-  /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
-     e ogni correzione passa da sola nel verbale. Da qui si esce col PDF o si va a correggere il verbale. */
-  if (s.chiuso) {
-    const vb = verbaleDiSopralluogo(s.codice);
-    /* Visualizza c'è sempre, e sta per primo: è il tasto che si preme di più.
-       Se il PDF esiste apre quello, se no apre il verbale. */
-    // Siamo già nel giorno: il nome dato a mano, se no "Verbale", con l'ora quando i passaggi sono più d'uno.
-    html += '<div class="card"><div class="card-capo">' + h(vb && vb.nome ? vb.nome : 'Verbale' + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' delle ' + oraCorta(s.ora) : '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
+  /* La barra del verbale di giornata: è della giornata, non del passaggio, quindi sta qui
+     qualunque sopralluogo sia aperto sotto. Visualizza apre il PDF se c'è, se no il testo.
+     Il verbale di sopralluogo ha il suo tasto nella striscia e i suoi puntini. */
+  if (vg) {
+    html += '<div class="card"><div class="card-capo">' + h(titoloVerbale(vg, true)) + '<span class="dx">verbale di giornata</span></div>' +
       '<div class="griglia tre">' +
-      (vb ? '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' : '') +
-      (vb ? tastoEsporta('vb-' + vb.id) : '<button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>') +
-      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi</button>' : '') + '</div>' + (vb ? vociEsporta('vb-' + vb.id, 'esporta-pdf', s.id, 'verbale-scarica', vb.id) : '') + '</div>';
+      '<button class="btn" data-az="verbale-vedi" data-id="' + h(vg.id) + '">Visualizza</button>' +
+      tastoEsporta('vg-' + vg.id) +
+      '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">Modifica</button></div>' +
+      vociEsporta('vg-' + vg.id, 'verbale-esporta', vg.id, 'verbale-scarica', vg.id) + '</div>';
   }
 
   if (String(s.sezioni.da_smistare || '').trim()) {
@@ -6263,16 +6261,18 @@ const AZIONI = {
   'sopralluogo-nome': function (el) { rinominaSopralluogo(el.dataset.id); },
   'sopralluogo-chiudi': function (el) { PUNTI_APERTI = null; chiudiFoglio(); chiudiGiornata(el.dataset.id); },
   'giornata-verbale': function (el) { faiVerbaleGiornata(el.dataset.cantiere, el.dataset.giorno); },
-  /* Visualizza sul sopralluogo già aperto: il suo verbale — il PDF se c'è, se no il testo.
-     Se il verbale non è ancora scritto si chiede di scriverlo, e poi si apre. */
+  /* "Verbale di sopralluogo" sul passaggio aperto: il suo PDF. Se il verbale non è ancora
+     scritto si chiede di scriverlo; se il PDF non c'è si fa adesso; poi si apre. */
   'sopralluogo-verbale': async function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
     let vb = verbaleDiSopralluogo(s.codice);
     if (!vb) { await chiudiGiornata(s.id); vb = verbaleDiSopralluogo(s.codice); }
     if (!vb) return;
-    const p = pdfConChiave('verbale:' + vb.codice);
-    vai(p ? '#/leggi/' + p.id : '#/verbale/' + vb.id);
+    let p = pdfConChiave('verbale:' + vb.codice);
+    if (!p) { avvisa('Preparo il PDF…'); p = await pdfVerbale(vb); }
+    if (!p) { avvisa('PDF non riuscito', 'err'); return; }
+    vai('#/leggi/' + p.id);
   },
   /* Visualizza: se il PDF c'è già si legge quello, se no si apre il verbale. */
   'verbale-vedi': function (el) {
