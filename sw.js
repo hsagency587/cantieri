@@ -1,7 +1,7 @@
 /* CANTIERI — service worker
    Il numero qui sotto va alzato a ogni rilascio: è l'unico modo per far
    buttare via al telefono la versione vecchia dei file. */
-const VERSIONE = 'cantieri-7783a21';
+const VERSIONE = 'cantieri-370f6fc';
 // Il nome della cache porta dentro l'indirizzo: senza, l'anteprima
 // e l'app vera si cancellano la cache a vicenda.
 const CACHE = VERSIONE + '|' + self.registration.scope;
