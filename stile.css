@@ -1198,3 +1198,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .card-capo .et.acc{color:var(--accent)}
 /* "Aggiorna il verbale" spento: grigio, non si tocca, resta al suo posto. */
 .avanz .r button.pill:disabled{color:var(--muted);border-color:var(--line);opacity:.7}
+/* Il tasto del verbale in testa alla giornata si allarga fino al conto a destra: niente vuoto in mezzo, e si vede meglio. */
+.avanz .r button.pill{flex:1 1 auto;min-height:30px;text-align:center;justify-content:center}
+/* La giornata in corso, nell'elenco del cantiere: barra e sfondo nel colore di ciò che si consulta, come la sua pastiglia. */
+.giorno.oggi{background:color-mix(in srgb, var(--azione) 6%, transparent);box-shadow:inset 2px 0 0 var(--azione)}

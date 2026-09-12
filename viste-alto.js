@@ -282,7 +282,7 @@ function vistaCantiere(id) {
     }).filter(Boolean)[0] || (audio ? 'trascrizione in arrivo…' : 'ancora niente');
     let pill;
     if (g.verbale) pill = '<span class="pill ok">' + h(g.verbale.nome || 'verbale di giornata') + '</span>';
-    else if (g.giorno === oggi) pill = '<span class="pill att">in corso</span>';
+    else if (g.giorno === oggi) pill = '<span class="pill blu">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
     /* Una giornata senza sopralluoghi si apre sulla sua schermata vuota. La riga è un
        div e non un bottone, così i tre puntini possono starci dentro. */
