@@ -3393,7 +3393,7 @@ function vistaGiornoInCorso(s, c) {
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui, { segna: !!s.chiuso }) + '</div>';
+      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui, { segna: true }) + '</div>';
     // Una sezione con una foto dentro non è vuota: se finisse nella tendina, la foto sparirebbe.
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
@@ -3682,11 +3682,11 @@ function cardFotoGiorno(s, conVerbale) {
   let html = '';
   if (foto.length) {
     const tutte = nelPdf === foto.length;
-    // Fatto il verbale, sotto ogni miniatura compare la spunta "nel PDF": è il momento in cui serve scegliere.
+    // La spunta "nel PDF" c'è sempre: una foto marcata entra nel verbale di giornata anche se questo passaggio non ha il suo verbale.
     html += '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
-      filaFoto(s, foto, { segna: conVerbale }) +
+      filaFoto(s, foto, { segna: true }) +
       // Solo il tasto piccolo, a destra: il conteggio in testa dice già com'è messa.
-      (conVerbale || foto.length > 1 ? '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' : '') +
+      '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' +
       '</div>';
   }
   html += ingressiFoto(s);
