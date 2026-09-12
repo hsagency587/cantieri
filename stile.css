@@ -1190,3 +1190,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 /* La riga sotto la testata della giornata resta dentro lo schermo anche sui telefoni stretti:
    il tasto tiene le sue parole, il conto a destra si accorcia con i puntini se non ci sta. */
 .avanz .r .dx{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Le card dei sopralluoghi hanno due tasti in fondo: Visualizza (o Verbale di sopralluogo)
+   e sotto Scrivi/Aggiorna il verbale, con il colore del lavoro fatto. */
+.doc-mini .vedi + .vedi{margin-top:0}
+.doc-mini .vedi.scrivi{color:var(--accent)}

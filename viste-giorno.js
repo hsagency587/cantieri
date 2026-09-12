@@ -346,7 +346,7 @@ function vistaGiornata(id) {
   const c = cantierePerCodice(g.cantiere) || { nome: '?', id: '' };
   const vg = verbaleDiGiornata(g.cantiere, g.giorno);
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(g.giorno), sotto: h(c.nome),
-    destra: '<span class="pill att">vuota</span>' });
+    destra: '' });
   html += '<div class="avanz"><div class="r">' +
     '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>' +
     '<span class="dx">0 audio · 0:00 | 0 foto</span></div></div>';
@@ -372,8 +372,8 @@ function vistaGiornoInCorso(s, c) {
     (REG.destinazione.tipo === 'rilievo' && REG.destinazione.sop === s.id));
   const quanteFoto = fotoNormali(s).length;
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' · ' + h(oraCorta(s.ora)) : ''), tocca: 'modifica-testata', id: s.id,
-    destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
-      (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
+    // In alto a destra solo il segno di registrazione: lo stato del giorno si legge già nell'elenco del cantiere, qui ruba spazio al titolo.
+    destra: registrandoQui ? '<span class="pill reg">● rec</span>' : '' });
   /* Una riga sola in testa: a sinistra il verbale di giornata — mette insieme i passaggi
      in un documento solo, quello che si manda fuori, e si scrive sempre: chi non ha
      ancora il verbale entra con i suoi appunti — a destra audio, parlato e foto. */
@@ -477,17 +477,29 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
   const senza = sops.filter(function (x) { return !verbaleDiSopralluogo(x.codice); }).length;
   const gia = verbaleDiGiornata(codiceCantiere, giorno);
   // Una riga sola, e solo se serve: chi non ha il verbale entra con i suoi appunti.
-  const testo = !senza ? '' : (senza === 1
+  let testo = !senza ? '' : (senza === 1
     ? 'Un sopralluogo non ha ancora il suo verbale. I suoi appunti entrano lo stesso.'
     : senza + ' sopralluoghi non hanno ancora il loro verbale. I loro appunti entrano lo stesso.');
+  testo = (testo ? testo + ' ' : '') + 'Gli audio già trascritti sono già stati cancellati dal telefono: resta il testo.';
   const ok = await chiedi(gia ? 'Aggiornare il verbale di giornata?' : 'Scrivere il verbale di giornata?', testo, gia ? 'Aggiorna' : 'Scrivi', '',
     '<label class="eticampo">Nome del verbale</label><input class="campo" id="vg-nome" maxlength="80" placeholder="facoltativo" value="' + h(gia ? (gia.nome || '') : '') + '">');
   const campo = document.getElementById('vg-nome');
   const nomeScelto = campo ? campo.value.trim() : '';
   chiudiFoglio();
   if (!ok) return;
-  scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto);
+  const v = scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto);
+  // Anche il verbale di giornata è una trascrizione approvata: gli audio del giorno si cancellano.
+  for (const x of sops) await cancellaAudioTrascritti(x);
   avvisa(gia ? 'Verbale di giornata aggiornato' : 'Verbale di giornata scritto', 'ok');
+  aggiornaVista();
+  /* Il PDF si fa subito e scende nel telefono: il verbale di giornata è il documento
+     che si manda fuori, non serve un altro tocco. Resta archiviato, così "Visualizza"
+     lo apre senza aspettare. */
+  if (!v) return;
+  const p = await pdfVerbale(v);
+  if (!p) { avvisa('PDF non pronto: serve la rete la prima volta', 'att'); return; }
+  const blob = p.file ? await leggiMedia(p.file) : null;
+  if (blob) scaricaBlob(blob, p.nome || 'verbale.pdf');
   aggiornaVista();
 }
 /* La scrittura vera, senza domande: la usa il tasto qui sopra e la chiusura della
@@ -610,11 +622,14 @@ function strisciaSopralluoghi(s) {
       (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '') + '</div>' +
       /* Visualizza apre il sopralluogo qui sotto. Su quello già aperto il tasto si chiama
          "Verbale di sopralluogo": apre il suo PDF se c'è, e se non è scritto chiede di scriverlo. */
+      /* Sotto, il tasto per scrivere il verbale di quel passaggio (o aggiornarlo): sta sulla
+         card, in vista, non solo dentro i puntini. La card si allunga di una riga. */
       (aperto
         ? '<div class="voci">' + vociMenuSopralluogo(x) + '</div>'
         : (qui
           ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Verbale di sopralluogo</button>'
-          : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>')) +
+          : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>') +
+          '<button class="vedi scrivi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>') +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   });
@@ -777,6 +792,7 @@ async function chiudiGiornata(sopId) {
     : 'Si scrive il verbale della giornata. La giornata resta modificabile: se cambi qualcosa, il verbale si aggiorna da solo.';
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
+  testo += ' Gli audio già trascritti sono già stati cancellati dal telefono: resta il testo.';
   const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale', '',
     '<label class="eticampo">Nome del verbale</label><input class="campo" id="v-nome" maxlength="80" placeholder="facoltativo" value="' + h(giaFatto ? (giaFatto.nome || '') : '') + '">');
   // Il campo si legge prima di chiudere il foglio: dopo non c'è più.
@@ -808,8 +824,12 @@ async function chiudiGiornata(sopId) {
   s.chiuso = adessoISO();
   s.verbale = v.codice;
   salva('sopralluogo', s);
+  // Il verbale è la trascrizione approvata: la voce, da qui in poi, non serve più.
+  await cancellaAudioTrascritti(s);
   avvisa(giaFatto ? 'Verbale aggiornato' : 'Verbale scritto', 'ok');
   aggiornaVista();
+  // Se il suo PDF esiste già, si rifà adesso con il testo e le foto di adesso: Visualizza ed Esporta non devono mostrare quello vecchio.
+  if (pdfConChiave('verbale:' + v.codice)) { await pdfVerbale(v); aggiornaVista(); }
 }
 
 /* ---------------- VERBALE: modifica ---------------- */
@@ -954,8 +974,11 @@ Object.assign(AZIONI, {
     if (foglioAperto()) chiudiFoglio();
     if (!v && el.dataset.sop) { const sx = sopralluogo(el.dataset.sop); const vx = sx ? verbaleDiSopralluogo(sx.codice) : null; if (vx) { vai('#/verbale/' + vx.id); return; } }
     if (!v) return;
+    // Visualizza mostra il PDF: se non c'è ancora si fa adesso, e si apre. Senza pdf-lib resta il testo.
     const p = pdfConChiave('verbale:' + v.codice);
-    vai(p ? '#/leggi/' + p.id : '#/verbale/' + v.id);
+    if (p) { vai('#/leggi/' + p.id); return; }
+    avvisa('Preparo il PDF…');
+    return pdfVerbale(v).then(function (nuovo) { vai(nuovo ? '#/leggi/' + nuovo.id : '#/verbale/' + v.id); });
   },
   /* Si butta il verbale, non la giornata: il sopralluogo resta con i suoi audio e
      le sue sezioni, e torna "da chiudere". Un verbale di giornata si butta e basta. */
@@ -980,6 +1003,8 @@ Object.assign(AZIONI, {
     avvisa('Salvato', 'ok');
     const s = valori(leggiTutto().sopralluoghi).find(function (x) { return x.codice === v.sopralluogo; });
     vai(s ? '#/giorno/' + s.id : '#/');
+    // Corretto a mano il verbale, il suo PDF (se c'è) si rifà: mai due versioni in giro.
+    if (pdfConChiave('verbale:' + v.codice)) return pdfVerbale(v).then(function () { aggiornaVista(); });
   },
   'smista': function (el) {
     const s = sopralluogo(el.dataset.id);

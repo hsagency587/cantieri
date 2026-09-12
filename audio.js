@@ -169,6 +169,9 @@ async function lavoroTrascrizione(l) {
       pezzo.grezzo = await trascriviConGroq(blob);
       pezzo.stato = 'trascritto';
       salva('sopralluogo', sop);
+      // Il testo c'è: la voce si cancella subito. È il dato più delicato, e da qui in poi non serve.
+      await scordaAudioPezzo(pezzo);
+      salva('sopralluogo', sop);
       avvisa('Trascritto', 'ok');
     }
     if (!pezzo.grezzo.trim()) { pezzo.stato = 'riordinato'; pezzo.titolo = pezzo.titolo || 'Registrazione vuota'; salva('sopralluogo', sop); return; }
@@ -206,6 +209,9 @@ async function lavoroTrascrizione(l) {
       if (!blob) throw new Error('Audio non trovato nel telefono');
       pezzo.grezzo = await trascriviConGroq(blob);
       pezzo.stato = 'trascritto';
+      salva('sopralluogo', sop);
+      // Il testo c'è: la voce si cancella subito. È il dato più delicato, e da qui in poi non serve.
+      await scordaAudioPezzo(pezzo);
       salva('sopralluogo', sop);
       avvisa('Trascritto', 'ok');
     }
@@ -733,13 +739,33 @@ async function salvaPezzoRegistrato(blob, durata, ora, destinazione) {
 /* ---- riascolto ---- */
 let urlInAscolto = null;
 let pezzoInAscolto = null;
+/* La voce è il dato più delicato che l'app tiene: appena il testo trascritto è
+   salvato, l'audio si cancella dal telefono. Resta il testo — grezzo e poi
+   riordinato — che è quello che conta. Chi lo chiama salva il sopralluogo. */
+async function scordaAudioPezzo(pezzo) {
+  if (!pezzo.audio) return;
+  if (pezzoInAscolto === pezzo.id) { const lettore = document.getElementById('lettore'); if (lettore) lettore.pause(); pezzoInAscolto = null; }
+  await cancellaMedia(pezzo.audio);
+  pezzo.audio = null; pezzo.cancellato = adessoISO();
+}
+/* Rete di sicurezza al verbale: un audio rimasto con il suo testo già scritto
+   (cancellazione fallita, dati vecchi) si cancella qui. */
+async function cancellaAudioTrascritti(s) {
+  let tolti = 0;
+  for (const p of s.pezzi) {
+    if (!p.audio || !String(p.grezzo || '').trim()) continue;
+    await scordaAudioPezzo(p); tolti++;
+  }
+  if (tolti) salva('sopralluogo', s);
+  return tolti;
+}
 async function riascolta(sopId, pezzoId) {
   const lettore = document.getElementById('lettore');
   if (pezzoInAscolto === pezzoId && !lettore.paused) { lettore.pause(); pezzoInAscolto = null; aggiornaVista(); return; }
   const sop = sopralluogo(sopId);
   const pezzo = sop && sop.pezzi.find(function (p) { return p.id === pezzoId; });
   if (!pezzo) return;
-  if (!pezzo.audio) { avvisa(pezzo.archiviato ? 'Audio archiviato' : 'Senza audio', 'att'); return; }
+  if (!pezzo.audio) { avvisa(pezzo.cancellato ? 'Audio cancellato dopo la trascrizione' : (pezzo.archiviato ? 'Audio archiviato' : 'Senza audio'), 'att'); return; }
   const blob = await leggiMedia(pezzo.audio);
   if (!blob) { avvisa('Audio non trovato', 'err'); return; }
   if (urlInAscolto) URL.revokeObjectURL(urlInAscolto);
@@ -760,12 +786,13 @@ function rigaAudio(sop, pezzo, opzioni) {
   else if (pezzo.stato === 'in_corso' || pezzo.stato === 'trascritto') { sotto = (pezzo.stato === 'trascritto' ? 'trascritto, riordino in corso' : 'trascrivendo…') + ' · ' + pezzo.ora; classe = 'att'; }
   else if (pezzo.stato === 'errore') { sotto = testoErrorePezzo(pezzo.errore); classe = 'err'; }
   else if (pezzo.archiviato) { sotto = 'audio archiviato il ' + dataSenzaAnno(pezzo.archiviato) + ' · ' + pezzo.ora; }
+  else if (pezzo.cancellato) { sotto = 'audio cancellato dopo la trascrizione · ' + pezzo.ora; }
   else if (!pezzo.audio) { sotto = 'esempio, senza audio · ' + pezzo.ora; }
   else if (opzioni.dentroSezione) { sotto = pezzo.ora; }
   else { sotto = (pezzo.sezione ? nomeSezione(pezzo.sezione) : 'da smistare') + ' · ' + pezzo.ora; }
   const spento = !pezzo.audio;
   // Riprova solo quando ha senso: l'audio c'è ancora e l'errore non è di quelli che si ripetono uguali.
-  const riprova = pezzo.stato === 'errore' && pezzo.audio && !errorePermanente(pezzo.errore);
+  const riprova = pezzo.stato === 'errore' && (pezzo.audio || pezzo.grezzo) && !errorePermanente(pezzo.errore);
   return '<div class="audio' + (opzioni.dentroSezione ? ' sotto' : '') + '">' +
     '<button class="play' + (spento ? ' spento' : '') + (suona ? ' suona' : '') + '" data-az="riascolta" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '" aria-label="Riascolta">' + (suona ? '❚❚' : '▶') + '</button>' +
     '<button class="n" data-az="vai-sezione" data-sop="' + h(sop.id) + '" data-id="' + h(pezzo.id) + '"><div class="t">' + h(nome) + '</div><div class="s ' + classe + '">' + h(sotto) + '</div></button>' +
