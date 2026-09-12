@@ -1402,7 +1402,10 @@ Object.assign(AZIONI, {
     if (!c) return;
     if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
     avvisa('Preparo il verbale di settimana…');
-    const p = await pdfPeriodo(c, lunediDi(oggiISO()), oggiISO());
+    // I giorni della settimana senza verbale di giornata lo prendono adesso, come fa la chiusura automatica: nel PDF entrano tutti.
+    const lunedi = lunediDi(oggiISO());
+    giornateDi(c.codice).forEach(function (g) { if (g.giorno >= lunedi && g.sops.length && !g.verbale) scriviVerbaleGiornata(c.codice, g.giorno, ''); });
+    const p = await pdfPeriodo(c, lunedi, oggiISO());
     if (!p) { avvisa('Nessun verbale in questa settimana', 'att'); return; }
     // Fatto il PDF, il tasto della domenica sparisce e la settimana entra fra i verbali del cantiere.
     aggiornaVista();

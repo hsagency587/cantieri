@@ -455,16 +455,16 @@ function vistaGiornoInCorso(s, c) {
 /* I verbali di giornata del cantiere, uno di fianco all'altro. Stesse card, stessi
    tre puntini: Visualizza, Modifica, Esporta, Scarica. */
 /* Cosa sta nella casella dei verbali: i verbali di giornata della settimana in
-   corso (da lunedì) e il verbale della settimana scorsa, che resta lì tutta la
-   settimana per poterla confrontare con questa. Alla mezzanotte di domenica la
-   casella si svuota da sola; i PDF di giornata restano in "PDF archiviati". */
+   corso (da lunedì), il verbale di questa settimana appena fatto, e quello della settimana scorsa,
+   che resta lì tutta la settimana per poterla confrontare con questa. Alla mezzanotte di domenica
+   i giorni escono e resta la settimana chiusa; i PDF di giornata restano in "PDF archiviati". */
 function verbaliInVista(c) {
   const lunedi = lunediDi(oggiISO());
   const scorsa = dataLocaleISO(new Date(daISO(lunedi).getTime() - 7 * 86400000));
   const settimane = pdfDi(c.codice).filter(function (p) { return p.tipo === 'periodo'; }).map(function (p) {
     const k = String(p.chiave || '').split(':');
     return { pdf: p, dal: k[2] || '', al: k[3] || '' };
-  }).filter(function (w) { return w.dal >= scorsa && w.dal < lunedi; }).sort(function (a, b) { return b.al.localeCompare(a.al); });
+  }).filter(function (w) { return w.dal >= scorsa; }).sort(function (a, b) { return b.al.localeCompare(a.al); });
   const giornate = verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunedi; });
   return { settimane: settimane, giornate: giornate };
 }
