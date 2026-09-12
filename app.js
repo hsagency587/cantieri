@@ -1,7 +1,16 @@
 /* CANTIERI — app.js
    Verbali di sopralluogo dettati a voce, contabilità e listino prezzi.
    Un file solo, JavaScript normale, nessuna compilazione.
-   I commenti spiegano il perché: il cosa lo dice il codice. */
+   I commenti spiegano il perché: il cosa lo dice il codice.
+
+   LA GERARCHIA — le parole si usano sempre così:
+     azienda      → chi fa il lavoro; ha i suoi cantieri.
+     cantiere     → un lavoro; ha le sue giornate.
+     giornata     → un giorno di quel cantiere; ha i suoi sopralluoghi. Esiste anche vuota.
+     sopralluogo  → un passaggio della giornata: audio, foto, sezioni. Vive dentro la giornata.
+     verbale      → il verbale DI GIORNATA: mette insieme i sopralluoghi del giorno. Uno per giornata.
+     verbale di sopralluogo → il PDF di un sopralluogo, da solo.
+   Le foto stanno nel sopralluogo che le ha scattate; la giornata le mostra tutte insieme. */
 'use strict';
 
 /* ============================================================
@@ -96,8 +105,8 @@ const PAROLE_SEZIONE = {
 };
 
 // Prefissi dei codici automatici e dove sta ogni tipo di documento nell'archivio.
-const PREFISSI = { azienda: 'AZ', cantiere: 'CANT', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', foto: 'FOTO', relazione: 'REL' };
-const COLLEZIONI = { azienda: 'aziende', cantiere: 'cantieri', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino', relazione: 'relazioni' };
+const PREFISSI = { azienda: 'AZ', cantiere: 'CANT', giornata: 'GIO', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', foto: 'FOTO', relazione: 'REL' };
+const COLLEZIONI = { azienda: 'aziende', cantiere: 'cantieri', giornata: 'giornate', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino', relazione: 'relazioni' };
 
 // Unità di misura: la tabella dei sinonimi si applica in locale, gratis. Claude si chiama solo per quello che manca qui.
 const UM_SINONIMI = {
@@ -679,8 +688,8 @@ let LOCALE = null;   // le cose del telefono, in memoria
 function archivioVuoto() {
   return {
     versione: 1,
-    contatori: { AZ: 0, CANT: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0, REL: 0 },
-    aziende: {}, cantieri: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {}, relazioni: {},
+    contatori: { AZ: 0, CANT: 0, GIO: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0, REL: 0 },
+    aziende: {}, cantieri: {}, giornate: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {}, relazioni: {},
     cancellati: {},     // id → quando: perché una cancellazione arrivi anche all'altra copia
     soloEsempio: true,  // finché è vero, dentro ci sono solo i dati di esempio
     aggiornato: adessoISO()
@@ -1007,14 +1016,8 @@ function listinoTutto() {
 function cardSettimana() {
   const sett = settimanaDaChiudere();
   if (!sett || SETT_CONTO.inizio !== sett.inizio || !(SETT_CONTO.audio || SETT_CONTO.foto)) return '';
-  const mail = leggiLocale().mail;
-  return '<div class="card gialla"><div class="card-capo gialla">Settimana da chiudere<span class="dx">' + h(dataSenzaAnno(sett.inizio)) + ' - ' + h(dataSenzaAnno(sett.fine)) + '</span></div>' +
-    '<div class="card-corpo">' + SETT_CONTO.foto + ' foto, ' + SETT_CONTO.audio + ' audio · ' + h(pesoFile(SETT_CONTO.byte)) + '.<br>' +
-    (mail ? 'Mandala a <b>' + h(mail) + '</b>: si apre il foglio di condivisione, scegli Mail.' : 'Mandala fuori: si apre il foglio di condivisione, scegli Mail.') +
-    '</div><div class="griglia">' +
-    '<button class="btn btn-ok" data-az="settimana-manda" data-inizio="' + h(sett.inizio) + '" data-fine="' + h(sett.fine) + '"><span class="ico ico-invio"></span> Manda la settimana</button>' +
-    '<button class="btn" data-az="settimana-fatta" data-inizio="' + h(sett.inizio) + '" data-fine="' + h(sett.fine) + '">Ce l\'ho già</button>' +
-    '</div></div>';
+  // Una riga sottile e due parole: quello che fa lo spiega la domanda che si apre dopo.
+  return '<button class="riga-memoria" data-az="settimana-libera" data-inizio="' + h(sett.inizio) + '" data-fine="' + h(sett.fine) + '">Libera memoria</button>';
 }
 
 /* ---------------- LE AZIENDE ----------------
@@ -1078,9 +1081,19 @@ function verbaliDiGiornata(codiceCantiere) {
   return valori(leggiTutto().verbali).filter(function (v) { return v.giornata && v.cantiere === codiceCantiere; })
     .sort(function (a, b) { return b.giorno.localeCompare(a.giorno); });
 }
+/* La giornata è un dato suo: così esiste anche senza sopralluoghi, e si può eliminare
+   da sola. Nasce col primo sopralluogo del giorno; le giornate vecchie, di prima che
+   il dato esistesse, si ricavano dai sopralluoghi e vanno bene lo stesso. */
+function giornataDi(codiceCantiere, giorno) {
+  return valori(leggiTutto().giornate).find(function (g) { return g.cantiere === codiceCantiere && g.giorno === giorno; }) || null;
+}
+function assicuraGiornata(codiceCantiere, giorno) {
+  return giornataDi(codiceCantiere, giorno) || salva('giornata', { cantiere: codiceCantiere, giorno: giorno });
+}
 // I giorni di un cantiere, dal più recente: ognuno con i suoi sopralluoghi e il suo verbale.
 function giornateDi(codiceCantiere) {
   const per = {};
+  valori(leggiTutto().giornate).forEach(function (g) { if (g.cantiere === codiceCantiere) per[g.giorno] = []; });
   sopralluoghiDi(codiceCantiere).forEach(function (s) { (per[s.giorno] = per[s.giorno] || []).push(s); });
   return Object.keys(per).sort(function (a, b) { return b.localeCompare(a); }).map(function (g) {
     return { giorno: g, sops: per[g].sort(function (a, b) { return String(a.ora).localeCompare(String(b.ora)); }), verbale: verbaleDiGiornata(codiceCantiere, g) };
@@ -2279,6 +2292,7 @@ function apriFoglio(html, opzioni) {
   const f = document.getElementById('finestra');
   f.innerHTML = '<div class="velo" data-az="chiudi-foglio-velo"><div class="foglio" role="dialog">' + html + '</div></div>';
   f.hidden = false;
+  segnaScorrimento(f);
   if (opzioni && opzioni.pieno) f.firstChild.className = 'velo';
   const primo = f.querySelector('[autofocus]');
   if (primo) setTimeout(function () { primo.focus(); }, 50);
@@ -2623,6 +2637,51 @@ async function riduciFoto(file, latoMax, qualita) {
   return { blob: blob, larghezza: W, altezza: A };
 }
 
+/* ---- la fotocamera dentro l'app ----
+   La fotocamera del telefono, aperta dall'ingresso file, su Android chiude spesso la
+   pagina per liberare memoria: la foto scattata non torna mai. Qui la camera si apre
+   dentro l'app, a tutto schermo, e lo scatto non esce mai dalla pagina. Se la camera
+   non si può aprire (permesso negato, browser vecchio) si torna all'ingresso file. */
+let CAMERA = null;
+function ingressoScatto() { const f = document.getElementById('file-foto-scatta'); if (f) f.click(); }
+async function apriFotocamera(sopId) {
+  if (CAMERA) return;
+  if (!sopId || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { ingressoScatto(); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+  } catch (e) { ingressoScatto(); return; }
+  const box = document.createElement('div');
+  box.id = 'fotocamera';
+  box.innerHTML = '<video autoplay playsinline muted></video>' +
+    '<button class="chiudi" data-az="fotocamera-chiudi" aria-label="Chiudi">✕</button>' +
+    '<button class="scatta" data-az="fotocamera-scatta" aria-label="Scatta"></button>';
+  document.body.appendChild(box);
+  const video = box.querySelector('video');
+  video.srcObject = stream;
+  CAMERA = { stream: stream, box: box, video: video, sop: sopId };
+}
+function chiudiFotocamera() {
+  if (!CAMERA) return;
+  CAMERA.stream.getTracks().forEach(function (t) { t.stop(); });
+  CAMERA.box.remove();
+  CAMERA = null;
+}
+// Il fotogramma di adesso diventa un JPEG e prende la strada di ogni altra foto.
+async function scattaFotocamera() {
+  if (!CAMERA || !CAMERA.video.videoWidth) return;
+  const v = CAMERA.video, sop = CAMERA.sop;
+  const tela = document.createElement('canvas');
+  tela.width = v.videoWidth; tela.height = v.videoHeight;
+  tela.getContext('2d').drawImage(v, 0, 0);
+  const blob = await new Promise(function (ok) { tela.toBlob(ok, 'image/jpeg', 0.92); });
+  tela.width = 1; tela.height = 1;
+  chiudiFotocamera();
+  if (!blob) { avvisa('Scatto non riuscito', 'err'); return; }
+  await aggiungiFoto(new File([blob], 'scatto.jpg', { type: 'image/jpeg' }), sop, 'scatto');
+}
+
 /* Dal file scelto (scattato o preso dal rullino) alla voce in media del sopralluogo.
    Poi si apre la foto grande: la cosa più probabile è che voglia dire subito cos'è. */
 async function aggiungiFoto(file, sopId, origine, genere) {
@@ -2698,6 +2757,34 @@ async function cancellaFileFoto(s) {
     if (f.audio) await cancellaMedia(f.audio);
   }
 }
+/* Via un sopralluogo intero: i suoi audio, le sue foto, il suo verbale, e lui.
+   La giornata resta: è un dato suo, e se questo era l'ultimo passaggio resta vuota. */
+async function eliminaSopralluogo(s) {
+  for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
+  await cancellaFileFoto(s);
+  const v = verbaleDiSopralluogo(s.codice);
+  if (v) cancella('verbale', v.id);
+  assicuraGiornata(s.cantiere, s.giorno);
+  cancella('sopralluogo', s.id);
+}
+/* Via una giornata intera: tutti i suoi sopralluoghi, il verbale di giornata, e lei.
+   Il cantiere resta com'è. */
+async function eliminaGiornata(codiceCantiere, giorno) {
+  for (const s of sopralluoghiDelGiorno(codiceCantiere, giorno)) await eliminaSopralluogo(s);
+  const vg = verbaleDiGiornata(codiceCantiere, giorno);
+  if (vg) cancella('verbale', vg.id);
+  const g = giornataDi(codiceCantiere, giorno);
+  if (g) cancella('giornata', g.id);
+}
+// "Sicuro?" dopo l'"Eliminare?": per giornate, cantieri e aziende non si torna indietro.
+async function chiediDueVolte(titolo, testo, etichetta) {
+  const ok = await chiedi(titolo, testo, etichetta, 'rosso');
+  chiudiFoglio();
+  if (!ok) return false;
+  const sicuro = await chiedi('Sicuro?', 'Non si torna indietro.', 'Sì, elimina', 'rosso');
+  chiudiFoglio();
+  return sicuro;
+}
 
 /* Le schermate sono stringhe HTML e IndexedDB è asincrono: le immagini si
    mettono dopo, leggendo il blob una volta sola e tenendo l'indirizzo in
@@ -2755,19 +2842,21 @@ function descriviStatoFoto(st) {
 function filaFoto(s, lista, opzioni) {
   opzioni = opzioni || {};
   if (!lista.length) return '';
-  return '<div class="foto-fila">' + lista.map(function (f) {
+  return '<div class="foto-fila">' + lista.map(function (x) {
+    // Un elemento è la foto, oppure { sop, f } quando la fila mette insieme più sopralluoghi.
+    const f = x.f || x, sx = x.sop || s;
     const st = statoLavoroFoto(f);
     const eti = opzioni.doc ? (GENERI_BREVI[f.genere] || 'documento') : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
-      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(s.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
+      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(sx.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
       // Una scansione PDF non ha miniatura: l'icona del documento e il numero di pagine.
       (f.file ? (f.formato === 'pdf' ? '<span class="ico ico-documento"></span><small>' + (f.pagine ? f.pagine + ' pag.' : 'PDF') + '</small>' : '<img data-foto="' + h(f.file) + '" alt="">') : '') + '</button>' +
       // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
-      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(nomeFoto(f)) + '">✕</button>' +
+      '<button class="x-mini" data-az="foto-elimina" data-sop="' + h(sx.id) + '" data-id="' + h(f.id) + '" aria-label="Elimina ' + h(nomeFoto(f)) + '">✕</button>' +
       /* Il bollino del PDF sta nell'angolo basso della foto. Dove serve scegliere si tocca,
          e non ruba una riga sotto la miniatura; altrove dice soltanto com'è messa. */
       (opzioni.segna
-        ? '<button class="tacca' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" aria-label="' + (f.nelPdf ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (f.nelPdf ? '✓ PDF' : '☐ PDF') + '</button>'
+        ? '<button class="tacca' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(sx.id) + '" data-id="' + h(f.id) + '" aria-label="' + (f.nelPdf ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (f.nelPdf ? '✓ PDF' : '☐ PDF') + '</button>'
         : (f.nelPdf ? '<span class="tacca on">✓ PDF</span>' : '')) +
       '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
       '</div>';
@@ -2838,6 +2927,17 @@ function tastoEsporta(chiave) {
   const aperto = ESPORTA_APERTO === chiave;
   return '<button class="btn' + (aperto ? ' on' : '') + '" data-az="esporta-tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperto + '">Esporta<span class="fr">' + (aperto ? '▴' : '▾') + '</span></button>';
 }
+/* I tre puntini di giornate, cantieri e aziende: il tasto, e sotto — nella card,
+   come la tendina di Esporta — la sola voce Elimina. Gli attributi data-* arrivano
+   già pronti, perché ogni cosa da eliminare si identifica a modo suo. */
+function tastoPunti(chiave) {
+  const aperto = PUNTI_APERTI === chiave;
+  return '<button class="pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-punti" data-chiave="' + h(chiave) + '" aria-label="Altro" aria-expanded="' + aperto + '">⋯</button>';
+}
+function vociPunti(chiave, azione, attributi) {
+  if (PUNTI_APERTI !== chiave) return '';
+  return '<div class="esp-voci"><button class="voce-m rossa" data-az="' + azione + '" ' + attributi + '><b>Elimina</b></button></div>';
+}
 // Le due voci scendono sotto la fila dei tasti, dentro la card: la fila scorre di lato e non può far uscire niente.
 function vociEsporta(chiave, azEsporta, idEsporta, azScarica, idScarica) {
   if (ESPORTA_APERTO !== chiave) return '';
@@ -2885,6 +2985,7 @@ function disegna() {
       case 'nuovo-cantiere': html = vistaCantiereForm(null, ROTTA.parametri[0]); break;
       case 'modifica-cantiere': html = vistaCantiereForm(ROTTA.parametri[0]); break;
       case 'giorno': html = vistaGiorno(ROTTA.parametri[0]); break;
+      case 'giornata': html = vistaGiornata(ROTTA.parametri[0]); break;
       case 'verbale': html = vistaVerbaleModifica(ROTTA.parametri[0]); break;
       case 'relazione': html = vistaRelazione(ROTTA.parametri[0]); break;
       case 'modifica-relazione': html = vistaRelazioneModifica(ROTTA.parametri[0]); break;
@@ -2911,6 +3012,7 @@ function disegna() {
   vista.querySelectorAll('textarea.corpo, textarea.campo.auto').forEach(cresciTextarea);
   // Le foto arrivano da IndexedDB dopo: la schermata è già disegnata.
   caricaImmagini(vista);
+  segnaScorrimento(vista);
   // Le pagine del PDF si disegnano dopo, quando il contenitore ha una larghezza.
   if (ROTTA.nome === 'leggi') mostraPdfDentro(ROTTA.parametri[0]);
 }
@@ -2918,6 +3020,28 @@ function cresciTextarea(t) {
   t.style.height = 'auto';
   t.style.height = Math.max(60, t.scrollHeight + 2) + 'px';
 }
+/* Le file che scorrono di lato — foto, sopralluoghi, verbali, tasti dei rilievi, tinte —
+   hanno due freccette ai bordi, e ognuna si vede solo se da quella parte c'è altra roba.
+   Stanno dentro la fila, appiccicate ai bordi (sticky): così nessun contenitore va
+   avvolto e il CSS delle file resta com'è. Toccarle fa scorrere di una schermata. */
+function segnaScorrimento(radice) {
+  radice.querySelectorAll('.griglia, .doc-fila, .foto-fila, .tinte').forEach(function (fila) {
+    if (fila.querySelector('.frec-s')) return;
+    fila.insertAdjacentHTML('afterbegin', '<span class="frec-s sx" data-az="scorri" data-verso="-1" aria-hidden="true"><i>‹</i></span>');
+    fila.insertAdjacentHTML('beforeend', '<span class="frec-s dx" data-az="scorri" data-verso="1" aria-hidden="true"><i>›</i></span>');
+    const aggiorna = function () {
+      // A riposo lo snap porta la prima card a filo, oltre il padding: quello non conta come "altra roba".
+      const bordo = parseFloat(getComputedStyle(fila).paddingLeft) || 0;
+      fila.classList.toggle('piu-sx', fila.scrollLeft > bordo + 2);
+      fila.classList.toggle('piu-dx', fila.scrollLeft + fila.clientWidth < fila.scrollWidth - 2);
+    };
+    fila.addEventListener('scroll', aggiorna, { passive: true });
+    aggiorna();
+  });
+}
+window.addEventListener('resize', function () {
+  document.querySelectorAll('.frec-s.sx').forEach(function (el) { el.parentElement.dispatchEvent(new Event('scroll')); });
+});
 
 // ---- pezzi comuni ----
 function testata(o) {
@@ -3037,7 +3161,9 @@ function vistaAziende() {
       '</div>' +
       '<div' + (aperta ? '' : ' hidden') + '>' +
       attivi.map(rigaCantiere).join('') +
-      '<button class="riga piu" data-az="vai" data-a="#/nuovo-cantiere/' + h(a.id) + '"><span class="desc">＋ cantiere</span></button>' +
+      // Ultima riga: "＋ cantiere" a sinistra, i tre puntini dell'azienda dal lato opposto.
+      '<div class="riga az-capo"><button class="apre piu" data-az="vai" data-a="#/nuovo-cantiere/' + h(a.id) + '"><span class="desc">＋ cantiere</span></button>' + tastoPunti('azienda-' + a.id) + '</div>' +
+      vociPunti('azienda-' + a.id, 'azienda-elimina', 'data-id="' + h(a.id) + '"') +
       '</div></div>';
   });
   if (orfani.length) {
@@ -3147,10 +3273,11 @@ function vistaDashboard(idAzienda) {
     }
     /* Due righe invece di tre: il nome con lo stato in fondo alla sua riga,
        e sotto tutto il resto in una frase sola. A destra non resta vuoto. */
+    // I tre puntini in fondo alla riga del titolo; la voce Elimina scende sotto, nella card.
     return '<div class="card tocca" data-az="vai" data-a="#/cantiere/' + h(c.id) + '"><div class="card-in cant">' +
-      '<p class="titolo">' + h(c.nome) + '</p>' + stato +
+      '<p class="titolo">' + h(c.nome) + '</p>' + stato + tastoPunti('cantiere-' + c.id) +
       '<div class="sotto">' + [h(c.committente), c.indirizzo ? h(c.indirizzo) : '', h(mini)].filter(Boolean).join(' · ') + '</div>' +
-      '</div></div>';
+      '</div>' + vociPunti('cantiere-' + c.id, 'cantiere-elimina', 'data-id="' + h(c.id) + '"') + '</div>';
   }
   /* Sotto la ricerca, una riga sola: il cantiere nuovo si prende tre quarti,
      la ricerca nei documenti l'ultimo quarto. */
@@ -3165,8 +3292,6 @@ function vistaDashboard(idAzienda) {
   if (daFare.length) html += '<div class="eti">Da fare oggi <span class="n">' + daFare.length + '</span></div>' + daFare.map(cardCantiere).join('');
   if (fatti.length) html += '<div class="eti">Già fatti <span class="n">' + fatti.length + '</span></div>' + fatti.map(cardCantiere).join('');
   if (chiusi.length) html += tendina('chiusi', 'Cantieri chiusi (' + chiusi.length + ')', chiusi.map(cardCantiere).join(''));
-  // Dentro un'azienda, in fondo: si può buttare via l'azienda (i cantieri restano, senza azienda).
-  if (az) html += '<div class="modulo"><button class="btn btn-rosso" data-az="azienda-elimina" data-id="' + h(az.id) + '">Elimina l\'azienda</button></div>';
   if (!REG.attiva) html += '<div class="barra"><button class="az verde" data-az="parla-dashboard"><span class="ico ico-microfono"></span> Detta un sopralluogo</button></div>';
   return html;
 }
@@ -3207,7 +3332,13 @@ function vistaCantiere(id) {
     else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni, con i conti</div></div></div>';
   }
   if (!sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso') {
-    html += '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p><div class="sotto">' + h(dataEstesa(oggi)) + '</div></div></div>';
+    // La data corta, di fianco al titolo: la card resta di una riga.
+    html += '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p><div class="sotto">' + h(giornoMese(oggi) + '/' + oggi.slice(2, 4)) + '</div></div></div>';
+  }
+  /* La domenica, il verbale di settimana: il PDF da lunedì a oggi di questo cantiere.
+     Compare solo se nella settimana c'è almeno un verbale da mettere dentro. */
+  if (daISO(oggi).getDay() === 0 && c.stato !== 'chiuso' && verbaliDelPeriodo(c.codice, lunediDi(oggi), oggi).length) {
+    html += '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale di settimana</p><div class="sotto">' + h(giornoMese(lunediDi(oggi)) + ' – ' + giornoMese(oggi)) + '</div></div></div>';
   }
   /* Rilievi e bolle si prendono pensando al cantiere, non alla giornata: qui il tasto sta
      in chiaro, e quello che si detta o si scansiona finisce nel giorno di oggi. */
@@ -3268,10 +3399,15 @@ function vistaCantiere(id) {
     if (g.verbale) pill = '<span class="pill ok">' + h(g.verbale.nome || 'verbale di giornata') + '</span>';
     else if (g.giorno === oggi) pill = '<span class="pill att">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
-    html += '<button class="giorno' + (g.giorno === oggi && !g.verbale ? ' oggi' : '') + '" data-az="vai" data-a="#/giorno/' + h(g.sops[0].id) + '">' +
+    /* Una giornata senza sopralluoghi si apre sulla sua schermata vuota. La riga è un
+       div e non un bottone, così i tre puntini possono starci dentro. */
+    const apre = g.sops.length ? '#/giorno/' + g.sops[0].id : '#/giornata/' + giornataDi(c.codice, g.giorno).id;
+    const chiavePunti = 'giornata-' + c.codice + '-' + g.giorno;
+    html += '<div class="giorno' + (g.giorno === oggi && !g.verbale ? ' oggi' : '') + '" data-az="vai" data-a="' + h(apre) + '">' +
       '<div class="n"><div class="titolo"><span class="gm">' + h(giornoMese(g.giorno)) + '</span> ' + h(nomeGiornoRelativo(g.giorno)) + ' · ' + g.sops.length + (g.sops.length === 1 ? ' sopralluogo' : ' sopralluoghi') + '</div>' +
       '<div class="prima">' + h(anteprima) + '</div>' +
-      '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + audio + ' audio</span></div></div></button>';
+      '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + audio + ' audio</span>' + tastoPunti(chiavePunti) + '</div></div></div>' +
+      vociPunti(chiavePunti, 'giornata-elimina', 'data-cantiere="' + h(c.id) + '" data-giorno="' + h(g.giorno) + '"');
   });
   if (meseCorrente) html += '</div>';
   if (!sops.length) html += '<div class="vuoto-stato">' + (c.stato === 'chiuso' ? 'Nessun sopralluogo in questo cantiere.' : 'Nessun sopralluogo ancora. Premi il bottone verde e parla.') + '</div>';
@@ -3282,8 +3418,6 @@ function vistaCantiere(id) {
     '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listino prezzi<small>' + listinoTutto().length + ' voci</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/pdf/' + h(c.id) + '"><span class="desc">PDF archiviati<small>' + (pdfDi(c.codice).length ? pdfDi(c.codice).length + ' documenti · ' + h(pesoFile(pdfDi(c.codice).reduce(function (t, p) { return t + (p.peso || 0); }, 0))) : 'ancora nessuno') + '</small></span><span class="frec">›</span></button>' +
     '</div>');
-  // In fondo a tutto, dove non si preme per sbaglio: buttare via il cantiere intero.
-  html += '<div class="modulo"><button class="btn btn-rosso" data-az="cantiere-elimina" data-id="' + h(c.id) + '">Elimina il cantiere</button></div>';
   // In fondo, come nel giorno: l'azione grande a sinistra, "Chiudi" stretto a destra. Chiuso, al posto di Detta c'è la relazione, e Riapri.
   if (!REG.attiva) {
     if (c.stato === 'chiuso') {
@@ -3298,6 +3432,7 @@ function vistaCantiere(id) {
 }
 
 function creaSopralluogo(c, giorno, ora) {
+  assicuraGiornata(c.codice, giorno || oggiISO());
   return salva('sopralluogo', {
     cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(), nome: '',
     sezioni: sezioniVuote(), pezzi: [], chiuso: null, media: [], posizione: null
@@ -3321,6 +3456,7 @@ function controllaCambioGiorno() {
   if (oggi === GIORNO_APP) return;
   GIORNO_APP = oggi;
   aggiornaVista();
+  pulisciSettimane().then(contaSettimana).then(function () { if (SETT_CONTO.inizio) aggiornaVista(); });
 }
 
 /* ---------------- IL GIORNO ---------------- */
@@ -3334,6 +3470,28 @@ function vistaGiorno(id) {
   return vistaGiornoInCorso(s, c);
 }
 
+/* La giornata senza sopralluoghi: la stessa testa della giornata piena, e sotto solo
+   la striscia con "＋ un altro". Se intanto un sopralluogo c'è, si va su quello. */
+function vistaGiornata(id) {
+  const g = leggiTutto().giornate[id];
+  if (!g) return vistaDashboard();
+  const sops = sopralluoghiDelGiorno(g.cantiere, g.giorno);
+  if (sops.length) return vistaGiorno(sops[0].id);
+  const c = cantierePerCodice(g.cantiere) || { nome: '?', id: '' };
+  const vg = verbaleDiGiornata(g.cantiere, g.giorno);
+  let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(g.giorno), sotto: h(c.nome),
+    destra: '<span class="pill att">vuota</span>' });
+  html += '<div class="avanz"><div class="r">' +
+    (vg
+      ? '<button class="pill ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>'
+      : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '">Scrivi il verbale di giornata</button>') +
+    '<span class="dx">0 audio · 0:00 | 0 foto</span></div></div>';
+  html += '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">nessuno</span></div><div class="doc-fila">' +
+    '<div class="doc-mini piu"><button class="q vuota" data-az="giornata-sopralluogo-nuovo" data-cantiere="' + h(g.cantiere) + '" data-giorno="' + h(g.giorno) + '"><span class="ora">＋</span><span class="nm">sopralluogo</span></button></div>' +
+    '</div></div>';
+  return html;
+}
+
 function vistaGiornoInCorso(s, c) {
   const parlato = s.pezzi.reduce(function (t, p) { return t + (p.durata || 0); }, 0);
   const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === s.id) ||
@@ -3342,22 +3500,27 @@ function vistaGiornoInCorso(s, c) {
   let html = testata({ indietro: '#/cantiere/' + c.id, titolo: dataBreve(s.giorno), sotto: h(c.nome) + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' · ' + h(oraCorta(s.ora)) : ''), tocca: 'modifica-testata', id: s.id,
     destra: registrandoQui ? '<span class="pill reg">● rec</span>' :
       (s.chiuso ? '<span class="pill ok">verbale fatto</span>' : '<span class="pill att">' + (s.giorno < oggiISO() ? 'da chiudere' : 'in corso') + '</span>') });
-  // Solo la riga con audio, parlato e foto: niente barra di avanzamento né conteggio delle sezioni.
-  html += '<div class="avanz"><div class="r"><span class="dx">' +
-    (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' di parlato' + (quanteFoto ? ' · ' + quanteFoto + ' foto' : ''))) + '</span></div></div>';
+  /* Una riga sola in testa: a sinistra il verbale di giornata — mette insieme i passaggi
+     in un documento solo, quello che si manda fuori, e si scrive sempre: chi non ha
+     ancora il verbale entra con i suoi appunti — a destra audio, parlato e foto. */
+  const vg = verbaleDiGiornata(s.cantiere, s.giorno);
+  html += '<div class="avanz"><div class="r">' +
+    (vg
+      ? '<button class="pill ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
+        '<button class="pill cod" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button>'
+      : '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button>') +
+    '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (s.pezzi.length + ' audio · ' + durataBreve(parlato) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
 
-  /* Il verbale è fatto, ma la giornata resta quella che era: si cambia quello che si vuole
-     e ogni correzione passa da sola nel verbale. Da qui si esce col PDF o si va a correggere il verbale. */
-  if (s.chiuso) {
-    const vb = verbaleDiSopralluogo(s.codice);
-    /* Visualizza c'è sempre, e sta per primo: è il tasto che si preme di più.
-       Se il PDF esiste apre quello, se no apre il verbale. */
-    // Siamo già nel giorno: il nome dato a mano, se no "Verbale", con l'ora quando i passaggi sono più d'uno.
-    html += '<div class="card"><div class="card-capo">' + h(vb && vb.nome ? vb.nome : 'Verbale' + (sopralluoghiDelGiorno(s.cantiere, s.giorno).length > 1 ? ' delle ' + oraCorta(s.ora) : '')) + '<span class="dx">fatto alle ' + h(oraDaISO(s.chiuso)) + '</span></div>' +
+  /* La barra del verbale di giornata: è della giornata, non del passaggio, quindi sta qui
+     qualunque sopralluogo sia aperto sotto. Visualizza apre il PDF se c'è, se no il testo.
+     Il verbale di sopralluogo ha il suo tasto nella striscia e i suoi puntini. */
+  if (vg) {
+    html += '<div class="card"><div class="card-capo">' + h(titoloVerbale(vg, true)) + '<span class="dx">verbale di giornata</span></div>' +
       '<div class="griglia tre">' +
-      (vb ? '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' : '') +
-      (vb ? tastoEsporta('vb-' + vb.id) : '<button class="btn" data-az="esporta-pdf" data-id="' + h(s.id) + '">Esporta</button>') +
-      (vb ? '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vb.id) + '">Correggi</button>' : '') + '</div>' + (vb ? vociEsporta('vb-' + vb.id, 'esporta-pdf', s.id, 'verbale-scarica', vb.id) : '') + '</div>';
+      '<button class="btn" data-az="verbale-vedi" data-id="' + h(vg.id) + '">Visualizza</button>' +
+      tastoEsporta('vg-' + vg.id) +
+      '<button class="btn" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">Modifica</button></div>' +
+      vociEsporta('vg-' + vg.id, 'verbale-esporta', vg.id, 'verbale-scarica', vg.id) + '</div>';
   }
 
   if (String(s.sezioni.da_smistare || '').trim()) {
@@ -3367,13 +3530,15 @@ function vistaGiornoInCorso(s, c) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
+  // La galleria della giornata sta sopra i sopralluoghi: da qui si spuntano le foto del verbale di giornata.
+  html += cardFotoGiornata(s);
   /* I sopralluoghi della giornata, uno di fianco all'altro come le foto: si scorre
      di lato e si salta da un passaggio all'altro senza tornare al cantiere. */
   html += strisciaSopralluoghi(s);
+  // Il rullino sta subito sotto i sopralluoghi, come ingresso; le foto si vedono già in alto.
+  html += ingressiFoto(s);
   html += cardDaAssegnare(s);
   html += cardRilieviNuovi({ sop: s.id });
-  // Le foto stanno in alto: aprendo la giornata si vedono senza scorrere, e da lì si
-  // tocca quella che manca di referto. Il rullino resta sotto la striscia, come ingresso.
   html += cardFotoGiorno(s, !!s.chiuso);
   /* Rilievi e documenti stanno chiusi: sono lo strumento di un momento, non la cosa
      che si guarda entrando nella giornata. Il numero sulla linguetta dice se dentro
@@ -3393,7 +3558,7 @@ function vistaGiornoInCorso(s, c) {
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(s.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui, { segna: !!s.chiuso }) + '</div>';
+      listaAudio(s, pezziQui, { dentroSezione: true, chiave: s.id + '-' + z.chiave }) + filaFoto(s, fotoQui, { segna: true }) + '</div>';
     // Una sezione con una foto dentro non è vuota: se finisse nella tendina, la foto sparirebbe.
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
@@ -3451,6 +3616,15 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
   const nomeScelto = campo ? campo.value.trim() : '';
   chiudiFoglio();
   if (!ok) return;
+  scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto);
+  avvisa(gia ? 'Verbale di giornata aggiornato' : 'Verbale di giornata scritto', 'ok');
+  aggiornaVista();
+}
+/* La scrittura vera, senza domande: la usa il tasto qui sopra e la chiusura della
+   settimana, che i verbali mancanti li fa da sola. Torna null se il giorno è vuoto. */
+function scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto) {
+  const sops = sopralluoghiDelGiorno(codiceCantiere, giorno);
+  if (!sops.length) return null;
   const sezioni = {};
   CHIAVI_SEZIONI.forEach(function (k) { sezioni[k] = ''; });
   sops.forEach(function (x) {
@@ -3462,13 +3636,11 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
       sezioni[k] = aggiungiTesto(sezioni[k], 'Ore ' + x.ora + (String(x.nome || '').trim() ? ' · ' + x.nome : '') + '\n' + t);
     });
   });
-  let v = gia;
+  let v = verbaleDiGiornata(codiceCantiere, giorno);
   const campi = { cantiere: codiceCantiere, giorno: giorno, ora: sops[0].ora, giornata: true,
-    sopralluoghi: sops.map(function (x) { return x.codice; }), nome: nomeScelto, sezioni: sezioni };
-  if (v) { Object.assign(v, campi); v = salva('verbale', v); }
-  else v = salva('verbale', campi);
-  avvisa(gia ? 'Verbale di giornata aggiornato' : 'Verbale di giornata scritto', 'ok');
-  aggiornaVista();
+    sopralluoghi: sops.map(function (x) { return x.codice; }), nome: nomeScelto || '', sezioni: sezioni };
+  if (v) { Object.assign(v, campi); return salva('verbale', v); }
+  return salva('verbale', campi);
 }
 
 /* Le tre voci che compaiono dentro la card quando si toccano i puntini. */
@@ -3549,7 +3721,6 @@ async function rinominaSopralluogo(idSop) {
    In coda, il tasto per aprire un altro sopralluogo nello stesso giorno. */
 function strisciaSopralluoghi(s) {
   const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
-  const vg = verbaleDiGiornata(s.cantiere, s.giorno);
   let html = '<div class="card"><div class="card-capo">Sopralluoghi del giorno<span class="dx">' + fratelli.length + (fratelli.length === 1 ? ' passaggio' : ' passaggi') + '</span></div>' +
     '<div class="doc-fila">';
   fratelli.forEach(function (x) {
@@ -3567,23 +3738,19 @@ function strisciaSopralluoghi(s) {
       '<div class="q">' +
       '<span class="ora">' + h(suoNome || x.ora) + '</span>' +
       (suoNome ? '<span class="nm">' + h(x.ora) + '</span>' : '') + '</div>' +
+      /* Visualizza apre il sopralluogo qui sotto. Su quello già aperto il tasto si chiama
+         "Verbale di sopralluogo": apre il suo PDF se c'è, e se non è scritto chiede di scriverlo. */
       (aperto
         ? '<div class="voci">' + vociMenuSopralluogo(x) + '</div>'
-        : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>') +
+        : (qui
+          ? '<button class="vedi" data-az="sopralluogo-verbale" data-id="' + h(x.id) + '">Verbale di sopralluogo</button>'
+          : '<button class="vedi" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Visualizza</button>')) +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   });
   html += '<div class="doc-mini piu"><button class="q vuota" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '"><span class="ora">＋</span><span class="nm">un altro</span></button></div>';
-  html += '</div>';
-  /* Il verbale di giornata mette insieme i passaggi in un documento solo, quello che
-     si manda fuori. Si scrive sempre: chi non ha ancora il verbale entra con i suoi appunti. */
-  if (vg) {
-    html += '<div class="griglia"><button class="btn btn-ok" data-az="vai" data-a="#/verbale/' + h(vg.id) + '">' + h(titoloVerbale(vg, true)) + '</button>' +
-      '<button class="btn" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Aggiorna</button></div>';
-  } else {
-    html += '<div class="griglia"><button class="btn btn-ok" data-az="giornata-verbale" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">Scrivi il verbale di giornata</button></div>';
-  }
-  return html + '</div>';
+  // Il verbale di giornata sta nella riga in testa alla giornata, non qui.
+  return html + '</div></div>';
 }
 
 /* Le registrazioni che aspettano di sapere dove vanno. Finché sono qui il loro testo
@@ -3674,22 +3841,35 @@ function cardStrumenti(s) {
 }
 
 
-/* La card delle foto del giorno, con i due ingressi nascosti: la fotocamera (capture)
-   e il rullino (senza). Il rullino è la via discreta: un link piccolo, non un bottone. */
+/* Tutte le foto della giornata in una fila sola, sopra i sopralluoghi. Sono le stesse
+   foto dei passaggi, viste insieme: spunta ed elimina valgono da tutte e due le parti. */
+function cardFotoGiornata(s) {
+  const lista = [];
+  sopralluoghiDelGiorno(s.cantiere, s.giorno).forEach(function (x) {
+    fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); });
+  });
+  if (!lista.length) return '';
+  const nelPdf = lista.filter(function (x) { return x.f.nelPdf; }).length;
+  return '<div class="card"><div class="card-capo">Foto della giornata<span class="dx">' + nelPdf + ' su ' + lista.length + ' nel PDF</span></div>' +
+    filaFoto(s, lista, { segna: true }) + '</div>';
+}
+
+/* Le foto di questo sopralluogo, in una tendina chiusa: la galleria della giornata sta
+   sopra e le mostra già tutte. Gli ingressi (fotocamera e rullino) stanno sotto la striscia. */
 function cardFotoGiorno(s, conVerbale) {
   const foto = fotoNormali(s);
   const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
   let html = '';
   if (foto.length) {
     const tutte = nelPdf === foto.length;
-    // Fatto il verbale, sotto ogni miniatura compare la spunta "nel PDF": è il momento in cui serve scegliere.
-    html += '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
-      filaFoto(s, foto, { segna: conVerbale }) +
+    // La spunta "nel PDF" c'è sempre: una foto marcata entra nel verbale di giornata anche se questo passaggio non ha il suo verbale.
+    html += tendina('foto-' + s.id, 'Foto di questo sopralluogo',
+      '<div class="card"><div class="card-capo">' + (conVerbale ? 'Foto del verbale' : 'Foto di oggi') + '<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
+      filaFoto(s, foto, { segna: true }) +
       // Solo il tasto piccolo, a destra: il conteggio in testa dice già com'è messa.
-      (conVerbale || foto.length > 1 ? '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' : '') +
-      '</div>';
+      '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' +
+      '</div>', foto.length);
   }
-  html += ingressiFoto(s);
   return html;
 }
 
@@ -4502,7 +4682,6 @@ function vistaCantiereForm(id, idAzienda) {
       aziende.map(function (a) { return '<option value="' + h(a.codice) + '"' + ((v.azienda || '') === a.codice ? ' selected' : '') + '>' + h(a.nome) + '</option>'; }).join('') + '</select>' : '') +
     '<div class="due"><div><label class="eticampo">Stato</label><select class="campo" id="c-stato"><option value="attivo"' + (v.stato !== 'chiuso' ? ' selected' : '') + '>attivo</option><option value="chiuso"' + (v.stato === 'chiuso' ? ' selected' : '') + '>chiuso</option></select></div>' +
     '<div><label class="eticampo">Aperto il</label><input class="campo" id="c-aperto" type="date" value="' + h(v.aperto || '') + '"></div></div>' +
-    (c ? '<button class="btn btn-rosso" data-az="cantiere-elimina" data-id="' + h(c.id) + '" style="margin-top:24px">Elimina il cantiere</button>' : '') +
     '</div>';
   html += '<div class="barra"><button class="az verde" data-az="cantiere-salva" data-id="' + h(c ? c.id : '') + '">Salva</button></div>';
   return html;
@@ -4901,25 +5080,13 @@ async function creaPdf(idVerbale) {
   const ambito = document.getElementById('pdf-ambito').value;
   let verbali = [v], soloSezione = null, riassunto = '';
   if (modo === 'periodo' || (modo === 'sezione' && ambito === 'periodo')) {
-    verbali = valori(leggiTutto().verbali).filter(function (x) { return x.cantiere === v.cantiere && x.giorno >= dal && x.giorno <= al; });
-    /* Un giorno entra una volta sola: se ha il verbale di giornata vale quello, che
-       già mette insieme i sopralluoghi; se no i verbali dei singoli sopralluoghi. */
-    const giorniConGiornata = {};
-    verbali.forEach(function (x) { if (x.giornata) giorniConGiornata[x.giorno] = true; });
-    verbali = verbali.filter(function (x) { return x.giornata || !giorniConGiornata[x.giorno]; })
-      .sort(function (a, b) { return (a.giorno + a.ora).localeCompare(b.giorno + b.ora); });
+    verbali = verbaliDelPeriodo(v.cantiere, dal, al);
     if (!verbali.length) { avvisa('Nessun verbale nel periodo', 'att'); return; }
   }
   if (modo === 'sezione') soloSezione = quale;
   chiudiFoglio();
   avvisa('Preparo il PDF…');
-  if (modo === 'periodo' && verbali.length > 1 && chiaveAnthropic() && navigator.onLine) {
-    // Due righe in testa che dicono come è andato il periodo: le scrive Claude dai verbali.
-    try {
-      const testo = verbali.map(function (x) { return dataBreve(x.giorno) + ':\n' + sezioniPiene(x.sezioni).map(function (k) { return nomeSezione(k) + ': ' + x.sezioni[k]; }).join('\n'); }).join('\n\n');
-      riassunto = (await chiamaClaude(REGOLE_RIASSUNTO, 'Verbali:\n' + testo.slice(0, 20000), 800)).trim();
-    } catch (e) { riassunto = ''; }
-  }
+  if (modo === 'periodo') riassunto = await riassuntoPeriodo(verbali);
   let byte;
   try { byte = await costruisciPdf(verbali, soloSezione, riassunto, { dal: dal, al: al, modo: modo }); }
   catch (e) { avvisa('PDF non riuscito', 'err'); return; }
@@ -5292,6 +5459,16 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
   return await doc.save();
 }
 
+/* I sopralluoghi da cui un verbale prende foto e documenti: uno solo per il verbale di un
+   sopralluogo; per la giornata tutti i passaggi, nell'ordine di v.sopralluoghi, o per ora
+   se un verbale di giornata vecchio non lo porta. Lo stato del sopralluogo non conta. */
+function sopralluoghiDelVerbale(v, sops) {
+  if (!v.giornata) return sops.filter(function (x) { return x.codice === v.sopralluogo; });
+  if (!(v.sopralluoghi || []).length) return sopralluoghiDelGiorno(v.cantiere, v.giorno);
+  return v.sopralluoghi.map(function (k) { return sops.find(function (x) { return x.codice === k; }); })
+    .filter(Boolean);
+}
+
 /* Le foto marcate dei verbali richiesti, ricompresse per la stampa e già incorporate nel
    documento: { idVerbale: { chiaveSezione: [ { foto, img } ] } }. Una foto il cui file non
    c'è più (archiviata) entra lo stesso, senza immagine: il referto è informazione. */
@@ -5299,9 +5476,7 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
   const per = {};
   const sops = valori(leggiTutto().sopralluoghi);
   for (const v of verbali) {
-    const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
-    if (!s) continue;
-    for (const f of fotoNormali(s)) {
+    for (const s of sopralluoghiDelVerbale(v, sops)) for (const f of fotoNormali(s)) {
       if (!f.nelPdf) continue;
       const k = sezioneFoto(f);
       if (soloSezione && k !== soloSezione) continue;
@@ -5358,9 +5533,7 @@ async function preparaDocumentiPdf(doc, verbali) {
   const per = {};
   const sops = valori(leggiTutto().sopralluoghi);
   for (const v of verbali) {
-    const s = sops.find(function (x) { return x.codice === v.sopralluogo; });
-    if (!s) continue;
-    for (const f of documentiDi(s)) {
+    for (const s of sopralluoghiDelVerbale(v, sops)) for (const f of documentiDi(s)) {
       if (!f.nelPdf) continue;
       let img = null, pagine = null, fallito = false;
       if (f.file) {
@@ -5509,9 +5682,12 @@ async function scaricaRelazione(relId) {
 }
 
 /* ---------------- LA SETTIMANA ----------------
-   La settimana va da lunedì a domenica. Chiusa, foto e audio di quella settimana restano
-   nel telefono tre giorni: lunedì, martedì, mercoledì. Mercoledì il conto si chiude e il
-   materiale va mandato fuori. Scaricarlo prima si può sempre. */
+   La settimana va da lunedì a domenica. Passata, i suoi audio e le sue foto restano nel
+   telefono solo fino a mercoledì. Lunedì e martedì una riga in testa dice "Libera memoria":
+   fa i PDF che mancano — il verbale di giornata di ogni giorno, il verbale di settimana di
+   ogni cantiere — li manda fuori, e poi svuota audio e foto. Da mercoledì lo fa l'app da
+   sola: i PDF restano nell'archivio dentro l'app, audio e foto se ne vanno. Le foto da lì
+   in poi vivono nei PDF, col loro referto. Il testo e i verbali non si toccano mai. */
 
 // Il lunedì della settimana in cui cade una data.
 function lunediDi(iso) {
@@ -5519,32 +5695,34 @@ function lunediDi(iso) {
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return dataLocaleISO(d);
 }
-
-/* La settimana chiusa che aspetta di essere sistemata, oppure niente.
-   Prima di mercoledì non compare: i tre giorni non sono ancora passati. */
-function settimanaDaChiudere() {
-  const oggi = oggiISO();
-  if ((daISO(oggi).getDay() + 6) % 7 < 2) return null;
-  const lun = daISO(lunediDi(oggi));
+// Da lunedì a domenica, partendo dal lunedì.
+function settimanaDa(lunedi) {
+  const d = daISO(lunedi);
+  d.setDate(d.getDate() + 6);
+  return { inizio: lunedi, fine: dataLocaleISO(d) };
+}
+function settimanaScorsa() {
+  const lun = daISO(lunediDi(oggiISO()));
   lun.setDate(lun.getDate() - 7);
-  const inizio = dataLocaleISO(lun);
-  lun.setDate(lun.getDate() + 6);
-  const fine = dataLocaleISO(lun);
-  if (leggiLocale().settimane[inizio]) return null;
-  return { inizio: inizio, fine: fine };
+  return settimanaDa(dataLocaleISO(lun));
+}
+// Lunedì e martedì: la settimana scorsa aspetta "Libera memoria", se non è già a posto.
+function settimanaDaChiudere() {
+  if ((daISO(oggiISO()).getDay() + 6) % 7 > 1) return null;
+  const s = settimanaScorsa();
+  return leggiLocale().settimane[s.inizio] ? null : s;
 }
 
-// Quello che c'è dentro una settimana: le registrazioni e le foto di quei giorni.
+// Quello che c'è dentro una settimana: le registrazioni con l'audio e le foto di quei giorni.
 function materialeSettimana(inizio, fine) {
   const audio = [], foto = [];
   valori(leggiTutto().sopralluoghi).forEach(function (s) {
     if (s.giorno < inizio || s.giorno > fine) return;
     s.pezzi.forEach(function (p) { if (p.audio) audio.push({ sop: s, pezzo: p }); });
-    fotoDi(s).forEach(function (f) { if (f.file) foto.push({ sop: s, foto: f }); });
+    fotoDi(s).forEach(function (f) { foto.push({ sop: s, foto: f }); });
   });
   return { audio: audio, foto: foto };
 }
-
 async function pesoSettimana(inizio, fine) {
   const m = materialeSettimana(inizio, fine);
   const elenco = await elencaMedia();
@@ -5552,73 +5730,162 @@ async function pesoSettimana(inizio, fine) {
   elenco.forEach(function (x) { pesi[x.id] = x.peso || 0; });
   let byte = 0;
   m.audio.forEach(function (a) { byte += pesi[a.pezzo.audio.replace(/^idb:/, '')] || 0; });
-  m.foto.forEach(function (f) { byte += pesi[f.foto.file.replace(/^idb:/, '')] || 0; });
+  m.foto.forEach(function (f) { if (f.foto.file) byte += pesi[f.foto.file.replace(/^idb:/, '')] || 0; });
   return { audio: m.audio.length, foto: m.foto.length, byte: byte };
 }
+// Le settimane passate, fino a quella data, che hanno ancora audio o foto: dalla più vecchia.
+function settimaneConMateriale(fineUltima) {
+  const per = {};
+  valori(leggiTutto().sopralluoghi).forEach(function (s) {
+    if (s.giorno > fineUltima) return;
+    if (s.pezzi.some(function (p) { return p.audio; }) || fotoDi(s).length) per[lunediDi(s.giorno)] = true;
+  });
+  return Object.keys(per).sort().map(settimanaDa);
+}
 
-/* Manda fuori tutta la settimana in un colpo: audio e foto con i nomi già buoni.
-   Sul telefono si apre il foglio di condivisione e si sceglie la mail. */
-async function mandaSettimana(inizio, fine) {
-  avvisa('Preparo la settimana…');
-  const m = materialeSettimana(inizio, fine);
-  const file = [];
-  for (const a of m.audio) {
-    const blob = await leggiMedia(a.pezzo.audio);
-    if (!blob) continue;
-    const titolo = a.pezzo.titolo ? '_' + nomeFile(a.pezzo.titolo) : '';
-    file.push(new File([blob], a.sop.codice + '_' + a.sop.giorno + '_' + String(a.pezzo.ora || '').replace(':', '-') + titolo + '.webm', { type: blob.type || 'audio/webm' }));
+/* I PDF di una settimana: il verbale di giornata di ogni giorno lavorato, e il verbale di
+   settimana di ogni cantiere. Quelli che mancano si fanno adesso, verbali compresi; quelli
+   che ci sono già si prendono com'erano. Se un PDF non riesce, si dice quanti mancano:
+   con un buco non si svuota niente. */
+async function pdfDellaSettimana(inizio, fine) {
+  const schede = [];
+  let mancanti = 0;
+  const perCantiere = {};
+  valori(leggiTutto().sopralluoghi).forEach(function (s) {
+    if (s.giorno < inizio || s.giorno > fine) return;
+    (perCantiere[s.cantiere] = perCantiere[s.cantiere] || {})[s.giorno] = true;
+  });
+  for (const codice of Object.keys(perCantiere)) {
+    const c = cantierePerCodice(codice);
+    if (!c) continue;
+    for (const giorno of Object.keys(perCantiere[codice]).sort()) {
+      const vg = verbaleDiGiornata(codice, giorno) || scriviVerbaleGiornata(codice, giorno, '');
+      const p = vg && (pdfConChiave('verbale:' + vg.codice) || await pdfVerbale(vg));
+      if (p) schede.push(p); else mancanti++;
+    }
+    const ps = pdfConChiave('periodo:' + codice + ':' + inizio + ':' + fine) || await pdfPeriodo(c, inizio, fine);
+    if (ps) schede.push(ps); else mancanti++;
   }
-  for (const f of m.foto) {
-    const blob = await leggiMedia(f.foto.file);
-    if (!blob) continue;
-    const referto = primaRiga(f.foto.referto);
-    file.push(new File([blob], f.sop.codice + '_' + f.foto.giorno + '_' + String(f.foto.ora || '').replace(':', '-') + '_' + f.foto.codice + (referto ? '_' + nomeFile(referto) : '') + estensioneMedia(f.foto), { type: tipoMedia(f.foto, blob) }));
-  }
-  if (!file.length) { segnaSettimanaFatta(inizio, 'vuota'); avvisa('Niente da mandare', 'att'); aggiornaVista(); return; }
-  if (!(await portaFuori(file, 'CANTIERI · settimana del ' + dataSenzaAnno(inizio)))) return;
-  const adesso = adessoISO();
+  return { schede: schede, mancanti: mancanti };
+}
+
+/* Audio e foto di una settimana se ne vanno dal telefono. Le registrazioni restano come
+   righe senza file — il loro testo è già nelle sezioni — le foto spariscono del tutto:
+   da qui in poi vivono nei PDF. */
+async function svuotaSettimana(inizio, fine) {
   const loc = leggiLocale();
-  m.audio.forEach(function (a) { a.pezzo.scaricato = adesso; salva('sopralluogo', a.sop); });
-  m.foto.forEach(function (f) { f.foto.scaricato = adesso; salva('sopralluogo', f.sop); });
+  const oggi = oggiISO();
+  let tolti = 0;
+  for (const s of valori(leggiTutto().sopralluoghi)) {
+    if (s.giorno < inizio || s.giorno > fine) continue;
+    let toccato = false;
+    for (const p of s.pezzi) {
+      if (!p.audio) continue;
+      await cancellaMedia(p.audio);
+      p.audio = null; p.archiviato = oggi; toccato = true; tolti++;
+    }
+    const foto = fotoDi(s);
+    if (foto.length) {
+      const id = {};
+      foto.forEach(function (f) { id[f.id] = true; });
+      loc.coda = loc.coda.filter(function (l) { return !id[l.foto]; });
+      await cancellaFileFoto(s);
+      s.media = (s.media || []).filter(function (m) { return !(m && m.tipo === 'foto'); });
+      toccato = true; tolti += foto.length;
+    }
+    if (toccato) salva('sopralluogo', s);
+  }
+  salvaLocale();
+  return tolti;
+}
+
+/* "Libera memoria", a mano: i PDF della settimana escono dal foglio di condivisione
+   (mail, WhatsApp, salva), e solo dopo audio e foto si buttano. Annullando non si tocca niente. */
+async function liberaMemoria(inizio, fine) {
+  if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
+  const ok = await chiedi('Libera memoria?', 'Settimana ' + dataSenzaAnno(inizio) + ' – ' + dataSenzaAnno(fine) + ': si fanno i PDF che mancano (verbale di ogni giornata, verbale di settimana di ogni cantiere), li mandi fuori o li salvi, e poi audio e foto di quei giorni si tolgono dal telefono. Restano nei PDF.', 'Vai', 'rosso');
+  chiudiFoglio();
+  if (!ok) return;
+  avvisa('Preparo i PDF della settimana…');
+  const r = await pdfDellaSettimana(inizio, fine);
+  if (r.mancanti) { avvisa(r.mancanti + (r.mancanti === 1 ? ' PDF non riuscito' : ' PDF non riusciti') + ': non svuoto niente', 'err'); return; }
+  const file = [];
+  for (const p of r.schede) {
+    const blob = p.file ? await leggiMedia(p.file) : null;
+    if (blob) file.push(new File([blob], p.nome, { type: 'application/pdf' }));
+  }
+  if (file.length && !(await portaFuori(file, 'CANTIERI · settimana del ' + dataSenzaAnno(inizio)))) return;
+  const tolti = await svuotaSettimana(inizio, fine);
   segnaSettimanaFatta(inizio, 'mandata');
-  const tolti = await liberaSettimana(inizio, fine);
-  avvisa(file.length + ' file mandati fuori' + (tolti.tolte ? ', ' + tolti.tolte + ' liberati' : ''), 'ok');
-  if (tolti.restate) avvisa(tolti.restate + (tolti.restate === 1 ? ' giornata resta: manca il suo PDF' : ' giornate restano: manca il loro PDF'), 'att');
+  avvisa(file.length + ' PDF mandati fuori' + (tolti ? ' · ' + tolti + ' file liberati' : ''), 'ok');
   SETT_CONTO.inizio = null;
   await contaSettimana();
   aggiornaVista();
 }
 
-/* Si libera solo quello che è già dentro un PDF. Una giornata senza il suo verbale in PDF
-   tiene le sue foto: cancellarle vorrebbe dire perderle, e il PDF non le avrebbe mai viste.
-   Il documento resta comunque: codice, ora e referto, segnati come archiviati. */
-async function liberaSettimana(inizio, fine) {
-  const oggi = oggiISO();
-  let tolte = 0, restate = 0;
-  for (const s of valori(leggiTutto().sopralluoghi)) {
-    if (s.giorno < inizio || s.giorno > fine) continue;
-    if (!s.chiuso || !pdfPerSopralluogo(s.codice)) { restate++; continue; }
-    let toccato = false;
-    for (const p of s.pezzi) {
-      if (!p.audio) continue;
-      await cancellaMedia(p.audio);
-      p.audio = null; p.archiviato = oggi; toccato = true; tolte++;
-    }
-    for (const f of fotoDi(s)) {
-      if (!f.file) continue;
-      scordaFoto(f.file);
-      await cancellaMedia(f.file);
-      f.file = null; f.archiviato = oggi; toccato = true; tolte++;
-    }
-    if (toccato) salva('sopralluogo', s);
+/* Da mercoledì l'app chiude da sola le settimane passate che hanno ancora audio o foto:
+   fa i PDF che mancano, li tiene in archivio, e svuota. Se un PDF non riesce — manca la
+   rete e pdf-lib non c'è ancora — quella settimana aspetta la volta dopo. */
+async function pulisciSettimane() {
+  if ((daISO(oggiISO()).getDay() + 6) % 7 < 2 || !window.PDFLib) return;
+  let chiuse = 0;
+  for (const sett of settimaneConMateriale(settimanaScorsa().fine)) {
+    const r = await pdfDellaSettimana(sett.inizio, sett.fine);
+    if (r.mancanti) continue;
+    await svuotaSettimana(sett.inizio, sett.fine);
+    segnaSettimanaFatta(sett.inizio, 'automatica');
+    chiuse++;
   }
-  return { tolte: tolte, restate: restate };
+  if (chiuse) {
+    avvisa((chiuse === 1 ? 'Settimana passata chiusa' : chiuse + ' settimane passate chiuse') + ': PDF in archivio, audio e foto liberati', 'ok');
+    SETT_CONTO.inizio = null;
+    aggiornaVista();
+  }
 }
 
 function segnaSettimanaFatta(inizio, come) {
   const loc = leggiLocale();
   loc.settimane[inizio] = { come: come, quando: adessoISO() };
   salvaLocale();
+}
+
+/* Il PDF di un verbale — di giornata o di sopralluogo — fatto e archiviato senza domande. */
+async function pdfVerbale(v) {
+  if (!window.PDFLib) return null;
+  let byte;
+  try { byte = await costruisciPdf([v], null, '', { modo: 'questo' }); } catch (e) { return null; }
+  return await archiviaPdf(byte, (v.nome ? v.codice + '_' + nomeFile(v.nome) : v.codice) + '.pdf',
+    { chiave: 'verbale:' + v.codice, tipo: 'verbale', cantiere: v.cantiere, sopralluogo: v.sopralluogo || '', giorno: v.giorno });
+}
+/* I verbali di un cantiere in un periodo. Un giorno entra una volta sola: se ha il verbale
+   di giornata vale quello, che già mette insieme i sopralluoghi; se no i verbali dei
+   singoli sopralluoghi. */
+function verbaliDelPeriodo(codiceCantiere, dal, al) {
+  const tutti = valori(leggiTutto().verbali).filter(function (x) { return x.cantiere === codiceCantiere && x.giorno >= dal && x.giorno <= al; });
+  const giorniConGiornata = {};
+  tutti.forEach(function (x) { if (x.giornata) giorniConGiornata[x.giorno] = true; });
+  return tutti.filter(function (x) { return x.giornata || !giorniConGiornata[x.giorno]; })
+    .sort(function (a, b) { return (a.giorno + a.ora).localeCompare(b.giorno + b.ora); });
+}
+// Due righe in testa che dicono come è andato il periodo: le scrive Claude dai verbali, se può.
+async function riassuntoPeriodo(verbali) {
+  if (!(verbali.length > 1 && chiaveAnthropic() && navigator.onLine)) return '';
+  try {
+    const testo = verbali.map(function (x) { return dataBreve(x.giorno) + ':\n' + sezioniPiene(x.sezioni).map(function (k) { return nomeSezione(k) + ': ' + x.sezioni[k]; }).join('\n'); }).join('\n\n');
+    return (await chiamaClaude(REGOLE_RIASSUNTO, 'Verbali:\n' + testo.slice(0, 20000), 800)).trim();
+  } catch (e) { return ''; }
+}
+/* Il PDF di un periodo di un cantiere, fatto e archiviato: da lunedì a domenica è il
+   verbale di settimana. Senza verbali nel periodo non c'è niente da fare. */
+async function pdfPeriodo(c, dal, al) {
+  if (!window.PDFLib) return null;
+  const verbali = verbaliDelPeriodo(c.codice, dal, al);
+  if (!verbali.length) return null;
+  let byte;
+  try { byte = await costruisciPdf(verbali, null, await riassuntoPeriodo(verbali), { dal: dal, al: al, modo: 'periodo' }); }
+  catch (e) { return null; }
+  return await archiviaPdf(byte, c.codice + '_' + dal + '_' + al + '.pdf',
+    { chiave: 'periodo:' + c.codice + ':' + dal + ':' + al, tipo: 'periodo', cantiere: c.codice, sopralluogo: '', giorno: al });
 }
 
 /* ---------------- L'ARCHIVIO DEI PDF ----------------
@@ -5723,8 +5990,16 @@ function vistaLeggiPdf(idPdf) {
   const c = p.cantiere ? cantierePerCodice(p.cantiere) : null;
   const sop = p.sopralluogo ? valori(leggiTutto().sopralluoghi).find(function (z) { return z.codice === p.sopralluogo; }) : null;
   const v = sop ? verbaleDiSopralluogo(sop.codice) : null;
+  /* Indietro torna da dove si è venuti: il PDF di un sopralluogo o di una giornata
+     riporta nella giornata; gli altri (periodo, sezione, relazione) nell'elenco dei PDF. */
+  const vg = p.tipo === 'verbale' && !sop ? verbalePerCodice(String(p.chiave || '').replace(/^verbale:/, '')) : null;
+  const giornata = vg && vg.giornata ? (sopralluoghiDelGiorno(vg.cantiere, vg.giorno)[0] || null) : null;
+  let indietro = c ? '#/pdf/' + c.id : '#/';
+  if (sop) indietro = '#/giorno/' + sop.id;
+  else if (giornata) indietro = '#/giorno/' + giornata.id;
+  else if (vg && vg.giornata && giornataDi(vg.cantiere, vg.giorno)) indietro = '#/giornata/' + giornataDi(vg.cantiere, vg.giorno).id;
   let html = testata({
-    indietro: c ? '#/pdf/' + c.id : '#/',
+    indietro: indietro,
     titolo: p.nome || 'documento.pdf',
     sotto: h(dataBreve(p.giorno)) + ' · ' + h(pesoFile(p.peso || 0))
   });
@@ -5845,6 +6120,11 @@ const AZIONI = {
     applicaColori();
     disegna();
   },
+  // La freccetta di una fila: scorre di quasi una schermata, verso dove indica.
+  'scorri': function (el) {
+    const fila = el.parentElement;
+    fila.scrollBy({ left: Number(el.dataset.verso) * fila.clientWidth * 0.8, behavior: 'smooth' });
+  },
   'tendina': function (el) {
     const loc = leggiLocale();
     loc.tendine[el.dataset.chiave] = !loc.tendine[el.dataset.chiave];
@@ -5856,7 +6136,12 @@ const AZIONI = {
        subito dopo la riga intera. */
     let box = el.nextElementSibling;
     if (!box || box.hasAttribute('data-az')) box = el.parentElement ? el.parentElement.nextElementSibling : null;
-    if (box) { box.hidden = !aperta; box.querySelectorAll('textarea.corpo').forEach(cresciTextarea); }
+    if (box) {
+      box.hidden = !aperta;
+      box.querySelectorAll('textarea.corpo').forEach(cresciTextarea);
+      // Le file dentro erano nascoste: le freccette si ricalcolano adesso che hanno una larghezza.
+      box.querySelectorAll('.frec-s.sx').forEach(function (f) { f.parentElement.dispatchEvent(new Event('scroll')); });
+    }
   },
   'riascolta': function (el) { riascolta(el.dataset.sop, el.dataset.id); },
   // Apre o richiude una lista di audio lunga. La scelta sta con le tendine, così regge il ridisegno.
@@ -5984,6 +6269,19 @@ const AZIONI = {
   'sopralluogo-nome': function (el) { rinominaSopralluogo(el.dataset.id); },
   'sopralluogo-chiudi': function (el) { PUNTI_APERTI = null; chiudiFoglio(); chiudiGiornata(el.dataset.id); },
   'giornata-verbale': function (el) { faiVerbaleGiornata(el.dataset.cantiere, el.dataset.giorno); },
+  /* "Verbale di sopralluogo" sul passaggio aperto: il suo PDF. Se il verbale non è ancora
+     scritto si chiede di scriverlo; se il PDF non c'è si fa adesso; poi si apre. */
+  'sopralluogo-verbale': async function (el) {
+    const s = sopralluogo(el.dataset.id);
+    if (!s) return;
+    let vb = verbaleDiSopralluogo(s.codice);
+    if (!vb) { await chiudiGiornata(s.id); vb = verbaleDiSopralluogo(s.codice); }
+    if (!vb) return;
+    let p = pdfConChiave('verbale:' + vb.codice);
+    if (!p) { avvisa('Preparo il PDF…'); p = await pdfVerbale(vb); }
+    if (!p) { avvisa('PDF non riuscito', 'err'); return; }
+    vai('#/leggi/' + p.id);
+  },
   /* Visualizza: se il PDF c'è già si legge quello, se no si apre il verbale. */
   'verbale-vedi': function (el) {
     const v = verbale(el.dataset.id);
@@ -6111,17 +6409,35 @@ const AZIONI = {
     const ok = await chiedi('Eliminare il sopralluogo?', titoloSopralluogo(s) + ': si cancellano il sopralluogo, i suoi audio' + (s.verbale ? ' e il suo verbale' : '') + '.', 'Elimina', 'rosso');
     chiudiFoglio();
     if (!ok) return;
-    for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
-    await cancellaFileFoto(s);
-    const v = verbaleDiSopralluogo(s.codice);
-    if (v) cancella('verbale', v.id);
-    const c = cantierePerCodice(s.cantiere);
-    cancella('sopralluogo', s.id);
+    await eliminaSopralluogo(s);
     avvisa('Eliminato', 'ok');
-    vai(c ? '#/cantiere/' + c.id : '#/');
+    // Si resta nella giornata: su un altro passaggio se c'è, se no sulla giornata vuota.
+    const resto = sopralluoghiDelGiorno(s.cantiere, s.giorno);
+    vai(resto.length ? '#/giorno/' + resto[0].id : '#/giornata/' + giornataDi(s.cantiere, s.giorno).id);
+  },
+  'menu-punti': function (el) { apriPunti(el.dataset.chiave); },
+  'giornata-elimina': async function (el) {
+    PUNTI_APERTI = null;
+    const c = cantiere(el.dataset.cantiere);
+    if (!c) return;
+    const n = sopralluoghiDelGiorno(c.codice, el.dataset.giorno).length;
+    const ok = await chiediDueVolte('Eliminare la giornata?', dataBreve(el.dataset.giorno) + ': si cancellano ' + n + (n === 1 ? ' sopralluogo' : ' sopralluoghi') + ', i loro audio, le foto e i verbali.', 'Elimina');
+    if (!ok) return;
+    await eliminaGiornata(c.codice, el.dataset.giorno);
+    avvisa('Eliminata', 'ok');
+    if (ROTTA.nome === 'cantiere') aggiornaVista(); else vai('#/cantiere/' + c.id);
+  },
+  // Nella giornata vuota: nasce il primo sopralluogo e ci si entra.
+  'giornata-sopralluogo-nuovo': function (el) {
+    const c = cantierePerCodice(el.dataset.cantiere);
+    if (!c) return;
+    vai('#/giorno/' + creaSopralluogo(c, el.dataset.giorno, oraAdesso()).id);
   },
   // --- foto ---
-  'foto-scatta': function () { const f = document.getElementById('file-foto-scatta'); if (f) f.click(); },
+  // Il sopralluogo lo dice il tasto; dove non lo dice (schermata della foto) lo sa l'ingresso file.
+  'foto-scatta': function (el) { const f = document.getElementById('file-foto-scatta'); apriFotocamera(el.dataset.id || (f ? f.dataset.id : '')); },
+  'fotocamera-scatta': function () { return scattaFotocamera(); },
+  'fotocamera-chiudi': function () { chiudiFotocamera(); },
   'foto-rullino': function () { const f = document.getElementById('file-foto-rullino'); if (f) f.click(); },
   'foto-sezione': function (el) {
     const s = sopralluogo(el.dataset.sop);
@@ -6314,14 +6630,14 @@ const AZIONI = {
     const a = azienda(el.dataset.id);
     if (!a) return;
     const cant = cantieriDiAzienda(a.codice);
-    const ok = await chiedi('Eliminare ' + a.nome + '?', (cant.length ? 'I suoi ' + cant.length + ' cantieri non si cancellano: tornano fra quelli senza azienda.' : 'Non ha cantieri.'), 'Elimina', 'rosso');
-    chiudiFoglio();
+    PUNTI_APERTI = null;
+    const ok = await chiediDueVolte('Eliminare ' + a.nome + '?', (cant.length ? 'I suoi ' + cant.length + ' cantieri non si cancellano: tornano fra quelli senza azienda.' : 'Non ha cantieri.'), 'Elimina');
     if (!ok) return;
     for (const k of ['logo', 'firma', 'banda', 'bandaPiede']) if (a[k]) await cancellaMedia(a[k]);
     cant.forEach(function (c) { c.azienda = ''; salva('cantiere', c); });
     cancella('azienda', a.id);
     avvisa('Eliminata', 'ok');
-    vai('#/');
+    if (ROTTA.nome === 'dashboard' || ROTTA.nome === 'aziende') aggiornaVista(); else vai('#/');
   },
   'az-immagine': function (el) {
     AZ_IMMAGINE = { id: el.dataset.id, quale: el.dataset.quale };
@@ -6351,24 +6667,17 @@ const AZIONI = {
     if (!c) return;
     const sops = sopralluoghiDi(c.codice);
     const rel = relazioneDi(c.codice);
-    const ok = await chiedi('Eliminare ' + c.nome + '?', 'Si cancellano anche ' + sops.length + ' sopralluoghi, i verbali' + (rel ? ', la relazione' : '') + ' e la contabilità. Il listino resta.', 'Elimina tutto', 'rosso');
-    chiudiFoglio();
+    PUNTI_APERTI = null;
+    const ok = await chiediDueVolte('Eliminare ' + c.nome + '?', 'Si cancellano anche ' + sops.length + ' sopralluoghi, i verbali' + (rel ? ', la relazione' : '') + ' e la contabilità. Il listino resta.', 'Elimina tutto');
     if (!ok) return;
     if (rel) cancella('relazione', rel.id);
-    for (const s of sops) {
-      for (const p of s.pezzi) { if (p.audio) await cancellaMedia(p.audio); }
-      await cancellaFileFoto(s);
-      const v = verbaleDiSopralluogo(s.codice);
-      if (v) cancella('verbale', v.id);
-      cancella('sopralluogo', s.id);
-    }
+    // Giornata per giornata: vanno via i sopralluoghi, i verbali di giornata e le giornate stesse.
+    for (const g of giornateDi(c.codice)) await eliminaGiornata(c.codice, g.giorno);
     const cont = contabilitaDi(c.codice);
     if (cont) cancella('contabilita', cont.id);
-    // Anche i verbali di giornata: non hanno un sopralluogo, e resterebbero orfani.
-    verbaliDiGiornata(c.codice).forEach(function (v) { cancella('verbale', v.id); });
     cancella('cantiere', c.id);
     avvisa('Eliminato', 'ok');
-    vai('#/');
+    if (ROTTA.nome === 'cantiere') vai('#/'); else aggiornaVista();
   },
   // --- modo sviluppatore ---
   'pin-verifica': function () {
@@ -6433,17 +6742,17 @@ const AZIONI = {
     avvisa('Coda vuota', 'ok');
     aggiornaVista();
   },
-  'settimana-manda': function (el) { mandaSettimana(el.dataset.inizio, el.dataset.fine); },
-  'settimana-fatta': async function (el) {
-    const ok = await chiedi('Settimana già a posto?', 'Foto e audio di quella settimana si liberano dal telefono. Restano solo quelli delle giornate che non hanno ancora il loro PDF. Il testo e i verbali non si toccano.', 'Sì, ce l\'ho già', 'rosso');
-    chiudiFoglio();
-    if (!ok) return;
-    segnaSettimanaFatta(el.dataset.inizio, 'a mano');
-    const t = await liberaSettimana(el.dataset.inizio, el.dataset.fine);
-    if (t.tolte) avvisa(t.tolte + ' file liberati dal telefono', 'ok');
-    if (t.restate) avvisa(t.restate + (t.restate === 1 ? ' giornata resta: manca il suo PDF' : ' giornate restano: manca il loro PDF'), 'att');
-    SETT_CONTO.inizio = null;
-    contaSettimana().then(aggiornaVista);
+  'settimana-libera': function (el) { return liberaMemoria(el.dataset.inizio, el.dataset.fine); },
+  /* La domenica, nel cantiere: il verbale di settimana — il PDF da lunedì a oggi — si rifà
+     sempre da capo, così porta dentro le correzioni fatte nel frattempo. */
+  'settimana-verbale': async function (el) {
+    const c = cantiere(el.dataset.id);
+    if (!c) return;
+    if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
+    avvisa('Preparo il verbale di settimana…');
+    const p = await pdfPeriodo(c, lunediDi(oggiISO()), oggiISO());
+    if (!p) { avvisa('Nessun verbale in questa settimana', 'att'); return; }
+    apriFoglioPdfFatto(p, null);
   },
   'pdf-apri': function (el) { vai('#/leggi/' + el.dataset.id); },
   'pdf-leggi': function (el) { chiudiFoglio(); vai('#/leggi/' + el.dataset.id); },
@@ -6752,6 +7061,7 @@ function avvio() {
     if (ROTTA.nome !== 'listino' || ROTTA.parametri[1] !== 'carica') { IMPORT.passo = 'file'; IMPORT.errore = ''; }
     if (ROTTA.nome !== 'dev') devSbloccato = false;
     if (foglioAperto()) chiudiFoglio();
+    chiudiFotocamera();
     disegna();
     window.scrollTo(0, 0);
     if (ROTTA.nome === 'dev' && devSbloccato) misuraSpazio().then(aggiornaVista);
@@ -6780,7 +7090,8 @@ function avvio() {
   setInterval(controllaCambioGiorno, 60000);
   controllaPromemoria();
   misuraSpazio().then(function () { if (SPAZIO.avviso) aggiornaVista(); });
-  contaSettimana().then(function () { if (SETT_CONTO.inizio) aggiornaVista(); });
+  // Da mercoledì le settimane passate si chiudono da sole; poi si conta quella che aspetta "Libera memoria".
+  pulisciSettimane().then(contaSettimana).then(function () { if (SETT_CONTO.inizio) aggiornaVista(); });
 
   // La copia online: si legge senza token, e se c'è qualcosa da mandare si manda.
   if (navigator.onLine && repoGitHub()) {
