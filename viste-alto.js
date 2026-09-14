@@ -366,7 +366,7 @@ function tendinaBolleCantiere(c) {
   if (selBolleCant.giorno) lista = lista.filter(function (x) { return x.f.giorno === selBolleCant.giorno; });
   else if (selBolleCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.f.giorno) === selBolleCant.settimana; });
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nelle bolle" value="' + h(filtroBolleCant) + '" data-campo="filtro-bolle-cant" autocomplete="off"></div>';
-  html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false);
+  html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false, c.aperto || '');
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
   return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione);
@@ -621,7 +621,13 @@ Object.assign(AZIONI, {
   'parla-cantiere': function (el) { const c = cantiere(el.dataset.id); if (c) dettaSu(c); },
   'nuovo-sopralluogo': function (el) { const c = cantiere(el.dataset.id); if (!c) return; const s = sopralluogoPerDettare(c); vai('#/giorno/' + s.id); },
   // --- le sei tendine del cantiere (rework 14/09/2026) ---
-  'verbali-cant-sel': function (el) { selVerbaliCant[el.dataset.sel] = !selVerbaliCant[el.dataset.sel]; aggiornaVista(); },
+  // Un solo selettore alla volta: si spegne toccando di nuovo lo stesso (D13: nessuno acceso, cerca in tutti).
+  'verbali-cant-sel': function (el) {
+    const k = el.dataset.sel, era = selVerbaliCant[k];
+    selVerbaliCant = { sopralluogo: false, giornata: false, settimana: false };
+    if (!era) selVerbaliCant[k] = true;
+    aggiornaVista();
+  },
   'foto-cant-filtro': function (el) {
     // "giorno" qui non c'è: apre il calendario con un'azione sua (foto-cant-giorno-apri).
     if (el.dataset.tipo === 'tutte') selFotoCant = { giorno: '', settimana: '' };
@@ -635,10 +641,16 @@ Object.assign(AZIONI, {
     try { input.showPicker(); } catch (e) { input.focus(); try { input.click(); } catch (e2) {} }
   },
   'bolle-cant-filtro': function (el) {
+    // "giorno" qui non c'è: apre il calendario con un'azione sua (bolle-cant-giorno-apri).
     if (el.dataset.tipo === 'tutte') selBolleCant = { giorno: '', settimana: '' };
-    else if (el.dataset.tipo === 'giorno') selBolleCant = { giorno: oggiISO(), settimana: '' };
     else selBolleCant = { giorno: '', settimana: lunediDi(oggiISO()) };
     aggiornaVista();
+  },
+  // Il pulsante "giorno" di Bolle apre il calendario nativo, come in Foto.
+  'bolle-cant-giorno-apri': function (el) {
+    const input = document.getElementById(el.dataset.input);
+    if (!input) return;
+    try { input.showPicker(); } catch (e) { input.focus(); try { input.click(); } catch (e2) {} }
   },
   'doc-cant-sel': function (el) { selDocCant = el.dataset.sel; aggiornaVista(); },
   // Un solo tasto "＋ documento": chiede se è il registro firme o un documento generale, poi apre lo scanner con quel genere.
