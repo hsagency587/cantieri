@@ -78,11 +78,6 @@ function vistaAziendaForm(id) {
     '<label class="eticampo">Nome breve</label><input class="campo" id="a-nome" value="' + h(v.nome) + '" placeholder="es. Edil Rossi" autocomplete="off"' + (a ? '' : ' autofocus') + '>' +
     '<label class="eticampo">Ragione sociale</label><input class="campo" id="a-ragione" value="' + h(v.ragione || '') + '" placeholder="es. Edil Rossi S.r.l." autocomplete="off">' +
     '<label class="eticampo">Tecnico</label><input class="campo" id="a-tecnico" value="' + h(v.tecnico || '') + '" placeholder="es. Geom. Mario Rossi" autocomplete="off">' +
-    /* La firma del tecnico sta con il suo nome: è quella che va in fondo a ogni
-       verbale. Si scansiona da qui (foglio bianco, fotocamera o file). */
-    (a ? '<label class="eticampo">Firma del tecnico</label><div class="az-firma">' +
-      (a.firma ? '<img data-foto="' + h(a.firma) + '" alt="">' : '<div class="vuoto">niente</div>') +
-      '<button class="btn" data-az="az-immagine" data-id="' + h(a.id) + '" data-quale="firma"><span class="ico ico-firma"></span> ' + (a.firma ? 'Cambia la firma' : 'Scansiona la firma') + '</button></div>' : '') +
     '<label class="eticampo">Partita IVA</label><input class="campo" id="a-piva" value="' + h(v.piva || '') + '" autocomplete="off">' +
     '<label class="eticampo">Indirizzo</label><input class="campo" id="a-ind" value="' + h(v.indirizzo || '') + '" autocomplete="off">' +
     '<div class="due"><div><label class="eticampo">Telefono</label><input class="campo" id="a-tel" type="tel" value="' + h(v.telefono || '') + '" autocomplete="off"></div>' +
@@ -92,6 +87,13 @@ function vistaAziendaForm(id) {
     '<label class="eticampo">Note</label><textarea class="campo auto" id="a-note" rows="2">' + h(v.note || '') + '</textarea>' +
     '</div>';
   if (a) {
+    /* I tecnici dell'azienda (D5): più di uno, ognuno con nome, ruolo e firma sua.
+       Alla chiusura di un sopralluogo si sceglie chi ha chiuso, e si usa la sua firma (D6). */
+    html += '<div class="card"><div class="card-capo">Tecnici<span class="dx">le firme dei verbali</span></div>' +
+      (a.tecnici && a.tecnici.length ? a.tecnici.map(function (t) {
+        return '<button class="riga" data-az="tecnico-modifica" data-id="' + h(a.id) + '" data-tecnico="' + h(t.id) + '"><span class="desc">' + h(t.nome) + '<small>' + h(t.ruolo || '—') + ' · ' + (t.firma ? 'firma pronta' : 'senza firma') + '</small></span><span class="frec">›</span></button>';
+      }).join('') : '<div class="card-corpo" style="color:var(--muted)">Nessun tecnico ancora.</div>') +
+      '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="tecnico-nuovo" data-id="' + h(a.id) + '">＋ aggiungi tecnico</button></div></div>';
     /* La banda intera: l'immagine che il cliente ha già, con dentro logo, dati e
        tutto il resto. Se c'è, va in cima e in fondo a ogni pagina del PDF al posto
        della carta intestata costruita a pezzi. */
@@ -108,19 +110,48 @@ function vistaAziendaForm(id) {
       '<div class="az-slot"><div class="et">Logo</div>' +
       (a.logo ? '<img data-foto="' + h(a.logo) + '" alt="">' : '<div class="vuoto">niente</div>') +
       '<button class="btn medio" data-az="az-immagine" data-id="' + h(a.id) + '" data-quale="logo">' + (a.logo ? 'Cambia' : 'Metti') + '</button></div>' +
-      '</div><div class="card-piede">Il logo va in cima al PDF, la firma del tecnico (qui sopra) in fondo.</div></div>' +
+      '</div><div class="card-piede">Il logo va in cima al PDF. La firma in fondo è del tecnico scelto alla chiusura del sopralluogo (qui sopra, Tecnici).</div></div>' +
       '<input type="file" accept="image/*" id="file-azienda" hidden data-campo="file-azienda" data-id="' + h(a.id) + '">' +
+      /* Documenti azienda (4.3): loghi, direttive, pdf, brochure — solo qui, mai nei
+         documenti di un cantiere o di una giornata (D14). */
+      tendinaConAzione('doc-az-' + a.id, 'Documenti azienda',
+        ((a.documenti || []).length
+          ? '<div class="card">' + scorrevole((a.documenti || []).map(function (d) {
+              return '<div class="ordine"><button class="desc" data-az="azienda-doc-apri" data-id="' + h(a.id) + '" data-doc="' + h(d.id) + '">' + h(d.nome || 'Documento') + '<small>' + h(pesoFile(d.peso || 0)) + '</small></button>' +
+                '<button class="stato pill cod puntini" data-az="azienda-doc-elimina" data-id="' + h(a.id) + '" data-doc="' + h(d.id) + '" aria-label="Elimina">✕</button></div>';
+            }).join('')) + '</div>'
+          : '<div class="vuoto-stato">Nessun documento azienda.</div>'),
+        (a.documenti || []).length,
+        '<button class="pill cod" data-az="azienda-doc-inserisci" data-id="' + h(a.id) + '">＋ documento</button>') +
+      '<input type="file" accept="image/*,application/pdf" id="file-azienda-doc" hidden data-campo="file-azienda-doc" data-id="' + h(a.id) + '">' +
       '<div class="modulo"><button class="btn btn-rosso" data-az="azienda-elimina" data-id="' + h(a.id) + '">Elimina l\'azienda</button></div>';
   }
   html += '<div class="barra"><button class="az verde" data-az="azienda-salva" data-id="' + h(a ? a.id : '') + '">Salva</button></div>';
   return html;
 }
 
+// Il foglio per aggiungere o correggere un tecnico: nome, ruolo, e — solo se già salvato — la firma.
+function apriFoglioTecnico(idAzienda, idTecnico) {
+  const a = azienda(idAzienda);
+  if (!a) return;
+  const t = idTecnico ? (a.tecnici || []).find(function (x) { return x.id === idTecnico; }) : null;
+  apriFoglio('<h2>' + (t ? 'Modifica tecnico' : 'Nuovo tecnico') + '</h2>' +
+    '<label class="eticampo">Nome e cognome</label><input class="campo" id="t-nome" value="' + h(t ? t.nome : '') + '" placeholder="es. Geom. Mario Rossi" autocomplete="off" autofocus>' +
+    '<label class="eticampo">Ruolo</label><input class="campo" id="t-ruolo" value="' + h(t ? t.ruolo || '' : '') + '" placeholder="es. Geometra, Ingegnere" autocomplete="off">' +
+    (t ? '<label class="eticampo">Firma</label><div class="az-firma">' +
+      (t.firma ? '<img data-foto="' + h(t.firma) + '" alt="">' : '<div class="vuoto">niente</div>') +
+      '<button class="btn" data-az="tecnico-firma" data-id="' + h(a.id) + '" data-tecnico="' + h(t.id) + '"><span class="ico ico-firma"></span> ' + (t.firma ? 'Cambia la firma' : 'Scansiona la firma') + '</button></div>' : '') +
+    '<div class="righe"><button class="btn btn-ok" data-az="tecnico-salva" data-id="' + h(a.id) + '" data-tecnico="' + h(t ? t.id : '') + '">Salva</button>' +
+    (t ? '<button class="btn btn-rosso" data-az="tecnico-elimina" data-id="' + h(a.id) + '" data-tecnico="' + h(t.id) + '">Elimina</button>' : '') + '</div>' +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
+}
+
 function vistaDashboard(idAzienda) {
   const db = leggiTutto();
   const loc = leggiLocale();
   const oggi = oggiISO();
-  const f = senzaAccenti(filtroCantieri);
+  // 4.4: senza il campo di ricerca (nascosto per un'azienda) non si filtra: si vedono tutti i suoi cantieri.
+  const f = idAzienda ? '' : senzaAccenti(filtroCantieri);
   const base = idAzienda === 'senza' ? cantieriSenzaAzienda() : (idAzienda ? cantieriDiAzienda((azienda(idAzienda) || {}).codice) : valori(db.cantieri));
   const tutti = base.filter(function (c) {
     if (!f) return true;
@@ -145,7 +176,8 @@ function vistaDashboard(idAzienda) {
     // Chi ha scelto di saltare le aziende trova qui il modo di tornarci: piccolo, senza colore.
     if (aziendeTutte().length) html += '<button class="link blocco" data-az="vai" data-a="#/aziende" style="text-align:left"><span class="ico ico-edificio"></span> Aziende</button>';
   }
-  html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca cantiere, committente, indirizzo" value="' + h(filtroCantieri) + '" data-campo="filtro-cantieri" autocomplete="off"></div>';
+  // 4.4: nella schermata di un'azienda via la ricerca dei cantieri — resta solo su tutti i cantieri.
+  if (!az) html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca cantiere, committente, indirizzo" value="' + h(filtroCantieri) + '" data-campo="filtro-cantieri" autocomplete="off"></div>';
 
   if (SPAZIO.avviso) html += '<div class="avviso">Spazio quasi pieno: scarica audio e foto vecchi. <button class="link" data-az="vai" data-a="#/dev" style="min-height:auto">Apri</button></div>';
   if (!navigator.onLine) html += '<div class="avviso">Manca la rete: si registra e si salva lo stesso, la trascrizione parte quando torna.</div>';
@@ -182,102 +214,80 @@ function vistaDashboard(idAzienda) {
   return html;
 }
 
-/* ---------------- CANTIERE: i giorni ---------------- */
-function vistaCantiere(id) {
-  const c = cantiere(id);
-  if (!c) return vistaDashboard();
-  const loc = leggiLocale();
-  loc.ultimoCantiere = c.id; salvaLocale();
-  const sops = sopralluoghiDi(c.codice);
-  const nVerbali = sops.filter(function (s) { return s.chiuso; }).length;
-  const cont = contabilitaDi(c.codice);
-  const totale = totaleContabilita(cont);
-  const oggi = oggiISO();
-  /* Committente e indirizzo stanno su una riga sola sotto il titolo:
-     erano due righe corte incolonnate a sinistra con mezzo schermo vuoto a destra. */
-  let html = testata({ indietro: '#/', titolo: c.nome,
-    sotto: h(c.committente) + (c.indirizzo ? ' · ' + h(c.indirizzo) : ''),
-    destra: '<button class="pill ' + (c.stato === 'chiuso' ? 'grigia' : 'cod') + '" data-az="vai" data-a="#/modifica-cantiere/' + h(c.id) + '">' + (c.stato === 'chiuso' ? 'chiuso' : 'modifica') + '</button>' });
-  // "giorni" conta le giornate, non i passaggi: tre sopralluoghi in un giorno sono un giorno.
-  html += '<div class="numeri"><div class="n"><div class="v">' + giornateDi(c.codice).length + '</div><div class="k">' + plurale(giornateDi(c.codice).length, 'giorno', 'giorni') + '</div></div>' +
-    '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">' + plurale(nVerbali, 'verbale', 'verbali') + '</div></div>' +
-    '<div class="n"><div class="v fatto">' + h(compatto(totale)) + '</div><div class="k">contabilità €</div></div></div>';
-  // Un cantiere chiuso ha la sua relazione in testa, prima dei giorni: è la cosa che si va a leggere.
-  const rel = c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
-  if (c.stato === 'chiuso') {
-    if (rel) {
-      // La card si tocca per leggere la relazione; i tre tasti sotto fanno il resto.
-      const pdfRel = pdfConChiave('relazione:' + rel.codice);
-      html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
-        '<div class="fila"><span class="pill ok">chiuso</span><span class="mini">' + rel.giorni.length + ' ' + plurale(rel.giorni.length, 'giorno', 'giorni') + ' · ' + h(euro(rel.numeri.totale)) + '</span></div></div>' +
-        '<div class="griglia tre">' +
-        '<button class="btn" data-az="vai" data-a="' + (pdfRel ? '#/leggi/' + h(pdfRel.id) : '#/relazione/' + h(rel.id)) + '">Visualizza</button>' +
-        tastoEsporta('rel-' + rel.id) +
-        '<button class="btn" data-az="vai" data-a="#/modifica-relazione/' + h(rel.id) + '">Correggi</button></div>' + vociEsporta('rel-' + rel.id, 'esporta-pdf-relazione', rel.id, 'relazione-scarica', rel.id) + '</div>';
-    }
-    else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni, con i conti</div></div></div>';
-  }
-  /* Le due card "＋": il sopralluogo di oggi (se non c'è ancora) e il verbale di settimana,
-     una di fianco all'altra su una riga sola quando ci sono tutte e due. Il verbale di
-     settimana compare da sabato alle 10 fino a domenica, se la settimana ha almeno due
-     verbali di giornata, e sparisce una volta fatto — solo in questo cantiere. Per rifarlo:
-     i puntini della sua card nella casella Verbali. */
-  const adesso = new Date();
-  const finestraSettimana = adesso.getDay() === 0 || (adesso.getDay() === 6 && adesso.getHours() >= 10);
-  const cardOggi = !sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso'
-    ? '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p></div></div>' : '';
-  const cardSett = finestraSettimana && c.stato !== 'chiuso' && verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunediDi(oggi) && v.giorno <= oggi; }).length >= 2 && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)
-    ? '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale settimanale</p></div></div>' : '';
-  html += cardOggi && cardSett ? '<div class="due-card">' + cardOggi + cardSett + '</div>' : cardOggi + cardSett;
-  /* Rilievi e bolle si prendono pensando al cantiere, non alla giornata: qui il tasto sta
-     in chiaro, e quello che si detta o si scansiona finisce nel giorno di oggi. */
-  /* Due piani. Quello del cantiere raccoglie i rilievi e i documenti che valgono
-     per tutto il lavoro: quelli presi da qui nascono già così, quelli di una
-     giornata ci arrivano quando li porti dentro tu. Il piano della giornata resta
-     nella giornata. */
-  /* Del cantiere: quello che vale per tutto il lavoro, non per una giornata sola.
-     I rilievi in un blocco e le scansioni sotto: la categoria con cui sono stati
-     presi non conta più, una volta che sono qui. */
-  // Un rilievo appena dettato da qui si fa vedere qui, prima del resto.
-  html += cardRilieviNuovi({ cantiere: c.codice });
-  /* Ordini, bolle, verbali e rilievi di tutto il lavoro stanno in quattro tendine,
-     due per riga: compaiono solo se dentro c'è qualcosa, e dentro si scorre. */
-  const rilCant = String(c.rilievi || '').trim();
-  const docCant = documentiTutti(c);
-  const vistaVerbali = verbaliInVista(c); const verbCant = vistaVerbali.settimane.concat(vistaVerbali.giornate);
-  html += grigliaTendine([
-    tendinaOrdini(c),
-    docCant.length ? tendina('bolle-' + c.id, 'Bolle',
-      '<div class="card">' + scorrevole(docCant.map(rigaDocumentoHtml).join('')) +
-      '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="vai" data-a="#/documenti/' + h(c.id) + '">Cerca nelle bolle</button></div></div>', docCant.length) : '',
-    verbCant.length ? tendina('verbali-' + c.id, 'Verbali', strisciaVerbaliGiornata(c), verbCant.length) : '',
-    rilCant ? tendina('rilievi-' + c.id, 'Rilievi',
-      '<div class="card">' + scorrevole('<div class="card-corpo">' + testoElenco(c.rilievi, true) + '</div>') +
-      '<div class="card-piede"><button class="link" style="margin-left:auto" data-az="rilievo-cantiere-svuota" data-id="' + h(c.id) + '">svuota i rilievi</button></div></div>', righeElenco(c.rilievi).length) : ''
-  ]);
-  if (c.stato !== 'chiuso') {
-    html += '<div class="card"><div class="griglia">' +
-      '<button class="btn" data-az="detta-rilievo" data-cantiere="' + h(c.id) + '" data-sezione="rilievi_ordine"><span class="ico ico-righello"></span> Rilievo d\'ordine</button>' +
-      '<button class="btn" data-az="detta-rilievo" data-cantiere="' + h(c.id) + '" data-sezione="rilievi_contabilita"><span class="ico ico-calcolatrice"></span> Rilievo da contabilità</button>' +
-      '<button class="btn" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla"><span class="ico ico-documento"></span> Bolla</button>' +
-      '</div></div>' + ingressiDocumento(null);
-  }
+/* ---------------- CANTIERE: le sei tendine (rework 14/09/2026) ---------------- */
+/* Una tendina con, sulla stessa riga del tasto che apre, un secondo tasto a
+   destra: "Rileva bolla" (Bolle), "＋ documento" (Documenti), "＋ crea"
+   (Rilevamento d'ordine). Stesso schema della riga dell'azienda in Aziende
+   (apre + "apri"): il click su .tend lo sa già gestire (ui.js, tendina()). */
+function tendinaConAzione(chiave, etichetta, contenuto, n, azioneHtml) {
+  const aperta = !!leggiLocale().tendine[chiave];
+  const att = n && typeof n === 'object'; if (att) n = n.n;
+  return '<div class="riga az-capo">' +
+    '<button class="apre tend" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
+    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span>' + (n != null ? '<span class="n' + (att ? ' att' : '') + '">' + h(n) + '</span>' : '') + '</button>' +
+    azioneHtml + '</div>' +
+    '<div' + (aperta ? '' : ' hidden') + '>' + contenuto + '</div>';
+}
 
-  /* Le giornate, dalla più recente, raggruppate per mese. Una riga per data: i
-     passaggi di un giorno stanno dentro la giornata, non nell'elenco — se no
-     "Oggi" compariva tre volte. La riga si apre sul primo passaggio del giorno,
-     che ha già la striscia con gli altri. */
-  let meseCorrente = null;
-  giornateDi(c.codice).forEach(function (g) {
+// La riga di un documento (bolla, registro firme, documento generale): niente più fornitore/numero letti, l'OCR è tolto.
+function rigaDocumentoHtml(v) {
+  const f = v.f;
+  return '<button class="riga" data-az="vai" data-a="#/foto/' + h(v.sop.id) + '/' + h(f.id) + '">' +
+    '<span class="desc">' + h(GENERI[f.genere] || 'Documento') +
+    '<small>' + h(dataSenzaAnno(f.giorno)) + ', ' + h(oraCorta(f.ora)) + (f.formato === 'pdf' ? ' · ' + h(paginePdf(f)) : '') + '</small></span>' +
+    '<span class="frec">›</span></button>';
+}
+
+/* ---- Tendina 1: Verbali ---- */
+// Sopralluoghi, verbali di giornata e verbali settimanali di tutto il cantiere, in un elenco solo.
+function verbaliCercabili(c) {
+  const lista = [];
+  valori(leggiTutto().verbali).forEach(function (v) {
+    if (v.cantiere !== c.codice) return;
+    lista.push({ tipo: v.giornata ? 'giornata' : 'sopralluogo', v: v, giorno: v.giorno });
+  });
+  pdfDi(c.codice).filter(function (p) { return p.tipo === 'periodo'; }).forEach(function (p) {
+    const k = String(p.chiave || '').split(':');
+    lista.push({ tipo: 'settimana', pdf: p, giorno: k[3] || p.giorno, dal: k[2] || '', al: k[3] || '' });
+  });
+  return lista.sort(function (a, b) { return String(b.giorno).localeCompare(String(a.giorno)); });
+}
+function rigaVerbaleCercabileHtml(x) {
+  if (x.tipo === 'settimana') {
+    return '<button class="riga" data-az="vai" data-a="#/leggi/' + h(x.pdf.id) + '"><span class="desc">Settimana ' + h(giornoMese(x.dal) + ' – ' + giornoMese(x.al)) + '<small>verbale settimanale</small></span><span class="frec">›</span></button>';
+  }
+  const s = x.tipo === 'sopralluogo' ? valori(leggiTutto().sopralluoghi).find(function (z) { return z.codice === x.v.sopralluogo; }) : null;
+  const a = x.tipo === 'giornata' ? '#/verbale/' + h(x.v.id) : (s ? '#/giorno/' + h(s.id) : '#/verbale/' + h(x.v.id));
+  return '<button class="riga" data-az="vai" data-a="' + a + '"><span class="desc">' + h(titoloVerbale(x.v, true)) +
+    '<small>' + (x.tipo === 'giornata' ? 'verbale di giornata' : 'verbale di sopralluogo') + ' · ' + h(dataSenzaAnno(x.giorno)) + '</small></span><span class="frec">›</span></button>';
+}
+let filtroVerbaliCant = '';
+let selVerbaliCant = { sopralluogo: false, giornata: false, settimana: false };
+function tendinaVerbaliCantiere(c) {
+  const tutti = verbaliCercabili(c);
+  if (!tutti.length) return '';
+  const q = senzaAccenti(filtroVerbaliCant.trim());
+  const attivi = ['sopralluogo', 'giornata', 'settimana'].filter(function (k) { return selVerbaliCant[k]; });
+  // D13: nessun selettore acceso = si cerca in tutti i documenti.
+  const filtrati = tutti.filter(function (x) {
+    if (attivi.length && attivi.indexOf(x.tipo) === -1) return false;
+    if (q && senzaAccenti(titoloVerbale(x.tipo === 'settimana' ? { nome: 'Settimana ' + x.dal + ' ' + x.al } : x.v, true)).indexOf(q) === -1) return false;
+    return true;
+  });
+  const pill = function (k, etichetta) { return '<button class="pill cod' + (selVerbaliCant[k] ? ' on' : '') + '" data-az="verbali-cant-sel" data-sel="' + k + '">' + etichetta + '</button>'; };
+  let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei verbali" value="' + h(filtroVerbaliCant) + '" data-campo="filtro-verbali-cant" autocomplete="off"></div>' +
+    '<div class="periodi">' + pill('sopralluogo', 'sopralluoghi') + pill('giornata', 'verbali di giornata') + pill('settimana', 'verbali settimanali') + '</div>';
+  html += filtrati.length ? '<div class="card">' + scorrevole(filtrati.map(rigaVerbaleCercabileHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun verbale con questi filtri.</div>';
+  return tendina('verbali-' + c.id, 'Verbali', html, tutti.length);
+}
+
+/* ---- Tendina 2: Giornate ---- */
+// La stessa riga-giorno di sempre, spostata qui dentro: contenuto identico, solo il posto cambia.
+function giorniCantiereHtml(c, lista, oggi) {
+  let html = '', meseCorrente = null;
+  lista.forEach(function (g) {
     const mese = g.giorno.slice(0, 7);
-    if (mese !== meseCorrente) {
-      if (meseCorrente) html += '</div>';
-      /* Niente più intestazione del mese: la data sta già davanti a ogni riga.
-         Fra un mese e l'altro basta una riga di stacco. */
-      html += '<div class="card mese">';
-      meseCorrente = mese;
-    }
-    // Una sezione piena in un passaggio qualsiasi conta una volta sola per la giornata.
+    if (mese !== meseCorrente) { if (meseCorrente) html += '</div>'; html += '<div class="card mese">'; meseCorrente = mese; }
     const piene = CHIAVI_SEZIONI.filter(function (k) { return g.sops.some(function (s) { return String(s.sezioni[k] || '').trim(); }); }).length;
     const audio = g.sops.reduce(function (t, s) { return t + s.pezzi.length; }, 0);
     const anteprima = g.sops.map(function (s) {
@@ -287,8 +297,6 @@ function vistaCantiere(id) {
     if (g.verbale) pill = '<span class="pill ok">' + h(g.verbale.nome || 'verbale di giornata') + '</span>';
     else if (g.giorno === oggi) pill = '<span class="pill blu">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
-    /* Una giornata senza sopralluoghi si apre sulla sua schermata vuota. La riga è un
-       div e non un bottone, così i tre puntini possono starci dentro. */
     const apre = g.sops.length ? '#/giorno/' + g.sops[0].id : '#/giornata/' + giornataDi(c.codice, g.giorno).id;
     const chiavePunti = 'giornata-' + c.codice + '-' + g.giorno;
     html += '<div class="giorno' + (g.giorno === oggi && !g.verbale ? ' oggi' : '') + '" data-az="vai" data-a="' + h(apre) + '">' +
@@ -298,15 +306,166 @@ function vistaCantiere(id) {
       vociPunti(chiavePunti, 'giornata-elimina', 'data-cantiere="' + h(c.id) + '" data-giorno="' + h(g.giorno) + '"');
   });
   if (meseCorrente) html += '</div>';
+  return html;
+}
+// Sopra le giornate, i verbali di giornata della settimana in corso, in verticale (come le vecchie liste audio).
+function tendinaGiornateCantiere(c, oggi) {
+  const lunedi = lunediDi(oggi);
+  const lista = giornateDi(c.codice).filter(function (g) { return g.giorno >= lunedi; });
+  const verbaliSett = verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunedi; });
+  let html = '';
+  if (verbaliSett.length) {
+    html += '<div class="card"><div class="card-capo">Verbali di giornata<span class="dx">' + verbaliSett.length + '</span></div>' +
+      scorrevole(verbaliSett.map(function (v) {
+        return '<button class="riga" data-az="vai" data-a="#/verbale/' + h(v.id) + '"><span class="desc">' + h(titoloVerbale(v, true)) + '<small>' + h(dataSenzaAnno(v.giorno)) + '</small></span><span class="frec">›</span></button>';
+      }).join('')) + '</div>';
+  }
+  html += lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
+  return tendina('giornate-' + c.id, 'Giornate', html, lista.length);
+}
+
+/* ---- Tendina 3: Foto — Tendina 4: Bolle (stesso principio, filtri per giorno/settimana) ---- */
+function fotoTutteCantiere(c) {
+  const lista = [];
+  sopralluoghiDi(c.codice).forEach(function (s) { fotoNormali(s).forEach(function (f) { lista.push({ sop: s, f: f, giorno: s.giorno }); }); });
+  return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
+}
+function pilloleGiornoSettimana(lista, chiave, sel, tuttiGenerici) {
+  const giorni = Array.from(new Set(lista.map(function (x) { return x.giorno; }))).sort().reverse().slice(0, 10);
+  const settimane = Array.from(new Set(lista.map(function (x) { return lunediDi(x.giorno); }))).sort().reverse().slice(0, 8);
+  return '<div class="periodi">' +
+    '<button class="pill cod' + (!sel.giorno && !sel.settimana ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="tutte">tutte</button>' +
+    giorni.map(function (g) { return '<button class="pill cod' + (sel.giorno === g ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="giorno" data-v="' + g + '">' + h(dataSenzaAnno(g)) + '</button>'; }).join('') +
+    settimane.map(function (sm) { return '<button class="pill cod' + (sel.settimana === sm ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="settimana" data-v="' + sm + '">sett. ' + h(giornoMese(sm)) + '</button>'; }).join('') +
+    '</div>';
+}
+let selFotoCant = { giorno: '', settimana: '' };
+function tendinaFotoCantiere(c) {
+  const tutti = fotoTutteCantiere(c);
+  if (!tutti.length) return '';
+  let lista = tutti;
+  if (selFotoCant.giorno) lista = lista.filter(function (x) { return x.giorno === selFotoCant.giorno; });
+  else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
+  const html = pilloleGiornoSettimana(tutti, 'foto-cant', selFotoCant) + (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">Nessuna foto con questo filtro.</div>');
+  return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length);
+}
+let selBolleCant = { giorno: '', settimana: '' };
+function tendinaBolleCantiere(c) {
+  const tutti = documentiTutti(c.codice, 'bolla');
+  let lista = tutti;
+  if (selBolleCant.giorno) lista = lista.filter(function (x) { return x.f.giorno === selBolleCant.giorno; });
+  else if (selBolleCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.f.giorno) === selBolleCant.settimana; });
+  const conGiorno = tutti.map(function (x) { return { giorno: x.f.giorno }; });
+  const html = pilloleGiornoSettimana(conGiorno, 'bolle-cant', selBolleCant) +
+    (lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questo filtro.</div>');
+  const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
+  return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, tutti.length, azione);
+}
+
+/* ---- Tendina 5: Documenti ---- */
+// Documenti del cantiere che non sono verbali, non sono bolle, non sono documenti azienda:
+// registro firme (presenze) e documenti generali. I nomi delle categorie sono un segnaposto (Fase 6.7).
+function documentiGeneraliCantiere(c) {
+  const lista = [];
+  sopralluoghiDi(c.codice).forEach(function (s) { documentiDi(s).forEach(function (f) { if (f.genere === 'firme' || f.genere === 'documento') lista.push({ sop: s, f: f }); }); });
+  return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
+}
+let selDocCant = 'tutti';
+function tendinaDocumentiCantiere(c) {
+  const tutti = documentiGeneraliCantiere(c);
+  const lista = selDocCant === 'presenze' ? tutti.filter(function (x) { return x.f.genere === 'firme'; })
+    : selDocCant === 'generali' ? tutti.filter(function (x) { return x.f.genere === 'documento'; }) : tutti;
+  const pill = function (k, etichetta) { return '<button class="pill cod' + (selDocCant === k ? ' on' : '') + '" data-az="doc-cant-sel" data-sel="' + k + '">' + etichetta + '</button>'; };
+  let html = '<div class="periodi">' + pill('tutti', 'tutti') + pill('presenze', 'presenze') + pill('generali', 'documenti generali') + '</div>';
+  html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun documento.</div>';
+  const azione = '<button class="pill cod" data-az="doc-cant-inserisci" data-id="' + h(c.id) + '">＋ documento</button>';
+  return tendinaConAzione('doc-cant-' + c.id, 'Documenti', html, tutti.length, azione);
+}
+
+/* ---- Tendina 6: Rilevamento d'ordine ---- */
+/* Il testo dettato (sop.sezioni.rilievi_ordine) letto da ogni sopralluogo del cantiere,
+   dal più recente: non una copia, lo stesso contenuto della giornata e del verbale (D8).
+   Niente filtri: solo ordinamento per data e ricerca. */
+function rilieviOrdineTutti(c) {
+  const lista = [];
+  sopralluoghiDi(c.codice).forEach(function (s) {
+    const t = String(s.sezioni.rilievi_ordine || '').trim();
+    if (t) lista.push({ sop: s, testo: t, giorno: s.giorno });
+  });
+  return lista.sort(function (a, b) { return String(b.giorno).localeCompare(String(a.giorno)); });
+}
+let filtroRilieviCant = '';
+function tendinaRilievoOrdineCantiere(c) {
+  const tutti = rilieviOrdineTutti(c);
+  const q = senzaAccenti(filtroRilieviCant.trim());
+  const lista = q ? tutti.filter(function (x) { return senzaAccenti(dataSenzaAnno(x.giorno)).indexOf(q) !== -1; }) : tutti;
+  let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca per data" value="' + h(filtroRilieviCant) + '" data-campo="filtro-rilievi-cant" autocomplete="off"></div>';
+  html += lista.length ? '<div class="card">' + scorrevole(lista.map(function (x) {
+    return '<button class="riga" data-az="vai" data-a="#/giorno/' + h(x.sop.id) + '"><span class="desc">' + h(dataEstesa(x.giorno)) + '<small>' + h(primaRiga(x.testo)) + '</small></span><span class="frec">›</span></button>';
+  }).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun rilevamento con questa data.' : 'Nessun rilevamento ancora.') + '</div>';
+  const azione = '<button class="pill cod" data-az="crea-rilevamento" data-id="' + h(c.id) + '">＋ crea</button>';
+  return tendinaConAzione('rilord-cant-' + c.id, "Rilevamento d'ordine", html, tutti.length, azione);
+}
+
+/* ---------------- CANTIERE: la pagina ---------------- */
+function vistaCantiere(id) {
+  const c = cantiere(id);
+  if (!c) return vistaDashboard();
+  const loc = leggiLocale();
+  loc.ultimoCantiere = c.id; salvaLocale();
+  const sops = sopralluoghiDi(c.codice);
+  const nVerbali = sops.filter(function (s) { return s.chiuso; }).length;
+  const oggi = oggiISO();
+  /* Committente e indirizzo stanno su una riga sola sotto il titolo. Resta com'è (6.1). */
+  let html = testata({ indietro: '#/', titolo: c.nome,
+    sotto: h(c.committente) + (c.indirizzo ? ' · ' + h(c.indirizzo) : ''),
+    destra: '<button class="pill ' + (c.stato === 'chiuso' ? 'grigia' : 'cod') + '" data-az="vai" data-a="#/modifica-cantiere/' + h(c.id) + '">' + (c.stato === 'chiuso' ? 'chiuso' : 'modifica') + '</button>' });
+  // Due box, non più tre: via la contabilità (6.1, D1).
+  html += '<div class="numeri"><div class="n"><div class="v">' + giornateDi(c.codice).length + '</div><div class="k">' + plurale(giornateDi(c.codice).length, 'giorno', 'giorni') + '</div></div>' +
+    '<div class="n"><div class="v">' + nVerbali + '</div><div class="k">' + plurale(nVerbali, 'verbale', 'verbali') + '</div></div></div>';
+  // Un cantiere chiuso ha la sua relazione in testa, prima di tutto: resta com'era.
+  const rel = c.stato === 'chiuso' ? relazioneDi(c.codice) : null;
+  if (c.stato === 'chiuso') {
+    if (rel) {
+      const pdfRel = pdfConChiave('relazione:' + rel.codice);
+      html += '<div class="card tocca" data-az="vai" data-a="#/relazione/' + h(rel.id) + '"><div class="card-in"><p class="titolo">Relazione di fine cantiere</p><div class="sotto">chiuso il ' + h(dataEstesa(rel.chiusura)) + '</div>' +
+        '<div class="fila"><span class="pill ok">chiuso</span><span class="mini">' + rel.giorni.length + ' ' + plurale(rel.giorni.length, 'giorno', 'giorni') + '</span></div></div>' +
+        '<div class="griglia tre">' +
+        '<button class="btn" data-az="vai" data-a="' + (pdfRel ? '#/leggi/' + h(pdfRel.id) : '#/relazione/' + h(rel.id)) + '">Visualizza</button>' +
+        tastoEsporta('rel-' + rel.id) +
+        '<button class="btn" data-az="vai" data-a="#/modifica-relazione/' + h(rel.id) + '">Correggi</button></div>' + vociEsporta('rel-' + rel.id, 'esporta-pdf-relazione', rel.id, 'relazione-scarica', rel.id) + '</div>';
+    }
+    else html += '<div class="card tocca piu" data-az="relazione-genera" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Scrivi la relazione di fine cantiere</p><div class="sotto">il riepilogo di tutti i giorni</div></div></div>';
+  }
+  // Le due card "＋": resta com'era.
+  const adesso = new Date();
+  const finestraSettimana = adesso.getDay() === 0 || (adesso.getDay() === 6 && adesso.getHours() >= 10);
+  const cardOggi = !sops.some(function (s) { return s.giorno === oggi; }) && c.stato !== 'chiuso'
+    ? '<div class="card tocca piu" data-az="nuovo-sopralluogo" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Sopralluogo di oggi</p></div></div>' : '';
+  const cardSett = finestraSettimana && c.stato !== 'chiuso' && verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunediDi(oggi) && v.giorno <= oggi; }).length >= 2 && !pdfConChiave('periodo:' + c.codice + ':' + lunediDi(oggi) + ':' + oggi)
+    ? '<div class="card tocca piu" data-az="settimana-verbale" data-id="' + h(c.id) + '"><div class="card-in"><p class="titolo">＋ Verbale settimanale</p></div></div>' : '';
+  html += cardOggi && cardSett ? '<div class="due-card">' + cardOggi + cardSett + '</div>' : cardOggi + cardSett;
+  // Un rilievo appena dettato da qui si fa vedere qui, prima delle tendine: resta com'era.
+  html += cardRilieviNuovi({ cantiere: c.codice });
+  /* Le sei tendine, in quest'ordine (Fase 6.2): Verbali, Giornate, Foto, Bolle,
+     Documenti, Rilevamento d'ordine. Verbali e Foto si nascondono se non c'è
+     ancora niente; le altre restano sempre — servono anche solo per inserire. */
+  html += '<div class="tendine una">' +
+    tendinaVerbaliCantiere(c) +
+    tendinaGiornateCantiere(c, oggi) +
+    tendinaFotoCantiere(c) +
+    tendinaBolleCantiere(c) +
+    tendinaDocumentiCantiere(c) +
+    tendinaRilievoOrdineCantiere(c) +
+    '</div>' + ingressiDocumento(null);
   if (!sops.length) html += '<div class="vuoto-stato">' + (c.stato === 'chiuso' ? 'Nessun sopralluogo in questo cantiere.' : 'Nessun sopralluogo ancora. Premi il bottone verde e parla.') + '</div>';
-  html += tendina('voci-' + c.id, 'Contabilità · Note · Listino',
+  // Note e PDF archiviati: non fra le sei tendine (non previste dal documento), restano raggiungibili da qui.
+  html += tendina('voci-' + c.id, 'Note · PDF archiviati',
     '<div class="card">' +
-    '<button class="riga" data-az="vai" data-a="#/contabilita/' + h(c.id) + '"><span class="desc">Contabilità<small>' + (cont ? cont.righe.length + ' righe · ' + h(euro(totale)) : 'ancora vuota') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/note/' + h(c.id) + '"><span class="desc">Note del cantiere<small>' + h(primaRiga(c.note) || 'nessuna nota') + '</small></span><span class="frec">›</span></button>' +
-    '<button class="riga" data-az="vai" data-a="#/listino/' + h(c.id) + '"><span class="desc">Listini<small>' + h(listiniDelCantiere(c).map(function (l) { return l.nome; }).join(' · ') || 'nessuno') + '</small></span><span class="frec">›</span></button>' +
     '<button class="riga" data-az="vai" data-a="#/pdf/' + h(c.id) + '"><span class="desc">PDF archiviati<small>' + (pdfDi(c.codice).length ? pdfDi(c.codice).length + ' documenti · ' + h(pesoFile(pdfDi(c.codice).reduce(function (t, p) { return t + (p.peso || 0); }, 0))) : 'ancora nessuno') + '</small></span><span class="frec">›</span></button>' +
     '</div>');
-  // In fondo, come nel giorno: l'azione grande a sinistra, "Chiudi" stretto a destra. Chiuso, al posto di Detta c'è la relazione, e Riapri.
+  // In fondo, come nel giorno: resta com'era.
   if (!REG.attiva) {
     if (c.stato === 'chiuso') {
       html += '<div class="barra">' + (rel ? '<button class="az verde" data-az="vai" data-a="#/relazione/' + h(rel.id) + '">Apri la relazione</button>' : '<button class="az verde" data-az="relazione-genera" data-id="' + h(c.id) + '">Scrivi la relazione</button>') +
@@ -334,7 +493,7 @@ function vistaNote(idCantiere) {
 /* ---------------- CERCA NEI DOCUMENTI ---------------- */
 let filtroDocumenti = '';
 function vistaCerca() {
-  let html = testata({ indietro: '#/', titolo: 'Cerca nei documenti', sotto: 'sopralluoghi, verbali, contabilità, bolle' });
+  let html = testata({ indietro: '#/', titolo: 'Cerca nei documenti', sotto: 'sopralluoghi, verbali, bolle' });
   html += '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Una parola: ferro, ponteggio, Rossi…" value="' + h(filtroDocumenti) + '" data-campo="filtro-documenti" autocomplete="off" autofocus></div>';
   const q = senzaAccenti(filtroDocumenti.trim());
   if (q.length < 2) { html += '<div class="vuoto-stato">Scrivi almeno due lettere.</div>'; return html; }
@@ -360,21 +519,12 @@ function vistaCerca() {
       if (st) risultati.push({ cantiere: v.cantiere, cosa: v.nome || (v.giornata ? 'Giornata' : 'Verbale'), giorno: v.giorno, dove: nomeSezione(k), testo: st, a: s ? '#/giorno/' + s.id : '#/verbale/' + v.id });
     });
   });
-  // I documenti: per fornitore e numero letti sulla bolla, e per il testo del referto.
+  // I documenti: per il testo del referto (bolla, registro firme, documento generale).
   valori(db.sopralluoghi).forEach(function (s) {
     documentiDi(s).forEach(function (f) {
-      const st = stralcio(intestazioneBolla(f)) || stralcio(f.referto);
+      const st = stralcio(f.referto);
       if (st) risultati.push({ cantiere: s.cantiere, cosa: GENERI[f.genere] || 'Documento', giorno: f.giorno, dove: 'Documento', testo: st, a: '#/foto/' + s.id + '/' + f.id });
     });
-  });
-  valori(db.contabilita).forEach(function (c) {
-    const cant = cantierePerCodice(c.cantiere);
-    (c.righe || []).forEach(function (r) {
-      const st = stralcio(r.descrizione);
-      if (st) risultati.push({ cantiere: c.cantiere, cosa: 'Contabilità', giorno: c.aggiornato.slice(0, 10), dove: 'Riga di contabilità', testo: st, a: cant ? '#/contabilita/' + cant.id : '#/' });
-    });
-    const sn = stralcio(c.note);
-    if (sn) risultati.push({ cantiere: c.cantiere, cosa: 'Contabilità', giorno: c.aggiornato.slice(0, 10), dove: 'Note della contabilità', testo: sn, a: cant ? '#/contabilita/' + cant.id : '#/' });
   });
   valori(db.cantieri).forEach(function (c) {
     const sn = stralcio(c.note);
@@ -456,14 +606,74 @@ Object.assign(AZIONI, {
   'detta-cantiere-scelto': function (el) { const c = cantiere(el.dataset.id); chiudiFoglio(); if (c) return dettaSu(c); },
   'parla-cantiere': function (el) { const c = cantiere(el.dataset.id); if (c) dettaSu(c); },
   'nuovo-sopralluogo': function (el) { const c = cantiere(el.dataset.id); if (!c) return; const s = sopralluogoPerDettare(c); vai('#/giorno/' + s.id); },
-  'rilievo-cantiere-svuota': async function (el) {
-    const c = cantiere(el.dataset.id);
-    if (!c) return;
-    const si = await chiedi('Svuoto questo rilievo del cantiere?', 'Quello scritto nelle giornate resta dov\'è.', 'Svuota', 'rosso');
+  // --- le sei tendine del cantiere (rework 14/09/2026) ---
+  'verbali-cant-sel': function (el) { selVerbaliCant[el.dataset.sel] = !selVerbaliCant[el.dataset.sel]; aggiornaVista(); },
+  'foto-cant-filtro': function (el) {
+    if (el.dataset.tipo === 'tutte') selFotoCant = { giorno: '', settimana: '' };
+    else if (el.dataset.tipo === 'giorno') selFotoCant = { giorno: el.dataset.v, settimana: '' };
+    else selFotoCant = { giorno: '', settimana: el.dataset.v };
+    aggiornaVista();
+  },
+  'bolle-cant-filtro': function (el) {
+    if (el.dataset.tipo === 'tutte') selBolleCant = { giorno: '', settimana: '' };
+    else if (el.dataset.tipo === 'giorno') selBolleCant = { giorno: el.dataset.v, settimana: '' };
+    else selBolleCant = { giorno: '', settimana: el.dataset.v };
+    aggiornaVista();
+  },
+  'doc-cant-sel': function (el) { selDocCant = el.dataset.sel; aggiornaVista(); },
+  // Un solo tasto "＋ documento": chiede se è il registro firme o un documento generale, poi apre lo scanner con quel genere.
+  'doc-cant-inserisci': function (el) {
+    apriFoglio('<h2>Che documento è?</h2>' +
+      '<button class="btn btn-ok" data-az="doc-cant-scegli" data-genere="firme" data-id="' + h(el.dataset.id) + '">Registro firme<br><small style="font-weight:400">il foglio presenze fotografato</small></button>' +
+      '<button class="btn" data-az="doc-cant-scegli" data-genere="documento" data-id="' + h(el.dataset.id) + '" style="margin-top:8px">Documento generale</button>' +
+      '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
+  },
+  'doc-cant-scegli': function (el) {
     chiudiFoglio();
-    if (!si) return;
-    c.rilievi = '';
-    salva('cantiere', c);
+    const pseudo = { dataset: { cantiere: el.dataset.id, genere: el.dataset.genere } };
+    apriScanner(pseudo, 'file-doc-scatta');
+  },
+  // Crea rilevamento senza dettatura: entra come nota nel sopralluogo aperto di oggi (D9), come un rilievo dettato.
+  'crea-rilevamento': function (el) {
+    apriFoglio('<h2>Crea rilevamento</h2>' +
+      '<textarea class="corpo" id="rilord-testo" placeholder="una voce per riga" autofocus></textarea>' +
+      '<div class="righe"><button class="btn btn-ok" data-az="crea-rilevamento-salva" data-id="' + h(el.dataset.id) + '">Salva</button></div>' +
+      '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
+  },
+  'crea-rilevamento-salva': function (el) {
+    const c = cantiere(el.dataset.id);
+    const campo = document.getElementById('rilord-testo');
+    const testo = campo ? campo.value.trim() : '';
+    chiudiFoglio();
+    if (!c || !testo) return;
+    const s = sopralluogoPerDettare(c);
+    s.sezioni.rilievi_ordine = aggiungiTesto(s.sezioni.rilievi_ordine, testo);
+    salva('sopralluogo', s);
+    allineaVerbale(s, ['rilievi_ordine']);
+    avvisa('Rilevamento creato', 'ok');
+    aggiornaVista();
+  },
+  // --- documenti azienda (4.3): loghi, direttive, pdf, brochure — solo qui (D14) ---
+  'azienda-doc-inserisci': function (el) { const f = document.getElementById('file-azienda-doc'); if (f) f.click(); },
+  'azienda-doc-apri': async function (el) {
+    const a = azienda(el.dataset.id);
+    const d = a && (a.documenti || []).find(function (x) { return x.id === el.dataset.doc; });
+    if (!d) return;
+    const blob = d.file ? await leggiMedia(d.file) : null;
+    if (!blob) { avvisa('Il file non c\'è più', 'err'); return; }
+    scaricaBlob(blob, d.nome || 'documento');
+  },
+  'azienda-doc-elimina': async function (el) {
+    const a = azienda(el.dataset.id);
+    const d = a && (a.documenti || []).find(function (x) { return x.id === el.dataset.doc; });
+    if (!a || !d) return;
+    const ok = await chiedi('Eliminare ' + (d.nome || 'questo documento') + '?', '', 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    if (d.file) await cancellaMedia(d.file);
+    a.documenti = a.documenti.filter(function (x) { return x !== d; });
+    salva('azienda', a);
+    avvisa('Eliminato', 'ok');
     aggiornaVista();
   },
   // --- chiusura del cantiere e relazione ---
@@ -507,6 +717,8 @@ Object.assign(AZIONI, {
     const ok = await chiediDueVolte('Eliminare ' + a.nome + '?', (cant.length ? 'I suoi ' + cant.length + ' cantieri non si cancellano: tornano fra quelli senza azienda.' : 'Non ha cantieri.'), 'Elimina');
     if (!ok) return;
     for (const k of ['logo', 'firma', 'banda', 'bandaPiede']) if (a[k]) await cancellaMedia(a[k]);
+    for (const t of (a.tecnici || [])) if (t.firma) await cancellaMedia(t.firma);
+    for (const d of (a.documenti || [])) if (d.file) await cancellaMedia(d.file);
     cant.forEach(function (c) { c.azienda = ''; salva('cantiere', c); });
     cancella('azienda', a.id);
     avvisa('Eliminata', 'ok');
@@ -516,6 +728,45 @@ Object.assign(AZIONI, {
     AZ_IMMAGINE = { id: el.dataset.id, quale: el.dataset.quale };
     const f = document.getElementById('file-azienda');
     if (f) f.click();
+  },
+  // --- tecnici e le loro firme (D5) ---
+  'tecnico-nuovo': function (el) { apriFoglioTecnico(el.dataset.id, null); },
+  'tecnico-modifica': function (el) { apriFoglioTecnico(el.dataset.id, el.dataset.tecnico); },
+  'tecnico-firma': function (el) {
+    AZ_IMMAGINE = { id: el.dataset.id, quale: 'firma', tecnico: el.dataset.tecnico };
+    const f = document.getElementById('file-azienda');
+    if (f) f.click();
+  },
+  'tecnico-salva': function (el) {
+    const a = azienda(el.dataset.id);
+    if (!a) return;
+    const nome = ((document.getElementById('t-nome') || {}).value || '').trim();
+    const ruolo = ((document.getElementById('t-ruolo') || {}).value || '').trim();
+    if (!nome) { avvisa('Manca il nome', 'att'); return; }
+    if (!Array.isArray(a.tecnici)) a.tecnici = [];
+    let t = el.dataset.tecnico ? a.tecnici.find(function (x) { return x.id === el.dataset.tecnico; }) : null;
+    const nuovo = !t;
+    if (!t) { t = { id: nuovoId(), firma: null }; a.tecnici.push(t); }
+    t.nome = nome; t.ruolo = ruolo;
+    salva('azienda', a);
+    chiudiFoglio();
+    avvisa('Salvato', 'ok');
+    // Appena creato si riapre la stessa scheda: solo ora che ha un id può prendere la firma.
+    if (nuovo) apriFoglioTecnico(a.id, t.id); else aggiornaVista();
+  },
+  'tecnico-elimina': async function (el) {
+    const a = azienda(el.dataset.id);
+    const t = a && (a.tecnici || []).find(function (x) { return x.id === el.dataset.tecnico; });
+    chiudiFoglio();
+    if (!a || !t) return;
+    const ok = await chiedi('Eliminare ' + (t.nome || 'questo tecnico') + '?', 'Le firme già messe sui verbali chiusi restano.', 'Elimina', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    if (t.firma) await cancellaMedia(t.firma);
+    a.tecnici = a.tecnici.filter(function (x) { return x !== t; });
+    salva('azienda', a);
+    avvisa('Eliminato', 'ok');
+    aggiornaVista();
   },
   'cantiere-salva': function (el) {
     const nome = document.getElementById('c-nome').value.trim();
@@ -552,13 +803,11 @@ Object.assign(AZIONI, {
     const sops = sopralluoghiDi(c.codice);
     const rel = relazioneDi(c.codice);
     PUNTI_APERTI = null;
-    const ok = await chiediDueVolte('Eliminare ' + c.nome + '?', 'Si cancellano anche ' + sops.length + ' sopralluoghi, i verbali' + (rel ? ', la relazione' : '') + ' e la contabilità. Il listino resta.', 'Elimina tutto');
+    const ok = await chiediDueVolte('Eliminare ' + c.nome + '?', 'Si cancellano anche ' + sops.length + ' sopralluoghi e i verbali' + (rel ? ' e la relazione' : '') + '. Il listino resta.', 'Elimina tutto');
     if (!ok) return;
     if (rel) cancella('relazione', rel.id);
     // Giornata per giornata: vanno via i sopralluoghi, i verbali di giornata e le giornate stesse.
     for (const g of giornateDi(c.codice)) await eliminaGiornata(c.codice, g.giorno);
-    const cont = contabilitaDi(c.codice);
-    if (cont) cancella('contabilita', cont.id);
     cancella('cantiere', c.id);
     avvisa('Eliminato', 'ok');
     if (ROTTA.nome === 'cantiere') vai('#/'); else aggiornaVista();
