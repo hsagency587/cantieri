@@ -1132,6 +1132,13 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .tend .et{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 /* Il numero sulla linguetta diventa giallo quando dentro c'è qualcosa da guardare. */
 .tend .n.att{color:var(--gold);font-weight:700}
+/* Una tendina con un tasto piccolo a fianco (Bolle, Documenti, Rilevamento
+   d'ordine, Documenti azienda): stessa riga, stessa altezza — il tasto piccolo
+   non ingrandisce niente, e la riga resta larga come le altre tendine. */
+.tend-riga{display:flex;align-items:center;gap:var(--s2);width:100%}
+.tend-riga > .tend{flex:1;min-width:0;margin:0}
+.tend-riga > .pill.cod{flex:0 0 auto;min-height:30px;padding:0 11px;font-size:var(--t1);text-transform:none;letter-spacing:.02em}
+.tendine.una > .tend-riga,.tendine.una > .tend-riga + div{grid-column:1/-1}
 
 /* ============ 30. LE DIFFERENZE NEGLI ORDINI ============
    Arrivato meno di quanto ordinato, o arrivato senza ordine: la riga è gialla,

@@ -121,7 +121,6 @@ function vistaAziendaForm(id) {
                 '<button class="stato pill cod puntini" data-az="azienda-doc-elimina" data-id="' + h(a.id) + '" data-doc="' + h(d.id) + '" aria-label="Elimina">✕</button></div>';
             }).join('')) + '</div>'
           : '<div class="vuoto-stato">Nessun documento azienda.</div>'),
-        (a.documenti || []).length,
         '<button class="pill cod" data-az="azienda-doc-inserisci" data-id="' + h(a.id) + '">＋ documento</button>') +
       '<input type="file" accept="image/*,application/pdf" id="file-azienda-doc" hidden data-campo="file-azienda-doc" data-id="' + h(a.id) + '">' +
       '<div class="modulo"><button class="btn btn-rosso" data-az="azienda-elimina" data-id="' + h(a.id) + '">Elimina l\'azienda</button></div>';
@@ -215,16 +214,16 @@ function vistaDashboard(idAzienda) {
 }
 
 /* ---------------- CANTIERE: le sei tendine (rework 14/09/2026) ---------------- */
-/* Una tendina con, sulla stessa riga del tasto che apre, un secondo tasto a
-   destra: "Rileva bolla" (Bolle), "＋ documento" (Documenti), "＋ crea"
-   (Rilevamento d'ordine). Stesso schema della riga dell'azienda in Aziende
-   (apre + "apri"): il click su .tend lo sa già gestire (ui.js, tendina()). */
-function tendinaConAzione(chiave, etichetta, contenuto, n, azioneHtml) {
+/* Una tendina come tendina(), con un secondo tasto piccolo sulla stessa riga:
+   "Rileva bolla" (Bolle), "＋ documento" (Documenti), "＋ crea" (Rilevamento
+   d'ordine). Stessa misura delle altre tendine: niente numero (non richiesto),
+   il tasto .tend resta un .tend, il tasto piccolo gli sta a fianco senza
+   ingrandire la riga (vedi .tend-riga in stile.css). */
+function tendinaConAzione(chiave, etichetta, contenuto, azioneHtml) {
   const aperta = !!leggiLocale().tendine[chiave];
-  const att = n && typeof n === 'object'; if (att) n = n.n;
-  return '<div class="riga az-capo">' +
-    '<button class="apre tend" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
-    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span>' + (n != null ? '<span class="n' + (att ? ' att' : '') + '">' + h(n) + '</span>' : '') + '</button>' +
+  return '<div class="tend-riga">' +
+    '<button class="tend" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
+    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span></button>' +
     azioneHtml + '</div>' +
     '<div' + (aperta ? '' : ' hidden') + '>' + contenuto + '</div>';
 }
@@ -359,7 +358,7 @@ function tendinaBolleCantiere(c) {
   const html = pilloleGiornoSettimana(conGiorno, 'bolle-cant', selBolleCant) +
     (lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questo filtro.</div>');
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
-  return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, tutti.length, azione);
+  return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione);
 }
 
 /* ---- Tendina 5: Documenti ---- */
@@ -379,7 +378,7 @@ function tendinaDocumentiCantiere(c) {
   let html = '<div class="periodi">' + pill('tutti', 'tutti') + pill('presenze', 'presenze') + pill('generali', 'documenti generali') + '</div>';
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun documento.</div>';
   const azione = '<button class="pill cod" data-az="doc-cant-inserisci" data-id="' + h(c.id) + '">＋ documento</button>';
-  return tendinaConAzione('doc-cant-' + c.id, 'Documenti', html, tutti.length, azione);
+  return tendinaConAzione('doc-cant-' + c.id, 'Documenti', html, azione);
 }
 
 /* ---- Tendina 6: Rilevamento d'ordine ---- */
@@ -404,7 +403,7 @@ function tendinaRilievoOrdineCantiere(c) {
     return '<button class="riga" data-az="vai" data-a="#/giorno/' + h(x.sop.id) + '"><span class="desc">' + h(dataEstesa(x.giorno)) + '<small>' + h(primaRiga(x.testo)) + '</small></span><span class="frec">›</span></button>';
   }).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun rilevamento con questa data.' : 'Nessun rilevamento ancora.') + '</div>';
   const azione = '<button class="pill cod" data-az="crea-rilevamento" data-id="' + h(c.id) + '">＋ crea</button>';
-  return tendinaConAzione('rilord-cant-' + c.id, "Rilevamento d'ordine", html, tutti.length, azione);
+  return tendinaConAzione('rilord-cant-' + c.id, "Rilevamento d'ordine", html, azione);
 }
 
 /* ---------------- CANTIERE: la pagina ---------------- */
