@@ -329,14 +329,14 @@ function fotoTutteCantiere(c) {
   sopralluoghiDi(c.codice).forEach(function (s) { fotoNormali(s).forEach(function (f) { lista.push({ sop: s, f: f, giorno: s.giorno }); }); });
   return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
 }
-function pilloleGiornoSettimana(lista, chiave, sel, tuttiGenerici) {
-  const giorni = Array.from(new Set(lista.map(function (x) { return x.giorno; }))).sort().reverse().slice(0, 10);
-  const settimane = Array.from(new Set(lista.map(function (x) { return lunediDi(x.giorno); }))).sort().reverse().slice(0, 8);
-  return '<div class="periodi">' +
-    '<button class="pill cod' + (!sel.giorno && !sel.settimana ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="tutte">tutte</button>' +
-    giorni.map(function (g) { return '<button class="pill cod' + (sel.giorno === g ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="giorno" data-v="' + g + '">' + h(dataSenzaAnno(g)) + '</button>'; }).join('') +
-    settimane.map(function (sm) { return '<button class="pill cod' + (sel.settimana === sm ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="settimana" data-v="' + sm + '">sett. ' + h(giornoMese(sm)) + '</button>'; }).join('') +
-    '</div>';
+/* Tre stati fissi, non un elenco di ogni giorno/settimana passati: tutte (se richiesta),
+   giorno (oggi), settimana (quella corrente, da lunedì). Un tocco, un filtro solo. */
+function pilloleGiornoSettimana(chiave, sel, conTutte) {
+  const pill = function (tipo, etichetta) {
+    const attivo = tipo === 'tutte' ? (!sel.giorno && !sel.settimana) : tipo === 'giorno' ? !!sel.giorno : !!sel.settimana;
+    return '<button class="pill cod' + (attivo ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="' + tipo + '">' + etichetta + '</button>';
+  };
+  return '<div class="periodi">' + (conTutte ? pill('tutte', 'tutte') : '') + pill('giorno', 'giorno') + pill('settimana', 'settimana') + '</div>';
 }
 let selFotoCant = { giorno: '', settimana: '' };
 function tendinaFotoCantiere(c) {
@@ -345,10 +345,11 @@ function tendinaFotoCantiere(c) {
   let lista = tutti;
   if (selFotoCant.giorno) lista = lista.filter(function (x) { return x.giorno === selFotoCant.giorno; });
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
-  const html = pilloleGiornoSettimana(tutti, 'foto-cant', selFotoCant) + (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">Nessuna foto con questo filtro.</div>');
+  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true) + (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">Nessuna foto con questo filtro.</div>');
   return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length);
 }
 let filtroBolleCant = '';
+// Niente "tutte" qui: solo giorno e settimana, non c'è un'altra categoria con cui contrastarla.
 let selBolleCant = { giorno: '', settimana: '' };
 function tendinaBolleCantiere(c) {
   const tutti = documentiTutti(c.codice, 'bolla');
@@ -357,9 +358,8 @@ function tendinaBolleCantiere(c) {
   if (q) lista = lista.filter(function (x) { return senzaAccenti(x.f.referto || '').indexOf(q) !== -1; });
   if (selBolleCant.giorno) lista = lista.filter(function (x) { return x.f.giorno === selBolleCant.giorno; });
   else if (selBolleCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.f.giorno) === selBolleCant.settimana; });
-  const conGiorno = tutti.map(function (x) { return { giorno: x.f.giorno }; });
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nelle bolle" value="' + h(filtroBolleCant) + '" data-campo="filtro-bolle-cant" autocomplete="off"></div>';
-  html += pilloleGiornoSettimana(conGiorno, 'bolle-cant', selBolleCant);
+  html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false);
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
   return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione);
@@ -617,14 +617,14 @@ Object.assign(AZIONI, {
   'verbali-cant-sel': function (el) { selVerbaliCant[el.dataset.sel] = !selVerbaliCant[el.dataset.sel]; aggiornaVista(); },
   'foto-cant-filtro': function (el) {
     if (el.dataset.tipo === 'tutte') selFotoCant = { giorno: '', settimana: '' };
-    else if (el.dataset.tipo === 'giorno') selFotoCant = { giorno: el.dataset.v, settimana: '' };
-    else selFotoCant = { giorno: '', settimana: el.dataset.v };
+    else if (el.dataset.tipo === 'giorno') selFotoCant = { giorno: oggiISO(), settimana: '' };
+    else selFotoCant = { giorno: '', settimana: lunediDi(oggiISO()) };
     aggiornaVista();
   },
   'bolle-cant-filtro': function (el) {
     if (el.dataset.tipo === 'tutte') selBolleCant = { giorno: '', settimana: '' };
-    else if (el.dataset.tipo === 'giorno') selBolleCant = { giorno: el.dataset.v, settimana: '' };
-    else selBolleCant = { giorno: '', settimana: el.dataset.v };
+    else if (el.dataset.tipo === 'giorno') selBolleCant = { giorno: oggiISO(), settimana: '' };
+    else selBolleCant = { giorno: '', settimana: lunediDi(oggiISO()) };
     aggiornaVista();
   },
   'doc-cant-sel': function (el) { selDocCant = el.dataset.sel; aggiornaVista(); },
