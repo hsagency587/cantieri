@@ -274,7 +274,7 @@ function tendinaVerbaliCantiere(c) {
   });
   const pill = function (k, etichetta) { return '<button class="pill cod' + (selVerbaliCant[k] ? ' on' : '') + '" data-az="verbali-cant-sel" data-sel="' + k + '">' + etichetta + '</button>'; };
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei verbali" value="' + h(filtroVerbaliCant) + '" data-campo="filtro-verbali-cant" autocomplete="off"></div>' +
-    '<div class="periodi">' + pill('sopralluogo', 'sopralluoghi') + pill('giornata', 'verbali di giornata') + pill('settimana', 'verbali settimanali') + '</div>';
+    '<div class="periodi">' + pill('sopralluogo', 'sopralluoghi') + pill('giornata', 'giornata') + pill('settimana', 'settimana') + '</div>';
   html += filtrati.length ? '<div class="card">' + scorrevole(filtrati.map(rigaVerbaleCercabileHtml).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun verbale con questi filtri.' : 'Nessun verbale ancora.') + '</div>';
   return tendina('verbali-' + c.id, 'Verbali', html, tutti.length);
 }
