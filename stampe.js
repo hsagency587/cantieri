@@ -654,9 +654,8 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     if (!pagina) { nuovaPagina(); disegnaIntestazione(); } else if (i > 0) { y -= 16; spazio(120); }
     const testataPiena = !soloSezione || verbali.length === 1;
     if (testataPiena) {
-      scrivi('VERBALE DI SOPRALLUOGO', 16, grassetto);
+      scrivi(v.nome || (v.giornata ? 'VERBALE DI GIORNATA' : 'VERBALE DI SOPRALLUOGO'), 16, grassetto);
       y -= 4;
-      if (v.nome) scrivi(v.nome, 12, grassetto);
       scrivi(v.codice + '   -   sopralluogo ' + (v.sopralluogo || ''), 11, normale);
       scrivi('Cantiere: ' + (c.codice || '') + ' - ' + (c.nome || '') + (c.indirizzo ? ' - ' + c.indirizzo : ''), 11, normale);
       scrivi('Committente: ' + (c.committente || ''), 11, normale);
