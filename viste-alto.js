@@ -330,12 +330,20 @@ function fotoTutteCantiere(c) {
 }
 /* Tre stati fissi, non un elenco di ogni giorno/settimana passati: tutte (se richiesta),
    giorno (oggi), settimana (quella corrente, da lunedì). Un tocco, un filtro solo. */
-function pilloleGiornoSettimana(chiave, sel, conTutte) {
+/* Il pulsante "giorno": di norma fisso, un tocco vale "oggi". Passando aperto
+   (la data di apertura del cantiere) diventa invece l'apertura di un calendario
+   nativo, per scegliere un giorno qualsiasi da quando il cantiere è aperto a
+   oggi (chiesto per la tendina Foto: "ispezionare le foto" di un giorno passato). */
+function pilloleGiornoSettimana(chiave, sel, conTutte, aperto) {
   const pill = function (tipo, etichetta) {
     const attivo = tipo === 'tutte' ? (!sel.giorno && !sel.settimana) : tipo === 'giorno' ? !!sel.giorno : !!sel.settimana;
     return '<button class="pill cod' + (attivo ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="' + tipo + '">' + etichetta + '</button>';
   };
-  return '<div class="periodi">' + (conTutte ? pill('tutte', 'tutte') : '') + pill('giorno', 'giorno') + pill('settimana', 'settimana') + '</div>';
+  const giorno = aperto
+    ? '<button class="pill cod' + (sel.giorno ? ' on' : '') + '" data-az="' + chiave + '-giorno-apri" data-input="' + chiave + '-giorno-input">' + (sel.giorno ? h(dataSenzaAnno(sel.giorno)) : 'giorno') + '</button>' +
+      '<input type="date" id="' + chiave + '-giorno-input" hidden data-campo="' + chiave + '-giorno" min="' + h(aperto) + '" max="' + h(oggiISO()) + '" value="' + h(sel.giorno || '') + '">'
+    : pill('giorno', 'giorno');
+  return '<div class="periodi">' + (conTutte ? pill('tutte', 'tutte') : '') + giorno + pill('settimana', 'settimana') + '</div>';
 }
 let selFotoCant = { giorno: '', settimana: '' };
 function tendinaFotoCantiere(c) {
@@ -343,7 +351,7 @@ function tendinaFotoCantiere(c) {
   let lista = tutti;
   if (selFotoCant.giorno) lista = lista.filter(function (x) { return x.giorno === selFotoCant.giorno; });
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
-  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true) +
+  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true, c.aperto || '') +
     (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">' + (tutti.length ? 'Nessuna foto con questo filtro.' : 'Nessuna foto ancora.') + '</div>');
   return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length);
 }
@@ -382,7 +390,7 @@ function tendinaDocumentiCantiere(c) {
   if (q) lista = lista.filter(function (x) { return senzaAccenti((GENERI[x.f.genere] || '') + ' ' + (x.f.referto || '')).indexOf(q) !== -1; });
   const pill = function (k, etichetta) { return '<button class="pill cod' + (selDocCant === k ? ' on' : '') + '" data-az="doc-cant-sel" data-sel="' + k + '">' + etichetta + '</button>'; };
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei documenti" value="' + h(filtroDocCant) + '" data-campo="filtro-doc-cant" autocomplete="off"></div>';
-  html += '<div class="periodi">' + pill('tutti', 'tutti') + pill('presenze', 'presenze') + pill('generali', 'documenti generali') + '</div>';
+  html += '<div class="periodi">' + pill('tutti', 'tutti') + pill('presenze', 'presenze') + pill('generali', 'generali') + '</div>';
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun documento con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-cant-inserisci" data-id="' + h(c.id) + '">＋ documento</button>';
   return tendinaConAzione('doc-cant-' + c.id, 'Documenti', html, azione);
@@ -615,10 +623,16 @@ Object.assign(AZIONI, {
   // --- le sei tendine del cantiere (rework 14/09/2026) ---
   'verbali-cant-sel': function (el) { selVerbaliCant[el.dataset.sel] = !selVerbaliCant[el.dataset.sel]; aggiornaVista(); },
   'foto-cant-filtro': function (el) {
+    // "giorno" qui non c'è: apre il calendario con un'azione sua (foto-cant-giorno-apri).
     if (el.dataset.tipo === 'tutte') selFotoCant = { giorno: '', settimana: '' };
-    else if (el.dataset.tipo === 'giorno') selFotoCant = { giorno: oggiISO(), settimana: '' };
     else selFotoCant = { giorno: '', settimana: lunediDi(oggiISO()) };
     aggiornaVista();
+  },
+  // Il pulsante "giorno" di Foto apre il calendario nativo invece di fissarsi su oggi.
+  'foto-cant-giorno-apri': function (el) {
+    const input = document.getElementById(el.dataset.input);
+    if (!input) return;
+    try { input.showPicker(); } catch (e) { input.focus(); try { input.click(); } catch (e2) {} }
   },
   'bolle-cant-filtro': function (el) {
     if (el.dataset.tipo === 'tutte') selBolleCant = { giorno: '', settimana: '' };
