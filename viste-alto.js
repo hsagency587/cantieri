@@ -348,15 +348,19 @@ function tendinaFotoCantiere(c) {
   const html = pilloleGiornoSettimana(tutti, 'foto-cant', selFotoCant) + (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">Nessuna foto con questo filtro.</div>');
   return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length);
 }
+let filtroBolleCant = '';
 let selBolleCant = { giorno: '', settimana: '' };
 function tendinaBolleCantiere(c) {
   const tutti = documentiTutti(c.codice, 'bolla');
   let lista = tutti;
+  const q = senzaAccenti(filtroBolleCant.trim());
+  if (q) lista = lista.filter(function (x) { return senzaAccenti(x.f.referto || '').indexOf(q) !== -1; });
   if (selBolleCant.giorno) lista = lista.filter(function (x) { return x.f.giorno === selBolleCant.giorno; });
   else if (selBolleCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.f.giorno) === selBolleCant.settimana; });
   const conGiorno = tutti.map(function (x) { return { giorno: x.f.giorno }; });
-  const html = pilloleGiornoSettimana(conGiorno, 'bolle-cant', selBolleCant) +
-    (lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questo filtro.</div>');
+  let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nelle bolle" value="' + h(filtroBolleCant) + '" data-campo="filtro-bolle-cant" autocomplete="off"></div>';
+  html += pilloleGiornoSettimana(conGiorno, 'bolle-cant', selBolleCant);
+  html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
   return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione);
 }
@@ -369,14 +373,18 @@ function documentiGeneraliCantiere(c) {
   sopralluoghiDi(c.codice).forEach(function (s) { documentiDi(s).forEach(function (f) { if (f.genere === 'firme' || f.genere === 'documento') lista.push({ sop: s, f: f }); }); });
   return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
 }
+let filtroDocCant = '';
 let selDocCant = 'tutti';
 function tendinaDocumentiCantiere(c) {
   const tutti = documentiGeneraliCantiere(c);
-  const lista = selDocCant === 'presenze' ? tutti.filter(function (x) { return x.f.genere === 'firme'; })
+  let lista = selDocCant === 'presenze' ? tutti.filter(function (x) { return x.f.genere === 'firme'; })
     : selDocCant === 'generali' ? tutti.filter(function (x) { return x.f.genere === 'documento'; }) : tutti;
+  const q = senzaAccenti(filtroDocCant.trim());
+  if (q) lista = lista.filter(function (x) { return senzaAccenti((GENERI[x.f.genere] || '') + ' ' + (x.f.referto || '')).indexOf(q) !== -1; });
   const pill = function (k, etichetta) { return '<button class="pill cod' + (selDocCant === k ? ' on' : '') + '" data-az="doc-cant-sel" data-sel="' + k + '">' + etichetta + '</button>'; };
-  let html = '<div class="periodi">' + pill('tutti', 'tutti') + pill('presenze', 'presenze') + pill('generali', 'documenti generali') + '</div>';
-  html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun documento.</div>';
+  let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei documenti" value="' + h(filtroDocCant) + '" data-campo="filtro-doc-cant" autocomplete="off"></div>';
+  html += '<div class="periodi">' + pill('tutti', 'tutti') + pill('presenze', 'presenze') + pill('generali', 'documenti generali') + '</div>';
+  html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun documento con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-cant-inserisci" data-id="' + h(c.id) + '">＋ documento</button>';
   return tendinaConAzione('doc-cant-' + c.id, 'Documenti', html, azione);
 }

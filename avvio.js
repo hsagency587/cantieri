@@ -56,6 +56,8 @@ function suCampo(el, evento) {
   if (campo === 'filtro-documenti') { filtroDocumenti = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-verbali-cant') { filtroVerbaliCant = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-rilievi-cant') { filtroRilieviCant = el.value; aggiornaVista(); return; }
+  if (campo === 'filtro-bolle-cant') { filtroBolleCant = el.value; aggiornaVista(); return; }
+  if (campo === 'filtro-doc-cant') { filtroDocCant = el.value; aggiornaVista(); return; }
   if (campo === 'sezione') {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
