@@ -555,7 +555,7 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
   const disegnaDocumenti = function (lista, c) {
     lista.forEach(function (voce) {
       const f = voce.foto;
-      const eti = (GENERI[f.genere] || 'Documento') + ' - ' + f.codice + ' - ' + dataEstesa(f.giorno) + ', ' + (f.ora || '') + ' - ' + (c.nome || '');
+      const eti = (GENERI[f.genere] || 'Documento') + ' - ' + f.codice + ' - ' + dataEstesa(f.giorno) + ' - ' + (c.nome || '');
       if (voce.pagine && voce.pagine.length) {
         /* Scansione PDF: l'etichetta e il referto stanno qui, poi le sue pagine
            entrano intere una dopo l'altra, e quello che segue riparte su una
@@ -687,7 +687,7 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       scrivi(v.codice + '   -   sopralluogo ' + (v.sopralluogo || ''), 11, normale);
       scrivi('Cantiere: ' + (c.codice || '') + ' - ' + (c.nome || '') + (c.indirizzo ? ' - ' + c.indirizzo : ''), 11, normale);
       scrivi('Committente: ' + (c.committente || ''), 11, normale);
-      scrivi('Data: ' + dataEstesa(v.giorno) + '   Ora: ' + (v.ora || ''), 11, normale);
+      scrivi('Data: ' + dataEstesa(v.giorno), 11, normale);
       spazio(14); y -= 6;
       pagina.drawLine({ start: { x: M, y: y }, end: { x: L - M, y: y }, thickness: 0.8, color: PDF.rgb(0.2, 0.2, 0.2) });
       y -= 12;
