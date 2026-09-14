@@ -122,7 +122,7 @@ function inserisciDatiEsempio() {
   [sIeriA, sIeriB].forEach(function (x) {
     CHIAVI_SEZIONI.forEach(function (k) {
       const t = String(x.sezioni[k] || '').trim();
-      if (t) sezGiornata[k] = aggiungiTesto(sezGiornata[k], 'Ore ' + x.ora + ' · ' + x.nome + '\n' + t);
+      if (t) sezGiornata[k] = aggiungiTesto(sezGiornata[k], x.nome + '\n' + t);
     });
   });
   salva('verbale', { cantiere: c1.codice, giorno: gIeri, ora: sIeriA.ora, giornata: true,

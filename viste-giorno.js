@@ -577,7 +577,7 @@ function scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto) {
     CHIAVI_SEZIONI.forEach(function (k) {
       const t = String(fonte[k] || '').trim();
       if (!t) return;
-      sezioni[k] = aggiungiTesto(sezioni[k], 'Ore ' + x.ora + (String(x.nome || '').trim() ? ' · ' + x.nome : '') + '\n' + t);
+      sezioni[k] = aggiungiTesto(sezioni[k], (String(x.nome || '').trim() ? x.nome + '\n' : '') + t);
     });
   });
   let v = verbaleDiGiornata(codiceCantiere, giorno);
