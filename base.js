@@ -67,9 +67,9 @@ const LATO_LETTURA = 1200;
 const QUALITA_LETTURA = 0.8;
 // La foto originale, prima del ritaglio: oltre questo lato il telefono finisce la memoria.
 const LATO_RITAGLIO = 3000;
-const GENERI = { bolla: 'Bolla', firme: 'Modulo firme' };
-// Sotto una miniatura larga 104 "Modulo firme" non ci sta: lì basta la parola.
-const GENERI_BREVI = { bolla: 'Bolla', firme: 'Firme' };
+const GENERI = { bolla: 'Bolla', firme: 'Registro firme', documento: 'Documento' };
+// Sotto una miniatura larga 104 "Registro firme" non ci sta: lì basta la parola.
+const GENERI_BREVI = { bolla: 'Bolla', firme: 'Firme', documento: 'Documento' };
 // Quale dei due tasti è stato premuto: l'ingresso file è uno solo e non se lo porta dietro.
 let DOC_GENERE = 'bolla';
 let DOC_PER_CANTIERE = false;
@@ -84,9 +84,8 @@ const SEZIONI = [
   { chiave: 'attrezzature_presenti',    nome: 'Attrezzature presenti in cantiere', elenco: true  },
   { chiave: 'attrezzature_necessarie',  nome: 'Attrezzature necessarie',           elenco: true  },
   { chiave: 'materiali_impiegati',      nome: 'Materiali impiegati',               elenco: true  },
-  { chiave: 'materiali_necessari',      nome: 'Materiali necessari',               elenco: true  },
+  { chiave: 'materiali_necessari',      nome: 'Materiali necessari',               elenco: false },
   { chiave: 'rilievi_ordine',           nome: "Rilievi per l'ordine",              elenco: true  },
-  { chiave: 'rilievi_contabilita',      nome: 'Rilievi per la contabilità',        elenco: true  },
   { chiave: 'sicurezza',                nome: 'Sicurezza',                         elenco: false },
   { chiave: 'problemi',                 nome: 'Problemi o anomalie',               elenco: false },
   { chiave: 'osservazioni',             nome: 'Altre osservazioni',                elenco: false },
@@ -104,7 +103,6 @@ const PAROLE_SEZIONE = {
   materiali_impiegati: ['materiali impiegati', 'materiali usati', 'materiale usato', 'materiale impiegato'],
   materiali_necessari: ['materiali necessari', 'materiali che servono', 'materiale da ordinare', 'da ordinare', 'materiali da ordinare'],
   rilievi_ordine: ['rilievo d\'ordine', 'rilievi d\'ordine', 'rilievo ordine', 'rilievi ordine', 'misure da ordinare', 'rilievo per l\'ordine'],
-  rilievi_contabilita: ['rilievo da contabilità', 'rilievi da contabilità', 'rilievo contabilità', 'rilievi contabilità', 'misure per la contabilità', 'rilievo per la contabilità'],
   sicurezza: ['sicurezza'],
   problemi: ['problemi', 'anomalie', 'problemi o anomalie', 'anomalia', 'problema'],
   osservazioni: ['osservazioni', 'altre osservazioni'],
@@ -112,8 +110,8 @@ const PAROLE_SEZIONE = {
 };
 
 // Prefissi dei codici automatici e dove sta ogni tipo di documento nell'archivio.
-const PREFISSI = { azienda: 'AZ', cantiere: 'CANT', giornata: 'GIO', sopralluogo: 'SOP', verbale: 'VER', contabilita: 'CON', voce: 'VOCE', listino: 'LIS', listini: 'PRZ', foto: 'FOTO', relazione: 'REL' };
-const COLLEZIONI = { azienda: 'aziende', cantiere: 'cantieri', giornata: 'giornate', sopralluogo: 'sopralluoghi', verbale: 'verbali', contabilita: 'contabilita', listino: 'listino', listini: 'listini', relazione: 'relazioni' };
+const PREFISSI = { azienda: 'AZ', cantiere: 'CANT', giornata: 'GIO', sopralluogo: 'SOP', verbale: 'VER', voce: 'VOCE', listino: 'LIS', listini: 'PRZ', foto: 'FOTO', relazione: 'REL' };
+const COLLEZIONI = { azienda: 'aziende', cantiere: 'cantieri', giornata: 'giornate', sopralluogo: 'sopralluoghi', verbale: 'verbali', listino: 'listino', listini: 'listini', relazione: 'relazioni' };
 
 // Unità di misura: la tabella dei sinonimi si applica in locale, gratis. Claude si chiama solo per quello che manca qui.
 const UM_SINONIMI = {

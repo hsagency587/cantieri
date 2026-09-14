@@ -44,12 +44,11 @@ function etichettaBlocco(b, esteso) {
 }
 
 /* Scrive la relazione dai documenti di adesso, o la riscrive se esiste già (stesso codice).
-   Tutto quello che c'è dentro è copiato: correggere la relazione non tocca verbali e contabilità,
+   Tutto quello che c'è dentro è copiato: correggere la relazione non tocca i verbali,
    e correggere quelli non cambia la relazione finché non la si rigenera. */
 function generaRelazione(c, esistente) {
   // Dal primo giorno all'ultimo: la relazione racconta in ordine, non dal più recente.
   const sops = sopralluoghiDi(c.codice).slice().reverse();
-  const cont = contabilitaDi(c.codice);
   const rel = esistente || { cantiere: c.codice };
   rel.apertura = c.aperto || (sops.length ? sops[0].giorno : oggiISO());
   rel.chiusura = c.chiuso || oggiISO();
@@ -59,20 +58,9 @@ function generaRelazione(c, esistente) {
     aperte: sops.filter(function (s) { return !s.chiuso; }).length,
     foto: sops.reduce(function (t, s) { return t + fotoNormali(s).length; }, 0),
     documenti: sops.reduce(function (t, s) { return t + documentiDi(s).length; }, 0),
-    parlato: sops.reduce(function (t, s) { return t + s.pezzi.reduce(function (u, p) { return u + (p.durata || 0); }, 0); }, 0),
-    totale: totaleContabilita(cont)
+    parlato: sops.reduce(function (t, s) { return t + s.pezzi.reduce(function (u, p) { return u + (p.durata || 0); }, 0); }, 0)
   };
   rel.sezioni = riepilogoPerSezione(sops);
-  rel.contabilita = {
-    codice: cont ? cont.codice : '',
-    note: cont ? String(cont.note || '') : '',
-    totale: totaleContabilita(cont),
-    // Sconto e IVA del documento, copiati: la relazione fa gli stessi conti della contabilità.
-    sconto: cont ? Number(cont.sconto) || 0 : 0, iva: cont ? Number(cont.iva) || 0 : 0,
-    righe: (cont ? cont.righe : []).map(function (r) {
-      return { codice: r.codice, descrizione: r.descrizione, quantita: r.quantita, um: r.um, prezzo: r.prezzo, importo: r.importo, dacompletare: !!r.dacompletare };
-    })
-  };
   rel.giorni = sops.map(function (s) {
     const v = s.chiuso ? verbaleDiSopralluogo(s.codice) : null;
     return { sop: s.id, sopralluogo: s.codice, verbale: v ? v.codice : (s.verbale || null), giorno: s.giorno, ora: s.ora, chiuso: !!s.chiuso,
@@ -153,7 +141,7 @@ async function rigeneraRelazione(relId) {
   const rel = relazione(relId);
   const c = rel && cantierePerCodice(rel.cantiere);
   if (!c) return;
-  const ok = await chiedi('Rigenerare la relazione?', 'Si riscrive dai verbali e dalla contabilità di adesso. Le correzioni fatte a mano sulla relazione si perdono.', 'Rigenera');
+  const ok = await chiedi('Rigenerare la relazione?', 'Si riscrive dai verbali di adesso. Le correzioni fatte a mano sulla relazione si perdono.', 'Rigenera');
   chiudiFoglio();
   if (!ok) return;
   generaRelazione(c, rel);
@@ -184,8 +172,7 @@ function vistaRelazione(id) {
     '<div class="n"><div class="v">' + (n.verbali || 0) + '</div><div class="k">' + plurale(n.verbali, 'verbale', 'verbali') + '</div></div>' +
     '<div class="n"><div class="v' + (n.aperte ? ' att' : '') + '">' + (n.aperte || 0) + '</div><div class="k">non chiuse</div></div>' +
     '<div class="n"><div class="v">' + (n.foto || 0) + '</div><div class="k">foto</div></div>' +
-    '<div class="n"><div class="v">' + h(durataLunga(n.parlato)) + '</div><div class="k">parlato</div></div>' +
-    '<div class="n"><div class="v fatto">' + h(compatto(n.totale)) + '</div><div class="k">totale €</div></div></div>';
+    '<div class="n"><div class="v">' + h(durataLunga(n.parlato)) + '</div><div class="k">parlato</div></div></div>';
   html += '<button class="link blocco" data-az="relazione-rigenera" data-id="' + h(rel.id) + '">↻ Rigenera dai documenti di adesso</button>';
   // In breve: due righe di Claude. Se mancano e nessuno le sta scrivendo, la card non c'è.
   if (scrivendo || inBreve) {
@@ -206,14 +193,6 @@ function vistaRelazione(id) {
       }).join('') + '</div>';
   });
   if (!piene) html += '<div class="vuoto-stato">Nessuna sezione compilata nei giorni di questo cantiere.</div>';
-  // La contabilità completa: le righe senza prezzo si segnalano, il totale sta in fondo
-  const cont = rel.contabilita || { righe: [], totale: 0, note: '' };
-  const daCompletare = cont.righe.filter(function (r) { return r.dacompletare; }).length;
-  html += '<div class="eti">Contabilità' + (daCompletare ? '<span class="n" style="color:var(--gold)">' + daCompletare + ' da completare</span>' : '') + '</div>';
-  if (cont.righe.length) html += '<div class="card">' + cont.righe.map(function (r) { return rigaContabilitaHtml(r, { lettura: true }); }).join('') + '</div>';
-  else html += '<div class="vuoto-stato">Nessuna riga di contabilità.</div>';
-  html += totaliContabilitaHtml(cont, 'Totale');
-  if (String(cont.note || '').trim()) html += '<div class="card"><div class="card-capo spenta">Note della contabilità</div><div class="card-corpo">' + h(cont.note) + '</div></div>';
   // L'elenco dei giorni: una riga per giornata, si tocca e si va al giorno
   html += '<div class="eti">Giorni<span class="n">' + rel.giorni.length + '</span></div>';
   if (rel.giorni.length) {
@@ -244,7 +223,7 @@ function vistaRelazioneModifica(id) {
   if (!rel) return vistaDashboard();
   const c = cantierePerCodice(rel.cantiere) || { nome: '?' };
   let html = testata({ indietro: '#/relazione/' + rel.id, titolo: 'Modifica relazione', sotto: 'relazione di fine cantiere · ' + h(c.nome) });
-  html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Correggere la relazione non tocca i verbali né la contabilità. Rigenerandola, le correzioni si perdono.</div>';
+  html += '<div class="avviso" style="background:var(--surface);border-color:var(--line);color:var(--muted)">Correggere la relazione non tocca i verbali. Rigenerandola, le correzioni si perdono.</div>';
   html += '<div class="card"><div class="card-capo' + (String(rel.inBreve || '').trim() ? '' : ' spenta') + '">In breve</div>' +
     '<textarea class="corpo" data-campo="inbreve-relazione" data-id="' + h(rel.id) + '" placeholder="Due righe su com\'è andato il cantiere">' + h(rel.inBreve || '') + '</textarea></div>';
   SEZIONI.forEach(function (z) {
@@ -368,18 +347,9 @@ async function creaPdf(idVerbale) {
     tipo: modo === 'questo' ? 'verbale' : (modo === 'periodo' ? 'periodo' : 'sezione'),
     cantiere: v.cantiere, sopralluogo: modo === 'questo' ? v.sopralluogo : '', giorno: modo === 'periodo' ? al : v.giorno
   });
-  /* Finiti nel PDF, i rilievi della giornata si svuotano: il testo è nel verbale,
-     nel PDF e nei rilievi complessivi del cantiere, e nella giornata non serve
-     più. Foto e audio restano dove sono: quelli si buttano da soli con il tempo. */
-  verbali.forEach(function (x) {
-    const sop = valori(leggiTutto().sopralluoghi).find(function (z) { return z.codice === x.sopralluogo; });
-    if (!sop) return;
-    let svuotato = false;
-    ['rilievi_ordine', 'rilievi_contabilita'].forEach(function (k) {
-      if (String(sop.sezioni[k] || '').trim()) { sop.sezioni[k] = ''; svuotato = true; }
-    });
-    if (svuotato) salva('sopralluogo', sop);
-  });
+  /* Il rilievo d'ordine non si svuota più dopo il PDF: resta nel sopralluogo,
+     perché la tendina Rilevamento d'ordine del cantiere lo legge da lì (D12 —
+     resta per tutta la durata del cantiere, non solo finché non si stampa). */
   /* Il PDF è fatto e archiviato. Adesso si sceglie cosa farne: mandarlo fuori,
      guardarlo qui dentro, o tornare a correggere il verbale da cui nasce. */
   apriFoglioPdfFatto(archiviato, v.id);
@@ -617,8 +587,10 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
 
   /* La firma in fondo: data a sinistra, azienda e firma a destra, sopra una riga.
      Se la firma non c'è resta lo spazio bianco per farla a penna. */
+  /* D7: il verbale di giornata non porta firma in calce, solo l'attribuzione — quella sta nel
+     corpo del verbale (Fase 8), non qui in fondo alla pagina. Qui firma solo il sopralluogo. */
   const disegnaFirma = function () {
-    if (!marchio.az) return;
+    if (!marchio.az || (verbali[0] && verbali[0].giornata)) return;
     const a = marchio.az;
     spazio(130);
     y -= 24;
@@ -633,7 +605,8 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
       y -= la + 4;
     } else y -= 46;
     pagina.drawLine({ start: { x: x, y: y }, end: { x: L - M, y: y }, thickness: 0.6, color: PDF.rgb(0.4, 0.4, 0.4) });
-    pagina.drawText(testoPdf(a.tecnico ? a.tecnico : 'Firma'), { x: x, y: y - 12, size: 9, font: normale, color: PDF.rgb(0.45, 0.45, 0.45) });
+    const nomeFirma = marchio.tecnico ? (marchio.tecnico.nome + (marchio.tecnico.ruolo ? ' - ' + marchio.tecnico.ruolo : '')) : 'Firma';
+    pagina.drawText(testoPdf(nomeFirma), { x: x, y: y - 12, size: 9, font: normale, color: PDF.rgb(0.45, 0.45, 0.45) });
     y -= 24;
   };
 
@@ -768,7 +741,7 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
 /* Logo e firma dell'azienda del cantiere, già incorporati nel documento. Senza azienda,
    o senza immagini, si restituisce vuoto e il PDF esce come prima. */
 async function preparaMarchio(doc, primo) {
-  const vuoto = { az: null, logo: null, firma: null, banda: null, piede: null };
+  const vuoto = { az: null, logo: null, firma: null, banda: null, piede: null, tecnico: null };
   if (!primo) return vuoto;
   const c = cantierePerCodice(primo.cantiere);
   const a = aziendaDiCantiere(c);
@@ -791,8 +764,10 @@ async function preparaMarchio(doc, primo) {
       return await doc.embedJpg(await ridotta.blob.arrayBuffer());
     } catch (e) { return null; }
   };
-  return { az: a, logo: await dentro(a.logo), firma: await dentro(a.firma),
-    banda: await dentroGrande(a.banda), piede: await dentroGrande(a.bandaPiede) };
+  // La firma è del tecnico che ha chiuso questo verbale (D6), non più una sola firma per l'azienda.
+  const tecnico = (a.tecnici || []).find(function (t) { return t.id === primo.tecnicoId; }) || null;
+  return { az: a, logo: await dentro(a.logo), firma: await dentro(tecnico ? tecnico.firma : null),
+    banda: await dentroGrande(a.banda), piede: await dentroGrande(a.bandaPiede), tecnico: tecnico };
 }
 
 /* Le bolle e i moduli firme marcati, pronti da stampare: { idVerbale: [ { foto, img } ] }.
@@ -828,7 +803,7 @@ async function preparaDocumentiPdf(doc, verbali) {
 }
 
 /* La relazione di fine cantiere sulla carta, nell'ordine deciso: intestazione, numeri, in breve,
-   riepilogo per sezione, contabilità col totale, elenco dei giorni, foto marcate. Riceve gli
+   riepilogo per sezione, elenco dei giorni, foto marcate. Riceve gli
    attrezzi di costruisciPdf e non ne conosce l'interno: la meccanica del PDF resta una sola. */
 function disegnaRelazionePdf(rel, a) {
   const c = cantierePerCodice(rel.cantiere) || {};
@@ -848,7 +823,6 @@ function disegnaRelazionePdf(rel, a) {
   // I numeri in una riga, e il totale sotto in grassetto
   const conta = function (q, uno, tanti) { return (q || 0) + ' ' + ((q || 0) === 1 ? uno : tanti); };
   a.scrivi(conta(n.giorni, 'giorno di sopralluogo', 'giorni di sopralluogo') + ', ' + conta(n.verbali, 'verbale chiuso', 'verbali chiusi') + ', ' + conta(n.aperte, 'giornata non chiusa', 'giornate non chiuse') + ', ' + (n.foto || 0) + ' foto, ' + (n.documenti || 0) + ' documenti, ' + durataLunga(n.parlato) + ' di parlato', 11, a.normale);
-  a.scrivi('Contabilità: ' + euro(contiContabilita(rel.contabilita).totale), 12, a.grassetto);
   if (String(rel.inBreve || '').trim()) { titolo('IN BREVE'); a.scrivi(rel.inBreve, 11, a.normale); }
   // Il riepilogo per sezione: le sezioni vuote non si stampano
   titolo('RIEPILOGO PER SEZIONE');
@@ -869,29 +843,6 @@ function disegnaRelazionePdf(rel, a) {
     stampate++;
   });
   if (!stampate) a.scrivi('(nessuna sezione compilata)', 11, a.normale, grigio);
-  // La contabilità completa: ogni riga coi suoi numeri, le righe senza prezzo segnalate, il totale in fondo
-  const cont = rel.contabilita || { righe: [], totale: 0, note: '' };
-  titolo('CONTABILITÀ' + (cont.codice ? ' - ' + cont.codice : ''));
-  if (!cont.righe.length) a.scrivi('(nessuna riga)', 11, a.normale, grigio);
-  cont.righe.forEach(function (r) {
-    a.spazio(36);
-    a.scrivi((r.codice ? r.codice + '   ' : '') + (r.descrizione || '(senza descrizione)'), 11, a.normale);
-    a.scrivi(numeroIt(r.quantita) + ' ' + (r.um || '') + '  ×  ' + euro(r.prezzo) + '  =  ' + (r.dacompletare ? 'DA COMPLETARE: manca il prezzo' : euro(r.importo)), 10, a.normale, r.dacompletare ? giallo : grigio, 6);
-    a.giu(3);
-  });
-  const daCompletare = cont.righe.filter(function (r) { return r.dacompletare; }).length;
-  // In fondo i conti: solo il totale se sconto e IVA sono a zero, se no tutti e cinque
-  const k = contiContabilita(cont);
-  a.giu(4); a.spazio(k.pSconto || k.pIva ? 100 : 40);
-  if (k.pSconto || k.pIva) {
-    a.scrivi('Totale lavori   ' + euro(k.lavori), 11, a.normale, grigio);
-    if (k.pSconto) a.scrivi('Sconto ' + numeroIt(k.pSconto) + '%   -' + euro(k.sconto), 11, a.normale, grigio);
-    a.scrivi('Imponibile   ' + euro(k.imponibile), 11, a.normale, grigio);
-    if (k.pIva) a.scrivi('IVA ' + numeroIt(k.pIva) + '%   ' + euro(k.iva), 11, a.normale, grigio);
-  }
-  a.scrivi('TOTALE   ' + euro(k.totale), 13, a.grassetto);
-  if (daCompletare) a.scrivi(daCompletare + (daCompletare === 1 ? ' riga senza prezzo non conta' : ' righe senza prezzo non contano') + ' nel totale.', 10, a.normale, giallo);
-  if (String(cont.note || '').trim()) a.scrivi('Note: ' + cont.note, 10, a.normale, grigio);
   // L'elenco dei giorni, dal primo all'ultimo; le giornate non chiuse marcate
   titolo('ELENCO DEI GIORNI');
   if (!rel.giorni.length) a.scrivi('(nessun giorno di sopralluogo)', 11, a.normale, grigio);

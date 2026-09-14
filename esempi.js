@@ -165,21 +165,7 @@ function inserisciDatiEsempio() {
     ['Ponteggio metallico, nolo per il primo mese', 'm²', 9.50],
     ['Demolizione di pavimento e sottofondo', 'm²', 12.00]
   ];
-  const lis = voci.map(function (v) { return salva('listino', { descrizione: v[0], um: v[1], prezzo: v[2], esempio: true }); });
-
-  // La contabilità del primo cantiere: quattro righe, una senza prezzo (gialla)
-  const righe = [
-    { descrizione: 'Scavo di sbancamento con mezzi meccanici', quantita: 120, um: 'm³', prezzo: 8.50, dallistino: lis[0].codice },
-    { descrizione: 'Calcestruzzo C25/30 per fondazioni', quantita: 45, um: 'm³', prezzo: 145, dallistino: lis[2].codice },
-    { descrizione: 'Acciaio B450C per armature', quantita: 3800, um: 'kg', prezzo: 1.85, dallistino: lis[3].codice },
-    { descrizione: 'Rimozione tettoia in lamiera', quantita: 1, um: 'corpo', prezzo: 0, dallistino: null }
-  ].map(function (r) {
-    r.codice = codiceNuovo('VOCE');
-    r.importo = Math.round(r.quantita * r.prezzo * 100) / 100;
-    r.dacompletare = !(r.prezzo > 0);
-    return r;
-  });
-  salva('contabilita', { cantiere: c1.codice, note: 'Prezzi dal listino 2026. La tettoia va quotata a parte.', righe: righe, esempio: true });
+  voci.forEach(function (v) { salva('listino', { descrizione: v[0], um: v[1], prezzo: v[2], esempio: true }); });
 
   leggiTutto().soloEsempio = true;
   persisti();

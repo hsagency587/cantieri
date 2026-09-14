@@ -151,9 +151,6 @@ function disegna() {
       case 'relazione': html = vistaRelazione(ROTTA.parametri[0]); break;
       case 'modifica-relazione': html = vistaRelazioneModifica(ROTTA.parametri[0]); break;
       case 'foto': html = vistaFoto(ROTTA.parametri[0], ROTTA.parametri[1]); break;
-      case 'contabilita': html = vistaContabilita(ROTTA.parametri[0]); break;
-      case 'ordini': html = vistaOrdini(ROTTA.parametri[0]); break;
-      case 'documenti': html = vistaDocumenti(ROTTA.parametri[0]); break;
       case 'listino': html = vistaListino(ROTTA.parametri[0], ROTTA.parametri[1], ROTTA.parametri[2]); break;
       case 'note': html = vistaNote(ROTTA.parametri[0]); break;
       case 'pdf': html = vistaPdf(ROTTA.parametri[0]); break;

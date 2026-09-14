@@ -187,7 +187,7 @@ async function lavoroTrascrizione(l) {
     accoda({ tipo: 'riordino', sop: sop.id, pezzo: pezzo.id, etichetta: pezzo.titolo || 'Registrazione delle ' + pezzo.ora });
     return;
   }
-  if (l.per === 'contabilita' || l.per === 'nota') {
+  if (l.per === 'nota') {
     if (!l.grezzo) {
       const blob = await leggiMedia(l.audio);
       if (!blob) throw new Error('Audio non trovato nel telefono');
@@ -195,10 +195,9 @@ async function lavoroTrascrizione(l) {
       salvaLocale();
       avvisa('Trascritto', 'ok');
     }
-    // L'audio di una nota o di una riga di contabilità serve solo a trascrivere: una volta letto si libera.
+    // L'audio di una nota serve solo a trascrivere: una volta letto si libera.
     await cancellaMedia(l.audio);
-    if (l.per === 'nota') accoda({ tipo: 'nota', cantiere: l.cantiere, grezzo: l.grezzo, etichetta: l.etichetta });
-    else accoda({ tipo: 'contabilita', cantiere: l.cantiere, grezzo: l.grezzo, ora: l.ora, etichetta: l.etichetta, origine: l.id, listino: l.listino || null });
+    accoda({ tipo: 'nota', cantiere: l.cantiere, grezzo: l.grezzo, etichetta: l.etichetta });
   }
   if (l.per === 'rilievo') {
     const sop = sopralluogo(l.sop);
@@ -267,24 +266,6 @@ async function lavoroRilievo(l) {
   }
   avvisa('Rilievo pronto', 'ok');
   aggiornaVista();
-  /* Il rilievo d'ordine fa anche le righe, dal testo già pulito. Il testo è già
-     al sicuro: se questa lettura fallisce si perde solo la lista, non il rilievo. */
-  if (l.sezione === 'rilievi_ordine' && testo && chiaveAnthropic()) {
-    try {
-      const r = estraiJSON(await chiamaClaude(REGOLE_ORDINE, 'Dettato: ' + testo, 800));
-      const c = cantierePerCodice(sop.cantiere);
-      const righe = (r && Array.isArray(r.righe) ? r.righe : []).filter(function (x) { return x && String(x.descrizione || '').trim(); });
-      if (c && righe.length) {
-        c.ordini = c.ordini || [];
-        righe.forEach(function (x) {
-          c.ordini.push({ id: nuovoId(), descrizione: String(x.descrizione).trim(), quantita: Number(x.quantita) || 0, um: String(x.um || '').trim(), misure: x.misure ? String(x.misure).trim() : '',
-            stato: 'da_ordinare', sop: sop.codice, giorno: sop.giorno, ora: pezzo.ora || oraAdesso() });
-        });
-        salva('cantiere', c);
-        aggiornaVista();
-      }
-    } catch (e) { avvisa('Righe d\'ordine non lette', 'att'); }
-  }
 }
 
 /* La scheda del rilievo appena arrivato. Si mostra nella giornata (per sopralluogo)
@@ -704,10 +685,6 @@ async function salvaPezzoRegistrato(blob, durata, ora, destinazione) {
     salva('sopralluogo', sop);
     avvisa('Salvato', 'ok');
     accoda({ tipo: 'trascrizione', per: 'sopralluogo', sop: sop.id, pezzo: id, etichetta: 'Registrazione delle ' + ora });
-  } else if (destinazione.tipo === 'contabilita') {
-    avvisa('Salvato', 'ok');
-    const lavoro = accoda({ tipo: 'trascrizione', per: 'contabilita', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'riga delle ' + ora });
-    chiediListinoPerDettato(cantiere(destinazione.cantiere), lavoro);
   } else if (destinazione.tipo === 'nota') {
     avvisa('Salvato', 'ok');
     accoda({ tipo: 'trascrizione', per: 'nota', cantiere: destinazione.cantiere, audio: rif, ora: ora, etichetta: 'nota delle ' + ora });

@@ -53,10 +53,7 @@ function suCampo(el, evento) {
   const campo = el.dataset.campo;
   if (campo === 'filtro-cantieri') { filtroCantieri = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-listino') { filtroListino = el.value; aggiornaVista(); return; }
-  if (campo === 'filtro-ordini') { filtroOrdini = el.value; aggiornaVista(); return; }
-  if (campo === 'filtro-doc') { filtroDoc = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-documenti') { filtroDocumenti = el.value; aggiornaVista(); return; }
-  if (campo === 'filtro-scelta') { filtroListinoScelta = el.value; disegnaSceltaListino(); return; }
   if (campo === 'sezione') {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
@@ -107,32 +104,6 @@ function suCampo(el, evento) {
     blocchi[i].testo = el.value;
     cresciTextarea(el);
     salvaConCalma('rel-' + el.dataset.id, function () { salva('relazione', rel); });
-    return;
-  }
-  if (campo === 'note-contabilita') {
-    const c = cantiere(el.dataset.id);
-    if (!c) return;
-    cresciTextarea(el);
-    salvaConCalma('cont-' + c.id, function () { const cont = contabilitaOCrea(c.codice); cont.note = el.value; salva('contabilita', cont); });
-    return;
-  }
-  // Sconto e IVA: si salvano subito e i conti in fondo si rifanno.
-  if (campo === 'sconto-contabilita' || campo === 'iva-mano-contabilita') {
-    const c = cantiere(el.dataset.id);
-    if (!c || evento !== 'input') return;
-    const n = leggiNumero(el.value, ',');
-    salvaConCalma('cont-' + campo + c.id, function () { const cont = contabilitaOCrea(c.codice); cont[campo === 'sconto-contabilita' ? 'sconto' : 'iva'] = isNaN(n) ? 0 : n; salva('contabilita', cont); aggiornaVista(); });
-    return;
-  }
-  if (campo === 'iva-contabilita' && evento === 'change') {
-    const c = cantiere(el.dataset.id);
-    if (!c) return;
-    const cont = contabilitaOCrea(c.codice);
-    // "a mano" apre il campo per scrivere l'aliquota; le altre scelte la mettono subito.
-    cont.ivaMano = el.value === 'mano';
-    if (!cont.ivaMano) cont.iva = Number(el.value) || 0;
-    salva('contabilita', cont);
-    aggiornaVista();
     return;
   }
   if (campo === 'note-cantiere') {
@@ -193,10 +164,37 @@ function suCampo(el, evento) {
       const ridotta = await riduciFoto(file, banda ? LATO_BANDA : LATO_LOGO, QUALITA_LOGO);
       const id = nuovoId();
       const rif = await salvaMedia(id, ridotta.blob);
-      if (a[dove.quale]) { scordaFoto(a[dove.quale]); await cancellaMedia(a[dove.quale]); }
-      a[dove.quale] = rif;
+      // La firma di un tecnico (D5): va sul tecnico, non sull'azienda.
+      if (dove.tecnico) {
+        const t = (a.tecnici || []).find(function (x) { return x.id === dove.tecnico; });
+        if (!t) { await cancellaMedia(rif); return; }
+        if (t.firma) { scordaFoto(t.firma); await cancellaMedia(t.firma); }
+        t.firma = rif;
+      } else {
+        if (a[dove.quale]) { scordaFoto(a[dove.quale]); await cancellaMedia(a[dove.quale]); }
+        a[dove.quale] = rif;
+      }
       salva('azienda', a);
-      avvisa({ logo: 'Logo messo', firma: 'Firma messa', banda: 'Intestazione messa', bandaPiede: 'Piè di pagina messo' }[dove.quale] || 'Fatto', 'ok');
+      avvisa(dove.tecnico ? 'Firma messa' : ({ logo: 'Logo messo', firma: 'Firma messa', banda: 'Intestazione messa', bandaPiede: 'Piè di pagina messo' }[dove.quale] || 'Fatto'), 'ok');
+      aggiornaVista();
+    })().catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
+    return;
+  }
+  if (campo === 'file-azienda-doc' && evento === 'change') {
+    const scelte = Array.prototype.slice.call(el.files || []);
+    const idAz = el.dataset.id;
+    el.value = '';
+    if (!scelte.length) return;
+    (async function () {
+      const a = azienda(idAz);
+      if (!a) return;
+      if (!Array.isArray(a.documenti)) a.documenti = [];
+      for (const file of scelte) {
+        const rif = await salvaMedia(nuovoId(), file);
+        a.documenti.push({ id: nuovoId(), file: rif, nome: file.name, peso: file.size });
+      }
+      salva('azienda', a);
+      avvisa(scelte.length > 1 ? scelte.length + ' documenti aggiunti' : 'Documento aggiunto', 'ok');
       aggiornaVista();
     })().catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
     return;
