@@ -264,7 +264,6 @@ let filtroVerbaliCant = '';
 let selVerbaliCant = { sopralluogo: false, giornata: false, settimana: false };
 function tendinaVerbaliCantiere(c) {
   const tutti = verbaliCercabili(c);
-  if (!tutti.length) return '';
   const q = senzaAccenti(filtroVerbaliCant.trim());
   const attivi = ['sopralluogo', 'giornata', 'settimana'].filter(function (k) { return selVerbaliCant[k]; });
   // D13: nessun selettore acceso = si cerca in tutti i documenti.
@@ -276,7 +275,7 @@ function tendinaVerbaliCantiere(c) {
   const pill = function (k, etichetta) { return '<button class="pill cod' + (selVerbaliCant[k] ? ' on' : '') + '" data-az="verbali-cant-sel" data-sel="' + k + '">' + etichetta + '</button>'; };
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei verbali" value="' + h(filtroVerbaliCant) + '" data-campo="filtro-verbali-cant" autocomplete="off"></div>' +
     '<div class="periodi">' + pill('sopralluogo', 'sopralluoghi') + pill('giornata', 'verbali di giornata') + pill('settimana', 'verbali settimanali') + '</div>';
-  html += filtrati.length ? '<div class="card">' + scorrevole(filtrati.map(rigaVerbaleCercabileHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessun verbale con questi filtri.</div>';
+  html += filtrati.length ? '<div class="card">' + scorrevole(filtrati.map(rigaVerbaleCercabileHtml).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun verbale con questi filtri.' : 'Nessun verbale ancora.') + '</div>';
   return tendina('verbali-' + c.id, 'Verbali', html, tutti.length);
 }
 
@@ -341,11 +340,11 @@ function pilloleGiornoSettimana(chiave, sel, conTutte) {
 let selFotoCant = { giorno: '', settimana: '' };
 function tendinaFotoCantiere(c) {
   const tutti = fotoTutteCantiere(c);
-  if (!tutti.length) return '';
   let lista = tutti;
   if (selFotoCant.giorno) lista = lista.filter(function (x) { return x.giorno === selFotoCant.giorno; });
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
-  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true) + (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">Nessuna foto con questo filtro.</div>');
+  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true) +
+    (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">' + (tutti.length ? 'Nessuna foto con questo filtro.' : 'Nessuna foto ancora.') + '</div>');
   return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length);
 }
 let filtroBolleCant = '';

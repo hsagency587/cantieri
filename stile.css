@@ -847,6 +847,15 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .periodi{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2)}
 .periodi .pill{min-height:32px;padding:0 12px;font-size:var(--t2);text-transform:none;letter-spacing:0}
 .periodi .pill.ok{border-color:var(--accent);color:var(--accent)}
+/* I selettori dentro una tendina (Verbali, Foto, Bolle, Documenti) riempiono
+   la riga in parti uguali: niente spazio vuoto a destra dell'ultimo, e
+   un'etichetta lunga va a capo dentro il suo pulsante invece di spingere
+   gli altri su una riga nuova mezza vuota. */
+.tendine > div > .periodi{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr))}
+.tendine > div > .periodi .pill{white-space:normal;text-align:center;justify-content:center;line-height:1.15;padding:6px 6px}
+/* Le barre di ricerca dentro una tendina sono un filtro di servizio, non il
+   campo principale della schermata: restano più basse. */
+.tendine > div > .cerca,.tendine > div > .cerca input{min-height:36px;font-size:var(--t2)}
 
 /* ============ 26. IL PDF SI GUARDA QUI DENTRO ============
    Le pagine, una sotto l'altra, larghe quanto la schermata. */
