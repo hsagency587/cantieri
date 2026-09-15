@@ -635,6 +635,18 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     });
     return await doc.save();
   }
+  // Fase 8: il verbale di giornata ha la sua forma, un gradino sotto la relazione — stessi attrezzi.
+  if (info.giornata) {
+    disegnaGiornataPdf(info.giornata, {
+      PDF: PDF, normale: normale, grassetto: grassetto, scrivi: scrivi, spazio: spazio, nuovaPagina: nuovaPagina,
+      disegnaFotoGriglia: disegnaFotoGriglia, disegnaDocumenti: disegnaDocumenti, altezzaFoto: altezzaFoto, altezzaDoc: altezzaDoc,
+      disegnaIntestazione: disegnaIntestazione,
+      fotoPerSop: fotoPerVerbale, docPerSop: docPerVerbale,
+      giu: function (n) { y -= n; },
+      linea: function () { spazio(14); y -= 6; pagina.drawLine({ start: { x: M, y: y }, end: { x: L - M, y: y }, thickness: 0.8, color: PDF.rgb(0.2, 0.2, 0.2) }); y -= 12; }
+    });
+    return await doc.save();
+  }
   const c0 = cantierePerCodice(verbali[0].cantiere) || {};
   let ultimoCantiere = c0;
   const conCopertina = info.modo === 'periodo' || (info.modo === 'sezione' && verbali.length > 1);
@@ -881,6 +893,77 @@ function disegnaRelazionePdf(rel, a) {
   a.disegnaFirma();
 }
 
+/* Fase 8: il verbale di giornata ha la struttura del settimanale — intestazione,
+   riassunto delle elaborazioni per sezione (non diviso per sopralluogo), poi ogni
+   sopralluogo del giorno per conto suo con i suoi punti e le sue foto, e chi l'ha
+   fatto scritto a parole sotto ognuno. Niente firma in calce (D7): il verbale di
+   giornata non l'ha mai portata, qui in più c'è la citazione al posto suo. */
+function disegnaGiornataPdf(v, a) {
+  const c = cantierePerCodice(v.cantiere) || {};
+  const grigio = a.PDF.rgb(0.45, 0.45, 0.45);
+  const sops = sopralluoghiDelGiorno(v.cantiere, v.giorno);
+  const tecnici = (aziendaDiCantiere(c) || {}).tecnici || [];
+  a.nuovaPagina();
+  a.disegnaIntestazione();
+  a.scrivi(v.nome || 'VERBALE DI GIORNATA', 18, a.grassetto);
+  a.giu(4);
+  a.scrivi(v.codice, 11, a.normale);
+  a.scrivi('Cantiere: ' + (c.codice || '') + ' - ' + (c.nome || '') + (c.indirizzo ? ' - ' + c.indirizzo : ''), 11, a.normale);
+  a.scrivi('Committente: ' + (c.committente || ''), 11, a.normale);
+  a.scrivi('Data: ' + dataEstesa(v.giorno) + ' - ' + sops.length + (sops.length === 1 ? ' sopralluogo' : ' sopralluoghi'), 11, a.normale);
+  a.linea();
+  // Il riassunto generale: le sezioni compilate quel giorno, sommate, senza dividerle per sopralluogo.
+  a.scrivi('RIASSUNTO DELLE ELABORAZIONI', 12, a.grassetto);
+  a.giu(4);
+  let riassunte = 0;
+  CHIAVI_SEZIONI.forEach(function (k) {
+    const testo = String(v.sezioni[k] || '').trim();
+    if (!testo) return;
+    riassunte++;
+    const def = SEZIONI.find(function (z) { return z.chiave === k; });
+    a.spazio(30);
+    a.scrivi(def.nome.toUpperCase(), 10, a.grassetto, grigio);
+    if (def.elenco) righeElenco(testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); });
+    else a.scrivi(testo, 11, a.normale);
+    a.giu(4);
+  });
+  if (!riassunte) a.scrivi('(nessuna sezione compilata)', 11, a.normale, grigio);
+  a.giu(6);
+  // Ogni sopralluogo del giorno, separato: i suoi punti, le sue foto, chi l'ha fatto.
+  sops.forEach(function (s) {
+    const vb = verbaleDiSopralluogo(s.codice);
+    const sezioni = vb ? vb.sezioni : s.sezioni;
+    const tecnico = vb && vb.tecnicoId ? tecnici.find(function (t) { return t.id === vb.tecnicoId; }) : null;
+    a.spazio(50);
+    a.linea();
+    a.scrivi(nomeSopralluogo(s).toUpperCase() + (vb ? '' : ' - NON CHIUSO'), 12, a.grassetto);
+    if (tecnico) a.scrivi('Eseguito da ' + tecnico.nome + (tecnico.ruolo ? ' - ' + tecnico.ruolo : ''), 10, a.normale, grigio);
+    a.giu(4);
+    let stampate = 0;
+    CHIAVI_SEZIONI.forEach(function (k) {
+      const testo = String(sezioni[k] || '').trim();
+      const foto = (a.fotoPerSop[s.id] || {})[k] || [];
+      if (!testo && !foto.length) return;
+      const def = SEZIONI.find(function (z) { return z.chiave === k; });
+      a.spazio(30 + (testo ? 0 : a.altezzaFoto(foto[0], c) + 30));
+      a.scrivi(def.nome.toUpperCase(), 10, a.grassetto, grigio);
+      if (testo) { if (def.elenco) righeElenco(testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); }); else a.scrivi(testo, 11, a.normale); }
+      a.disegnaFotoGriglia(foto, c);
+      a.giu(4);
+      stampate++;
+    });
+    if (!stampate) a.scrivi('(nessuna sezione compilata)', 11, a.normale, grigio);
+    const docQui = a.docPerSop[s.id] || [];
+    if (docQui.length) {
+      a.giu(4);
+      a.spazio(Math.min(30 + a.altezzaDoc(docQui[0]), 780));
+      a.scrivi('DOCUMENTI ALLEGATI', 10, a.grassetto, grigio);
+      a.disegnaDocumenti(docQui, c);
+    }
+    a.giu(8);
+  });
+}
+
 async function creaPdfRelazione(relId, soloScarica) {
   if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
   const rel = relazione(relId);
@@ -1082,11 +1165,22 @@ function segnaSettimanaFatta(inizio, come) {
   salvaLocale();
 }
 
-/* Il PDF di un verbale — di giornata o di sopralluogo — fatto e archiviato senza domande. */
+/* Il PDF di un verbale — di giornata o di sopralluogo — fatto e archiviato senza domande.
+   Fase 8: quello di giornata non passa se stesso a costruisciPdf, ma un sopralluogo finto
+   per ogni sopralluogo del giorno (stesso trucco della relazione): così le foto e i
+   documenti si raggruppano per sopralluogo, non tutti insieme come un unico verbale. */
 async function pdfVerbale(v) {
   if (!window.PDFLib) return null;
   let byte;
-  try { byte = await costruisciPdf([v], null, '', { modo: 'questo' }); } catch (e) { return null; }
+  try {
+    if (v.giornata) {
+      const sops = sopralluoghiDelGiorno(v.cantiere, v.giorno);
+      const finti = sops.map(function (s) { return { id: s.id, sopralluogo: s.codice, cantiere: v.cantiere, giorno: s.giorno }; });
+      byte = await costruisciPdf(finti.length ? finti : [{ cantiere: v.cantiere, giorno: v.giorno }], null, '', { modo: 'giornata', giornata: v });
+    } else {
+      byte = await costruisciPdf([v], null, '', { modo: 'questo' });
+    }
+  } catch (e) { return null; }
   return await archiviaPdf(byte, (v.nome ? v.codice + '_' + nomeFile(v.nome) : v.codice) + '.pdf',
     { chiave: 'verbale:' + v.codice, tipo: 'verbale', cantiere: v.cantiere, sopralluogo: v.sopralluogo || '', giorno: v.giorno });
 }
