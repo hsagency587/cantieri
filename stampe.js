@@ -908,12 +908,14 @@ async function scaricaRelazione(relId) {
 }
 
 /* ---------------- LA SETTIMANA ----------------
-   La settimana va da lunedì a domenica. Passata, i suoi audio e le sue foto restano nel
-   telefono solo fino a mercoledì. Lunedì e martedì una riga in testa dice "Libera memoria":
-   fa i PDF che mancano — il verbale di giornata di ogni giorno, il verbale di settimana di
-   ogni cantiere — li manda fuori, e poi svuota audio e foto. Da mercoledì lo fa l'app da
-   sola: i PDF restano nell'archivio dentro l'app, audio e foto se ne vanno. Le foto da lì
-   in poi vivono nei PDF, col loro referto. Il testo e i verbali non si toccano mai. */
+   La settimana va da lunedì a domenica. Passata, il suo audio resta nel telefono solo
+   fino a mercoledì: è la parte pesante dello spazio. Lunedì e martedì una riga in testa
+   dice "Libera memoria": fa i PDF che mancano — il verbale di giornata di ogni giorno,
+   il verbale di settimana di ogni cantiere — li manda fuori, e poi svuota l'audio. Da
+   mercoledì lo fa l'app da sola: i PDF restano nell'archivio dentro l'app, l'audio se ne
+   va. Foto, bolle e documenti restano sul telefono per tutta la durata del cantiere
+   (Fase 9): non sono mai stati nella lista di quello che si libera qui. Il testo e i
+   verbali non si toccano mai. */
 
 // Il lunedì della settimana in cui cade una data.
 function lunediDi(iso) {
@@ -995,11 +997,12 @@ async function pdfDellaSettimana(inizio, fine) {
   return { schede: schede, mancanti: mancanti };
 }
 
-/* Audio e foto di una settimana se ne vanno dal telefono. Le registrazioni restano come
-   righe senza file — il loro testo è già nelle sezioni — le foto spariscono del tutto:
-   da qui in poi vivono nei PDF. */
+/* Solo l'audio di una settimana se ne va dal telefono: è la parte pesante dello
+   spazio. Le registrazioni restano come righe senza file — il loro testo è già
+   nelle sezioni. Foto, bolle e documenti restano per tutta la durata del
+   cantiere (Fase 9, D-roadblock chiuso il 15/09/2026): non li ha mai tolti
+   nessuna decisione, solo questa funzione lo faceva per sbaglio. */
 async function svuotaSettimana(inizio, fine) {
-  const loc = leggiLocale();
   const oggi = oggiISO();
   let tolti = 0;
   for (const s of valori(leggiTutto().sopralluoghi)) {
@@ -1010,26 +1013,17 @@ async function svuotaSettimana(inizio, fine) {
       await cancellaMedia(p.audio);
       p.audio = null; p.archiviato = oggi; toccato = true; tolti++;
     }
-    const foto = fotoDi(s);
-    if (foto.length) {
-      const id = {};
-      foto.forEach(function (f) { id[f.id] = true; });
-      loc.coda = loc.coda.filter(function (l) { return !id[l.foto]; });
-      await cancellaFileFoto(s);
-      s.media = (s.media || []).filter(function (m) { return !(m && m.tipo === 'foto'); });
-      toccato = true; tolti += foto.length;
-    }
     if (toccato) salva('sopralluogo', s);
   }
-  salvaLocale();
   return tolti;
 }
 
 /* "Libera memoria", a mano: i PDF della settimana escono dal foglio di condivisione
-   (mail, WhatsApp, salva), e solo dopo audio e foto si buttano. Annullando non si tocca niente. */
+   (mail, WhatsApp, salva), e solo dopo l'audio si butta. Foto, bolle e documenti restano
+   sul telefono per tutta la durata del cantiere. Annullando non si tocca niente. */
 async function liberaMemoria(inizio, fine) {
   if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
-  const ok = await chiedi('Libera memoria?', 'Settimana ' + dataSenzaAnno(inizio) + ' – ' + dataSenzaAnno(fine) + ': si fanno i PDF che mancano (verbale di ogni giornata, verbale di settimana di ogni cantiere), li mandi fuori o li salvi, e poi audio e foto di quei giorni si tolgono dal telefono. Restano nei PDF.', 'Vai', 'rosso');
+  const ok = await chiedi('Libera memoria?', 'Settimana ' + dataSenzaAnno(inizio) + ' – ' + dataSenzaAnno(fine) + ': si fanno i PDF che mancano (verbale di ogni giornata, verbale di settimana di ogni cantiere), li mandi fuori o li salvi, e poi l\'audio di quei giorni si toglie dal telefono. Foto, bolle e documenti restano fino alla chiusura del cantiere.', 'Vai', 'rosso');
   chiudiFoglio();
   if (!ok) return;
   avvisa('Preparo i PDF della settimana…');
@@ -1063,7 +1057,7 @@ async function pulisciSettimane() {
     chiuse++;
   }
   if (chiuse) {
-    avvisa((chiuse === 1 ? 'Settimana passata chiusa' : chiuse + ' settimane passate chiuse') + ': PDF in archivio, audio e foto liberati', 'ok');
+    avvisa((chiuse === 1 ? 'Settimana passata chiusa' : chiuse + ' settimane passate chiuse') + ': PDF in archivio, audio liberato', 'ok');
     SETT_CONTO.inizio = null;
     aggiornaVista();
   }
@@ -1116,8 +1110,10 @@ async function pdfPeriodo(c, dal, al) {
 
 /* ---------------- L'ARCHIVIO DEI PDF ----------------
    Un PDF generato non si butta più: resta nel telefono e si riapre dall'app. È lui
-   l'archivio vero, perché foto e audio prima o poi se ne vanno. Rifare lo stesso
-   documento non ne crea un secondo: sostituisce quello di prima, stessa chiave. */
+   l'archivio vero dell'audio, che prima o poi se ne va (foto, bolle e documenti
+   restano invece sul telefono per tutta la durata del cantiere, Fase 9). Rifare
+   lo stesso documento non ne crea un secondo: sostituisce quello di prima, stessa
+   chiave. */
 
 function pdfArchiviati() {
   const l = leggiLocale().pdf;
