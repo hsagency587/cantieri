@@ -1106,7 +1106,7 @@ async function svuotaSettimana(inizio, fine) {
    sul telefono per tutta la durata del cantiere. Annullando non si tocca niente. */
 async function liberaMemoria(inizio, fine) {
   if (!window.PDFLib) { avvisa('PDF non pronto: serve la rete la prima volta', 'err'); return; }
-  const ok = await chiedi('Libera memoria?', 'Settimana ' + dataSenzaAnno(inizio) + ' – ' + dataSenzaAnno(fine) + ': si fanno i PDF che mancano (verbale di ogni giornata, verbale di settimana di ogni cantiere), li mandi fuori o li salvi, e poi l\'audio di quei giorni si toglie dal telefono. Foto, bolle e documenti restano fino alla chiusura del cantiere.', 'Vai', 'rosso');
+  const ok = await chiedi('Libera memoria?', 'Settimana ' + dataSenzaAnno(inizio) + ' – ' + dataSenzaAnno(fine) + ': si fanno i PDF che mancano (verbale di ogni giornata, verbale di settimana di ogni cantiere), li mandi fuori o li salvi, e poi l\'audio di quei giorni si toglie dal telefono. Foto, bolle e documenti restano finché il cantiere esiste.', 'Vai', 'rosso');
   chiudiFoglio();
   if (!ok) return;
   avvisa('Preparo i PDF della settimana…');
