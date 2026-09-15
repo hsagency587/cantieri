@@ -1043,6 +1043,19 @@ async function liberaMemoria(inizio, fine) {
   aggiornaVista();
 }
 
+/* Fase 5: il verbale di settimana non aspetta più che qualcuno lo tocchi la domenica.
+   Appena il giorno cambia — quindi anche appena finisce la domenica — per ogni cantiere
+   che ha lavorato nella settimana appena chiusa si fanno, come già fa "Libera memoria",
+   i verbali di giornata che mancano e poi il verbale della settimana intera: non tocca
+   l'audio, quello aspetta ancora mercoledì (Fase 9). Se manca la rete o pdf-lib non è
+   ancora pronto, ci riprova da solo al prossimo cambio di giorno: la chiave del PDF
+   evita di rifare quello che è già archiviato. */
+async function creaVerbaliSettimanaScorsa() {
+  if (!window.PDFLib) return;
+  const sett = settimanaScorsa();
+  await pdfDellaSettimana(sett.inizio, sett.fine);
+}
+
 /* Da mercoledì l'app chiude da sola le settimane passate che hanno ancora audio o foto:
    fa i PDF che mancano, li tiene in archivio, e svuota. Se un PDF non riesce — manca la
    rete e pdf-lib non c'è ancora — quella settimana aspetta la volta dopo. */

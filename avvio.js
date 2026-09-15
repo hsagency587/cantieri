@@ -43,6 +43,7 @@ function controllaCambioGiorno() {
   if (oggi === GIORNO_APP) return;
   GIORNO_APP = oggi;
   aggiornaVista();
+  creaVerbaliSettimanaScorsa();
   pulisciSettimane().then(contaSettimana).then(function () { if (SETT_CONTO.inizio) aggiornaVista(); });
 }
 
@@ -356,6 +357,8 @@ function avvio() {
   setInterval(controllaCambioGiorno, 60000);
   controllaPromemoria();
   misuraSpazio().then(function () { if (SPAZIO.avviso) aggiornaVista(); });
+  // Fase 5: il verbale della settimana appena chiusa si scrive da solo appena si apre l'app.
+  creaVerbaliSettimanaScorsa();
   // Da mercoledì le settimane passate si chiudono da sole; poi si conta quella che aspetta "Libera memoria".
   pulisciSettimane().then(contaSettimana).then(function () { if (SETT_CONTO.inizio) aggiornaVista(); });
 
