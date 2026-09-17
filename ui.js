@@ -71,11 +71,37 @@ async function chiediDueVolte(titolo, testo, etichetta) {
 let ROTTA = { nome: 'dashboard', parametri: [] };
 let devSbloccato = false;
 
-/* I tre puntini aprono le loro voci dentro la card, non una finestra che copre
-   lo schermo: si tocca, la card si allunga di tre righe, si sceglie e si richiude.
-   Una sola card per volta, e cambiando schermata si richiude da sola. */
+/* I tre puntini aprono un menu piccolo, agganciato al tasto: non più la card
+   che si allunga sotto (cambiato il 17/09/2026, su richiesta di Simone — il
+   menu è "fixed", posizionaMenuPunti lo mette a posto dopo ogni disegno, così
+   esce dal bordo arrotondato della card che lo conterrebbe). Un solo menu
+   aperto per volta; si chiude toccando fuori, scorrendo, o cambiando schermata. */
 let PUNTI_APERTI = null;
 function apriPunti(id) { PUNTI_APERTI = (PUNTI_APERTI === id ? null : id); aggiornaVista(); }
+// Il tasto che ha aperto il menu è quello con la classe "on" e un data-az che comincia per "menu-".
+function posizionaMenuPunti() {
+  const menu = document.querySelector('.menu-punti');
+  const btn = document.querySelector('.on[data-az^="menu-"]');
+  if (!menu || !btn) return;
+  const margine = 8;
+  const r = btn.getBoundingClientRect();
+  const largo = menu.offsetWidth, alto = menu.offsetHeight;
+  let top = r.bottom + 4;
+  if (top + alto > innerHeight - margine) top = Math.max(margine, r.top - alto - 4);
+  let left = Math.min(r.right, innerWidth - margine) - largo;
+  left = Math.max(margine, left);
+  menu.style.top = top + 'px';
+  menu.style.left = left + 'px';
+}
+// Si chiude toccando fuori dal menu (il tasto dei tre puntini si gestisce da sé, in apriPunti) o scorrendo.
+document.addEventListener('click', function (ev) {
+  if (!PUNTI_APERTI) return;
+  if (ev.target.closest('.menu-punti') || ev.target.closest('[data-az^="menu-"]')) return;
+  PUNTI_APERTI = null;
+  aggiornaVista();
+});
+document.addEventListener('scroll', function () { if (PUNTI_APERTI) { PUNTI_APERTI = null; aggiornaVista(); } }, true);
+window.addEventListener('resize', function () { if (PUNTI_APERTI) { PUNTI_APERTI = null; aggiornaVista(); } });
 function vai(hash) { PUNTI_APERTI = null; ESPORTA_APERTO = null; location.hash = hash; }
 
 /* Il tasto "Esporta" di una card con Visualizza · Esporta · Correggi: toccato,
@@ -97,7 +123,7 @@ function tastoPunti(chiave) {
 }
 function vociPunti(chiave, azione, attributi) {
   if (PUNTI_APERTI !== chiave) return '';
-  return '<div class="esp-voci"><button class="voce-m rossa" data-az="' + azione + '" ' + attributi + '><b>Elimina</b></button></div>';
+  return '<div class="menu-punti"><button class="voce-m rossa" data-az="' + azione + '" ' + attributi + '><b>Elimina</b></button></div>';
 }
 // Le due voci scendono sotto la fila dei tasti, dentro la card: la fila scorre di lato e non può far uscire niente.
 function vociEsporta(chiave, azEsporta, idEsporta, azScarica, idScarica) {
@@ -175,6 +201,7 @@ function disegna() {
   segnaScorrimento(vista);
   // Le pagine del PDF si disegnano dopo, quando il contenitore ha una larghezza.
   if (ROTTA.nome === 'leggi') mostraPdfDentro(ROTTA.parametri[0]);
+  posizionaMenuPunti();
 }
 function cresciTextarea(t) {
   t.style.height = 'auto';

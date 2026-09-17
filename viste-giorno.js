@@ -401,8 +401,10 @@ function vistaGiornoInCorso(s, c) {
   html += cardDaAssegnare(s);
   // 7.5-7.6 — il sopralluogo aperto: non una pagina nuova, il contenuto compare qui sotto.
   html += cardRilieviNuovi({ sop: attivo.id });
-  html += contenutoSopralluogoEspanso(attivo);
+  // "+ Foto dal rullino" sopra "Materiali necessari" (richiesta di Simone, 17/09/2026).
   html += ingressiFoto(attivo);
+  html += materialiGiornataHtml(s);
+  html += contenutoSopralluogoEspanso(attivo);
   if (!REG.attiva) {
     html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(attivo.id) + '"><span class="ico ico-microfono"></span> Detta</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(attivo.id) + '"><span class="ico ico-fotocamera"></span> Foto</button></div>';
@@ -435,12 +437,13 @@ function strisciaVerbaliGiornata(c) {
     const aperto = PUNTI_APERTI === w.pdf.id;
     return '<div class="doc-mini fatto' + (aperto ? ' menu' : '') + '">' +
       '<div class="q"><span class="ora">Settimana</span><span class="nm">' + h(giornoMese(w.dal) + ' – ' + giornoMese(w.al)) + '</span></div>' +
+      '<button class="vedi" data-az="pdf-apri" data-id="' + h(w.pdf.id) + '">Visualizza</button>' +
       (aperto
-        ? '<div class="voci"><button class="voce-m" data-az="settimana-rifai" data-id="' + h(c.id) + '" data-dal="' + h(w.dal) + '" data-al="' + h(w.al) + '">Rifai</button>' +
-          '<button class="voce-m" data-az="pdf-manda" data-id="' + h(w.pdf.id) + '">Esporta</button>' +
-          '<button class="voce-m" data-az="pdf-fuori" data-id="' + h(w.pdf.id) + '">Scarica</button>' +
-          '<button class="voce-m rossa" data-az="pdf-elimina" data-id="' + h(w.pdf.id) + '">Elimina</button></div>'
-        : '<button class="vedi" data-az="pdf-apri" data-id="' + h(w.pdf.id) + '">Visualizza</button>') +
+        ? '<div class="menu-punti"><button class="voce-m" data-az="settimana-rifai" data-id="' + h(c.id) + '" data-dal="' + h(w.dal) + '" data-al="' + h(w.al) + '"><b>Rifai</b></button>' +
+          '<button class="voce-m" data-az="pdf-manda" data-id="' + h(w.pdf.id) + '"><b>Esporta</b></button>' +
+          '<button class="voce-m" data-az="pdf-fuori" data-id="' + h(w.pdf.id) + '"><b>Scarica</b></button>' +
+          '<button class="voce-m rossa" data-az="pdf-elimina" data-id="' + h(w.pdf.id) + '"><b>Elimina</b></button></div>'
+        : '') +
       '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-verbale" data-id="' + h(w.pdf.id) + '" aria-label="Altro">⋯</button>' +
       '</div>';
   };
@@ -452,9 +455,8 @@ function strisciaVerbaliGiornata(c) {
         '<div class="q">' +
         '<span class="ora">' + h(suoNome || 'Giornata ' + delGiorno(v.giorno)) + '</span>' +
         '<span class="nm">' + h(giornoMese(v.giorno)) + '</span></div>' +
-        (aperto
-          ? '<div class="voci">' + vociMenuVerbale(v) + '</div>'
-          : '<button class="vedi" data-az="verbale-vedi" data-id="' + h(v.id) + '">Visualizza</button>') +
+        '<button class="vedi" data-az="verbale-vedi" data-id="' + h(v.id) + '">Visualizza</button>' +
+        (aperto ? '<div class="menu-punti">' + vociMenuVerbale(v) + '</div>' : '') +
         '<button class="punti' + (aperto ? ' on' : '') + '" data-az="menu-verbale" data-id="' + h(v.id) + '" aria-label="Altro">⋯</button>' +
         '</div>';
     }).join('') + '</div></div>';
@@ -547,23 +549,23 @@ function scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto) {
 
 /* Le tre voci che compaiono dentro la card quando si toccano i puntini. */
 function vociMenuVerbale(v) {
-  return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(v.id) + '">Modifica</button>' +
-    '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(v.id) + '">Esporta</button>' +
-    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(v.id) + '">Scarica</button>' +
-    '<button class="voce-m rossa" data-az="verbale-elimina" data-id="' + h(v.id) + '">Elimina</button>';
+  return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(v.id) + '"><b>Modifica</b></button>' +
+    '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(v.id) + '"><b>Esporta</b></button>' +
+    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(v.id) + '"><b>Scarica</b></button>' +
+    '<button class="voce-m rossa" data-az="verbale-elimina" data-id="' + h(v.id) + '"><b>Elimina</b></button>';
 }
 /* Sul sopralluogo: prima del verbale si scrive o si modifica la giornata; dopo,
    le stesse voci del verbale. Elimina c'è sempre, e porta via anche il verbale. */
 function vociMenuSopralluogo(x) {
   const vb = verbaleDiSopralluogo(x.codice);
-  const elimina = '<button class="voce-m rossa" data-az="sopralluogo-elimina" data-id="' + h(x.id) + '">Elimina</button>';
+  const elimina = '<button class="voce-m rossa" data-az="sopralluogo-elimina" data-id="' + h(x.id) + '"><b>Elimina</b></button>';
   if (!vb) {
-    return '<button class="voce-m" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">Scrivi il verbale</button>' +
-      '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '">Modifica</button>' + elimina;
+    return '<button class="voce-m" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '"><b>Scrivi il verbale</b></button>' +
+      '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '"><b>Modifica</b></button>' + elimina;
   }
-  return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button>' +
-    '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(vb.id) + '">Esporta</button>' +
-    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(vb.id) + '">Scarica</button>' + elimina;
+  return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(vb.id) + '"><b>Modifica</b></button>' +
+    '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(vb.id) + '"><b>Esporta</b></button>' +
+    '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(vb.id) + '"><b>Scarica</b></button>' + elimina;
 }
 
 /* I tre puntini: le quattro cose che si fanno a un verbale senza aprirlo. */
@@ -704,6 +706,21 @@ function bolleGiornataHtml(s) {
   if (!lista.length) return '';
   return tendina('bolle-giorno-' + s.cantiere + '-' + s.giorno, 'Bolle della giornata', filaFoto(null, lista, { doc: true }), lista.length);
 }
+/* Materiali necessari di tutti i sopralluoghi della giornata, un box per sopralluogo:
+   non si va a cercare quello di un sopralluogo alla volta (richiesta di Simone, 17/09/2026). */
+function materialiGiornataHtml(s) {
+  const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
+  if (!fratelli.length) return '';
+  let pieni = 0;
+  const box = fratelli.map(function (x) {
+    const matNec = String(x.sezioni.materiali_necessari || '').trim();
+    if (matNec) pieni++;
+    const suoNome = String(x.nome || '').trim();
+    return '<div class="card"><div class="card-capo spenta">' + h(suoNome || x.ora) + '</div>' +
+      '<textarea class="corpo" data-campo="sezione" data-id="' + h(x.id) + '" data-sezione="materiali_necessari" placeholder="—">' + h(matNec) + '</textarea></div>';
+  }).join('');
+  return tendina('matnec-giorno-' + s.cantiere + '-' + s.giorno, 'Materiali necessari', box, pieni || null);
+}
 
 /* Le foto di un solo sopralluogo: tendina aperta di default (Fase 7.5), con "Marca tutte/Smarca tutte". */
 function cardFotoGiorno(s) {
@@ -734,12 +751,16 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
   const vb = verbaleDiSopralluogo(x.codice);
   const suoNome = String(x.nome || '').trim();
   const aperto = PUNTI_APERTI === x.id;
-  const stato = !vb ? 'da scrivere' : (verbaleAllineato(vb) ? 'verbale fatto' : 'da aggiornare');
-  return '<div class="ordine' + (x.id === espansoId ? ' diff' : '') + '">' +
+  // "da scrivere" è lo stato di partenza, ovvio: si scrive solo quando dice altro (17/09/2026).
+  const stato = !vb ? '' : (verbaleAllineato(vb) ? 'verbale fatto' : 'da aggiornare');
+  const sotto = [];
+  if (suoNome) sotto.push(h(x.ora));
+  if (stato) sotto.push(h(stato));
+  return '<div class="ordine sop' + (x.id === espansoId ? ' attivo' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
-    '<small>' + (suoNome ? h(x.ora) + ' · ' : '') + h(stato) + '</small></button>' +
+    (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' +
     '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
-    '</div>' + (aperto ? '<div class="esp-voci">' + vociMenuSopralluogo(x) + '</div>' : '');
+    '</div>' + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
 }
 // Il box: righe in verticale, 4-5 per volta (scorrevole si occupa dell'altezza), niente se non c'è niente.
 function boxSopralluoghi(s, espansoId) {
@@ -751,8 +772,9 @@ function boxSopralluoghi(s, espansoId) {
 }
 
 /* Il contenuto del sopralluogo aperto (Fase 7.5-7.6), in ordine:
-   1. rilevamento d'ordine (se c'è) — 2. materiali necessari, sua tendina in cima —
-   3. foto del sopralluogo, aperta — 4. le scritte (dettatura originale) — 5. i punti. */
+   1. rilevamento d'ordine (se c'è) — 2. foto del sopralluogo, aperta —
+   3. le scritte (dettatura originale) — 4. i punti. Materiali necessari non è più
+   qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
 function contenutoSopralluogoEspanso(x) {
   let html = '';
   if (String(x.sezioni.da_smistare || '').trim()) {
@@ -764,11 +786,6 @@ function contenutoSopralluogoEspanso(x) {
   }
   const rilOrd = String(x.sezioni.rilievi_ordine || '').trim();
   if (rilOrd) html += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
-  // Materiali necessari: non è fra i punti sotto, sta nella sua tendina in cima (D8, Fase 7.6).
-  const matNec = String(x.sezioni.materiali_necessari || '').trim();
-  html += tendina('matnec-' + x.id, 'Materiali necessari',
-    '<div class="card"><textarea class="corpo" data-campo="sezione" data-id="' + h(x.id) + '" data-sezione="materiali_necessari" placeholder="—">' + h(matNec) + '</textarea></div>',
-    matNec ? righeElenco(matNec).length : null);
   html += cardFotoGiorno(x);
   html += tendinaGrezzo(x);
   const pezziVivi = x.pezzi.filter(function (p) { return p.audio || (p.stato && p.stato !== 'riordinato'); });
@@ -785,7 +802,7 @@ function contenutoSopralluogoEspanso(x) {
       listaAudio(x, pezziQui, { dentroSezione: true, chiave: x.id + '-' + z.chiave }) + filaFoto(x, fotoQui, { segna: true }) + '</div>';
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
-  if (vuote.length) html += tendina('vuote-' + x.id, vuote.length + (vuote.length === 1 ? ' sezione ancora vuota' : ' sezioni ancora vuote'), vuote.join(''));
+  if (vuote.length) html += tendina('vuote-' + x.id, 'Stendi le sezioni sotto', vuote.join(''), vuote.length);
   return html;
 }
 
