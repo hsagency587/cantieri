@@ -684,23 +684,25 @@ function apriScanner(el, idIngresso) {
 
 function righeSezione(s, k) { const t = String(s.sezioni[k] || '').trim(); return t ? righeElenco(t).length : 0; }
 
-/* Tutte le foto della giornata (di tutti i sopralluoghi), con "Marca tutte/Smarca tutte" (Fase 7.2). */
+/* Tutte le foto della giornata (di tutti i sopralluoghi), in tendina, con "Marca tutte/Smarca tutte" (Fase 7.2). */
 function cardFotoGiornataConTutte(s) {
   const lista = [];
   sopralluoghiDelGiorno(s.cantiere, s.giorno).forEach(function (x) { fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); }); });
   if (!lista.length) return '';
   const nelPdf = lista.filter(function (x) { return x.f.nelPdf; }).length;
   const tutte = nelPdf === lista.length;
-  return '<div class="card"><div class="card-capo">Foto della giornata<span class="dx">' + nelPdf + ' su ' + lista.length + ' nel PDF</span></div>' +
+  return tendina('foto-giorno-' + s.cantiere + '-' + s.giorno, 'Foto della giornata',
+    '<div class="card"><div class="card-capo">' + nelPdf + ' su ' + lista.length + ' nel PDF</div>' +
     filaFoto(null, lista, { segna: true }) +
-    '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte-giorno" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div></div>';
+    '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte-giorno" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div></div>',
+    lista.length);
 }
-// Tutte le bolle della giornata (di tutti i sopralluoghi): stesso principio delle foto, niente bulk (Fase 7.2).
+// Tutte le bolle della giornata (di tutti i sopralluoghi), in tendina: stesso principio delle foto, niente bulk (Fase 7.2).
 function bolleGiornataHtml(s) {
   const lista = [];
   sopralluoghiDelGiorno(s.cantiere, s.giorno).forEach(function (x) { documentiDi(x).forEach(function (f) { if (f.genere === 'bolla') lista.push({ sop: x, f: f }); }); });
   if (!lista.length) return '';
-  return '<div class="card"><div class="card-capo">Bolle della giornata<span class="dx">' + lista.length + '</span></div>' + filaFoto(null, lista, { doc: true }) + '</div>';
+  return tendina('bolle-giorno-' + s.cantiere + '-' + s.giorno, 'Bolle della giornata', filaFoto(null, lista, { doc: true }), lista.length);
 }
 
 /* Le foto di un solo sopralluogo: tendina aperta di default (Fase 7.5), con "Marca tutte/Smarca tutte". */
