@@ -319,7 +319,7 @@ function tendinaGiornateCantiere(c, oggi) {
       }).join('')) + '</div>';
   }
   html += lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
-  return tendina('giornate-' + c.id, 'Giornate', html, lista.length);
+  return tendina('giornate-' + c.id, 'Giornate', html);
 }
 
 /* ---- Tendina 3: Foto — Tendina 4: Bolle (stesso principio, filtri per giorno/settimana) ---- */
@@ -353,7 +353,7 @@ function tendinaFotoCantiere(c) {
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
   const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true, c.aperto || '') +
     (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">' + (tutti.length ? 'Nessuna foto con questo filtro.' : 'Nessuna foto ancora.') + '</div>');
-  return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length);
+  return tendina('foto-cant-' + c.id, 'Foto', html);
 }
 let filtroBolleCant = '';
 // Niente "tutte" qui: solo giorno e settimana, non c'è un'altra categoria con cui contrastarla.

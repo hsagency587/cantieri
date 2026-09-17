@@ -754,7 +754,6 @@ function boxSopralluoghi(s, espansoId) {
    1. rilevamento d'ordine (se c'è) — 2. materiali necessari, sua tendina in cima —
    3. foto del sopralluogo, aperta — 4. le scritte (dettatura originale) — 5. i punti. */
 function contenutoSopralluogoEspanso(x) {
-  const suoNome = String(x.nome || '').trim();
   let html = '';
   if (String(x.sezioni.da_smistare || '').trim()) {
     html += '<div class="card gialla"><div class="card-capo gialla">Da smistare</div>' +
@@ -787,7 +786,7 @@ function contenutoSopralluogoEspanso(x) {
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
   if (vuote.length) html += tendina('vuote-' + x.id, vuote.length + (vuote.length === 1 ? ' sezione ancora vuota' : ' sezioni ancora vuote'), vuote.join(''));
-  return '<div class="card"><div class="card-capo">Sopralluogo<span class="dx">' + h(suoNome || x.ora) + '</span></div>' + html + '</div>';
+  return html;
 }
 
 /* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza) — più il

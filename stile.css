@@ -1231,9 +1231,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .doc-mini button.q{width:100%;flex:1 1 auto;background:transparent;border:0;font:inherit;cursor:pointer}
 .doc-mini button.q:active{background:var(--surface)}
 
-/* Le tendine di pagina (non in griglia) rientrano di un margine come le tendine in
-   griglia (riga sopra, .tendine > div > .card): stessa correzione, due contesti in più
-   dove oggi vivono — dirette in #vista, o dentro il box del sopralluogo aperto. */
+/* Le tendine di pagina (non in griglia, dirette figlie di #vista) rientrano di un
+   margine come le tendine in griglia (riga sopra, .tendine > div > .card): stessa
+   correzione, stesso motivo. */
 #vista > div > .card,#vista > div > .cerca{margin-left:0;margin-right:0}
-.card > div > .card,.card > div > .cerca{margin-left:0;margin-right:0}
-.card > .tend{width:100%}
