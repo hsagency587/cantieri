@@ -70,7 +70,8 @@ async function blobDaTela(tela, qualita) {
    La fotocamera del telefono, aperta dall'ingresso file, su Android chiude spesso la
    pagina per liberare memoria: la foto scattata non torna mai. Qui la camera si apre
    dentro l'app, a tutto schermo, e lo scatto non esce mai dalla pagina. Se la camera
-   non si può aprire (permesso negato, browser vecchio) si torna all'ingresso file. */
+   non si può aprire (permesso negato, browser vecchio) si torna all'ingresso file.
+   Lo zoom si perdeva insieme alla fotocamera nativa: due dita lo rimettono, sotto. */
 let CAMERA = null;
 function ingressoScatto() { const f = document.getElementById('file-foto-scatta'); if (f) f.click(); }
 async function apriFotocamera(sopId) {
@@ -89,7 +90,15 @@ async function apriFotocamera(sopId) {
   document.body.appendChild(box);
   const video = box.querySelector('video');
   video.srcObject = stream;
-  CAMERA = { stream: stream, box: box, video: video, sop: sopId };
+  const track = stream.getVideoTracks()[0];
+  // Il sensore lo zoom ce l'ha quasi solo su Chrome/Android; altrove (Safari, camere senza driver) si allarga il video.
+  const cap = track.getCapabilities ? track.getCapabilities() : {};
+  CAMERA = { stream: stream, box: box, video: video, sop: sopId, track: track, pinch: null,
+    zoomHw: !!cap.zoom, zMin: cap.zoom ? cap.zoom.min : 1, zMax: cap.zoom ? cap.zoom.max : 3,
+    zoom: cap.zoom ? (track.getSettings().zoom || cap.zoom.min) : 1 };
+  box.addEventListener('touchmove', pinchZoom, { passive: false });
+  box.addEventListener('touchend', finePinch);
+  box.addEventListener('touchcancel', finePinch);
 }
 function chiudiFotocamera() {
   if (!CAMERA) return;
@@ -97,18 +106,50 @@ function chiudiFotocamera() {
   CAMERA.box.remove();
   CAMERA = null;
 }
+/* Due dita: la distanza fra i tocchi diventa un fattore rispetto allo zoom di quando
+   il gesto è partito, non rispetto a quello di un istante prima — così non scatta a scossoni. */
+function distanzaTocchi(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
+function pinchZoom(ev) {
+  if (!CAMERA || ev.touches.length !== 2) { finePinch(); return; }
+  ev.preventDefault();
+  const d = distanzaTocchi(ev.touches);
+  if (!CAMERA.pinch) { CAMERA.pinch = { d0: d, z0: CAMERA.zoom }; return; }
+  impostaZoom(CAMERA.pinch.z0 * (d / CAMERA.pinch.d0));
+}
+function finePinch() { if (CAMERA) CAMERA.pinch = null; }
+function impostaZoom(z) {
+  if (!CAMERA) return;
+  CAMERA.zoom = Math.min(CAMERA.zMax, Math.max(CAMERA.zMin, z));
+  // Zoom vero: si chiede al sensore. Zoom finto: si allarga solo quello che si vede.
+  if (CAMERA.zoomHw) CAMERA.track.applyConstraints({ advanced: [{ zoom: CAMERA.zoom }] }).catch(function () {});
+  else CAMERA.video.style.transform = 'scale(' + CAMERA.zoom + ')';
+}
 // Il fotogramma di adesso diventa un JPEG e prende la strada di ogni altra foto.
 async function scattaFotocamera() {
   if (!CAMERA || !CAMERA.video.videoWidth) return;
   const v = CAMERA.video, sop = CAMERA.sop;
   const tela = document.createElement('canvas');
   tela.width = v.videoWidth; tela.height = v.videoHeight;
-  tela.getContext('2d').drawImage(v, 0, 0);
+  const ctx = tela.getContext('2d');
+  // Lo zoom vero è già nel fotogramma del sensore: si scatta com'è. Quello finto è solo sullo
+  // schermo, quindi in fase di scatto si ritaglia il centro alla stessa proporzione dello schermo.
+  if (!CAMERA.zoomHw && CAMERA.zoom > 1) {
+    const z = CAMERA.zoom, sw = v.videoWidth / z, sh = v.videoHeight / z;
+    ctx.drawImage(v, (v.videoWidth - sw) / 2, (v.videoHeight - sh) / 2, sw, sh, 0, 0, tela.width, tela.height);
+  } else ctx.drawImage(v, 0, 0);
   const blob = await new Promise(function (ok) { tela.toBlob(ok, 'image/jpeg', 0.92); });
   tela.width = 1; tela.height = 1;
   chiudiFotocamera();
   if (!blob) { avvisa('Scatto non riuscito', 'err'); return; }
   await aggiungiFoto(new File([blob], 'scatto.jpg', { type: 'image/jpeg' }), sop, 'scatto');
+}
+
+// Il tasto Foto chiede prima fotocamera o galleria: un foglio con due scelte, come "Su quale cantiere?".
+function scegliFoto(sopId) {
+  apriFoglio('<h2>Foto</h2>' +
+    '<button class="btn scelta" data-az="foto-fotocamera" data-id="' + h(sopId) + '"><b>Fotocamera</b><small>scatta adesso</small></button>' +
+    '<button class="btn scelta" data-az="foto-rullino" data-id="' + h(sopId) + '"><b>Galleria</b><small>scegli una foto già fatta</small></button>' +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
 }
 
 /* Dal file scelto (scattato o preso dal rullino) alla voce in media del sopralluogo.
@@ -401,7 +442,7 @@ function vistaGiornoInCorso(s, c) {
   html += cardDaAssegnare(s);
   // 7.5-7.6 — il sopralluogo aperto: non una pagina nuova, il contenuto compare qui sotto.
   html += cardRilieviNuovi({ sop: attivo.id });
-  // "+ Foto dal rullino" sopra "Materiali necessari" (richiesta di Simone, 17/09/2026).
+  // Ingressi nascosti della foto (nessun tasto qui: li apre "Foto" in fondo).
   html += ingressiFoto(attivo);
   html += materialiGiornataHtml(s);
   html += contenutoSopralluogoEspanso(attivo);
@@ -808,13 +849,14 @@ function contenutoSopralluogoEspanso(x) {
   return html;
 }
 
-/* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza) — più il
-   link del rullino. Stanno nel giorno e anche nella schermata di una foto: dopo
-   averne caricata una se ne carica un'altra da lì, senza tornare indietro. */
+/* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza). Nessun
+   tasto visibile: li apre il foglio di scelta di scegliFoto (tolto il link diretto
+   al rullino, richiesta di Simone, 17/09/2026). Stanno nel giorno e anche nella
+   schermata di una foto: dopo averne caricata una se ne carica un'altra da lì,
+   senza tornare indietro. */
 function ingressiFoto(s) {
   return '<input type="file" accept="image/*" capture="environment" id="file-foto-scatta" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="scatto">' +
-    '<input type="file" accept="image/*" multiple id="file-foto-rullino" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="rullino">' +
-    '<button class="link blocco" data-az="foto-rullino">＋ Foto dal rullino</button>';
+    '<input type="file" accept="image/*" multiple id="file-foto-rullino" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="rullino">';
 }
 
 // Il testo grezzo resta sempre sotto: è la prova di cosa è stato detto, anche dopo il riordino.
@@ -1128,10 +1170,11 @@ Object.assign(AZIONI, {
   },
   // --- foto ---
   // Il sopralluogo lo dice il tasto; dove non lo dice (schermata della foto) lo sa l'ingresso file.
-  'foto-scatta': function (el) { const f = document.getElementById('file-foto-scatta'); apriFotocamera(el.dataset.id || (f ? f.dataset.id : '')); },
+  'foto-scatta': function (el) { const f = document.getElementById('file-foto-scatta'); scegliFoto(el.dataset.id || (f ? f.dataset.id : '')); },
+  'foto-fotocamera': function (el) { chiudiFoglio(); apriFotocamera(el.dataset.id); },
   'fotocamera-scatta': function () { return scattaFotocamera(); },
   'fotocamera-chiudi': function () { chiudiFotocamera(); },
-  'foto-rullino': function () { const f = document.getElementById('file-foto-rullino'); if (f) f.click(); },
+  'foto-rullino': function () { chiudiFoglio(); const f = document.getElementById('file-foto-rullino'); if (f) f.click(); },
   'foto-sezione': function (el) {
     const s = sopralluogo(el.dataset.sop);
     const f = s && trovaFoto(s, el.dataset.id);

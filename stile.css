@@ -1057,7 +1057,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 
 /* La fotocamera dentro l'app: tutto schermo, solo il video. Il tasto di scatto in basso
    al centro, la ✕ in alto a destra. */
-#fotocamera{position:fixed;inset:0;z-index:1000;background:#000}
+#fotocamera{position:fixed;inset:0;z-index:1000;background:#000;touch-action:none}
 #fotocamera video{width:100%;height:100%;object-fit:cover}
 #fotocamera .scatta{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);background-clip:padding-box}
 #fotocamera .scatta:active{transform:translateX(-50%) scale(.92)}
