@@ -426,9 +426,9 @@ function vistaGiornoInCorso(s, c) {
     tastoVerbaleGiornata(vg, s.cantiere, s.giorno) +
     '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (audioTotali + ' audio · ' + durataBreve(parlatoTotale) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
   if (vg) html += cardVerbaleGiornata(vg);
-  // 7.2 — due tendine in cima: foto e bolle di tutta la giornata, compresse sulla stessa riga
-  // (quella che si apre prende tutta la riga, l'altra scende sotto — griglia già pronta, §29 di STILE.md).
-  html += grigliaTendine([cardFotoGiornataConTutte(s), bolleGiornataHtml(s)]);
+  // 7.2 — due tendine in cima: foto e bolle di tutta la giornata (tornate una sotto l'altra, 17/09/2026: la riga compressa non convinceva).
+  html += cardFotoGiornataConTutte(s);
+  html += bolleGiornataHtml(s);
   html += materialiGiornataHtml(s);
   // 7.3 — linea sottile, due tasti: rilevamento d'ordine e bolla. Agiscono sul sopralluogo aperto.
   if (!REG.attiva) {

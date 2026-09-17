@@ -216,14 +216,13 @@ function vistaDashboard(idAzienda) {
 /* ---------------- CANTIERE: le sei tendine (rework 14/09/2026) ---------------- */
 /* Una tendina come tendina(), con un secondo tasto piccolo sulla stessa riga:
    "Rileva bolla" (Bolle), "＋ documento" (Documenti), "＋ crea" (Rilevamento
-   d'ordine). Stessa misura delle altre tendine: niente numero (non richiesto),
-   il tasto .tend resta un .tend, il tasto piccolo gli sta a fianco senza
-   ingrandire la riga (vedi .tend-riga in stile.css). */
-function tendinaConAzione(chiave, etichetta, contenuto, azioneHtml) {
+   d'ordine). Il tasto .tend resta un .tend, il tasto piccolo gli sta a fianco
+   senza ingrandire la riga (vedi .tend-riga in stile.css). */
+function tendinaConAzione(chiave, etichetta, contenuto, azioneHtml, n) {
   const aperta = !!leggiLocale().tendine[chiave];
   return '<div class="tend-riga">' +
     '<button class="tend" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
-    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span></button>' +
+    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span>' + (n != null ? '<span class="n">' + h(n) + '</span>' : '') + '</button>' +
     azioneHtml + '</div>' +
     '<div' + (aperta ? '' : ' hidden') + '>' + contenuto + '</div>';
 }
@@ -345,7 +344,7 @@ function tendinaFotoCantiere(c) {
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
   const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true, c.aperto || '') +
     (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">' + (tutti.length ? 'Nessuna foto con questo filtro.' : 'Nessuna foto ancora.') + '</div>');
-  return tendina('foto-cant-' + c.id, 'Foto', html);
+  return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length || null);
 }
 let filtroBolleCant = '';
 // Niente "tutte" qui: solo giorno e settimana, non c'è un'altra categoria con cui contrastarla.
@@ -361,7 +360,7 @@ function tendinaBolleCantiere(c) {
   html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false, c.aperto || '');
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
-  return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione);
+  return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione, tutti.length || null);
 }
 
 /* ---- Tendina 5: Documenti ---- */
