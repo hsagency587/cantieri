@@ -29,8 +29,8 @@ let LOCALE = null;   // le cose del telefono, in memoria
 function archivioVuoto() {
   return {
     versione: 1,
-    contatori: { AZ: 0, CANT: 0, GIO: 0, SOP: 0, VER: 0, CON: 0, VOCE: 0, LIS: 0, PRZ: 0, REL: 0 },
-    aziende: {}, cantieri: {}, giornate: {}, sopralluoghi: {}, verbali: {}, contabilita: {}, listino: {}, listini: {}, relazioni: {},
+    contatori: { AZ: 0, CANT: 0, GIO: 0, SOP: 0, VER: 0, VOCE: 0, LIS: 0, PRZ: 0, REL: 0 },
+    aziende: {}, cantieri: {}, giornate: {}, sopralluoghi: {}, verbali: {}, listino: {}, listini: {}, relazioni: {},
     cancellati: {},     // id → quando: perché una cancellazione arrivi anche all'altra copia
     soloEsempio: true,  // finché è vero, dentro ci sono solo i dati di esempio
     aggiornato: adessoISO()
@@ -291,18 +291,10 @@ function sopralluoghiDi(codiceCantiere) {
 function verbaleDiSopralluogo(codiceSop) {
   return valori(leggiTutto().verbali).find(function (v) { return v.sopralluogo === codiceSop; }) || null;
 }
-function contabilitaDi(codiceCantiere) {
-  return valori(leggiTutto().contabilita).find(function (c) { return c.cantiere === codiceCantiere; }) || null;
-}
 function relazione(id) { return leggiTutto().relazioni[id] || null; }
 // Una relazione per cantiere: si riscrive, non se ne fa una seconda.
 function relazioneDi(codiceCantiere) {
   return valori(leggiTutto().relazioni).find(function (r) { return r.cantiere === codiceCantiere; }) || null;
-}
-function contabilitaOCrea(codiceCantiere) {
-  let c = contabilitaDi(codiceCantiere);
-  if (!c) c = salva('contabilita', { cantiere: codiceCantiere, note: '', righe: [] });
-  return c;
 }
 function listinoTutto() {
   return valori(leggiTutto().listino).sort(function (a, b) { return a.codice.localeCompare(b.codice); });
@@ -441,9 +433,6 @@ function sezioniVuote() {
   s.da_smistare = '';
   return s;
 }
-function totaleContabilita(c) {
-  return (c && c.righe || []).reduce(function (t, r) { return t + (Number(r.importo) || 0); }, 0);
-}
 function nomeSezione(chiave) {
   const s = SEZIONI.find(function (x) { return x.chiave === chiave; });
   return s ? s.nome : (chiave === 'da_smistare' ? 'Da smistare' : chiave);
@@ -464,6 +453,15 @@ function documentiDelCantiere(codiceCantiere) {
     documentiDi(s).forEach(function (f) { if (f.cantiere) fuori.push({ sop: s, f: f }); });
   });
   return fuori.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
+}
+// Tutti i documenti del cantiere, da qualunque sopralluogo, dal più recente. A differenza di
+// documentiDelCantiere() non filtra per il flag "vale per tutto il cantiere": qui vanno tutti.
+function documentiTutti(codiceCantiere, genere) {
+  const lista = [];
+  sopralluoghiDi(codiceCantiere).forEach(function (s) {
+    documentiDi(s).forEach(function (f) { if (!genere || f.genere === genere) lista.push({ sop: s, f: f }); });
+  });
+  return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
 }
 function trovaFoto(sop, id) {
   return fotoDi(sop).find(function (f) { return f.id === id; }) || null;

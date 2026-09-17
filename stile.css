@@ -847,6 +847,15 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .periodi{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2)}
 .periodi .pill{min-height:32px;padding:0 12px;font-size:var(--t2);text-transform:none;letter-spacing:0}
 .periodi .pill.ok{border-color:var(--accent);color:var(--accent)}
+/* I selettori dentro una tendina (Verbali, Foto, Bolle, Documenti) riempiono
+   la riga in parti uguali: niente spazio vuoto a destra dell'ultimo, e
+   un'etichetta lunga va a capo dentro il suo pulsante invece di spingere
+   gli altri su una riga nuova mezza vuota. */
+.tendine > div > .periodi{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr))}
+.tendine > div > .periodi .pill{white-space:normal;text-align:center;justify-content:center;line-height:1.15;padding:6px 6px}
+/* Le barre di ricerca dentro una tendina sono un filtro di servizio, non il
+   campo principale della schermata: restano più basse. */
+.tendine > div > .cerca,.tendine > div > .cerca input{min-height:36px;font-size:var(--t2)}
 
 /* ============ 26. IL PDF SI GUARDA QUI DENTRO ============
    Le pagine, una sotto l'altra, larghe quanto la schermata. */
@@ -1048,7 +1057,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 
 /* La fotocamera dentro l'app: tutto schermo, solo il video. Il tasto di scatto in basso
    al centro, la ✕ in alto a destra. */
-#fotocamera{position:fixed;inset:0;z-index:1000;background:#000}
+#fotocamera{position:fixed;inset:0;z-index:1000;background:#000;touch-action:none}
 #fotocamera video{width:100%;height:100%;object-fit:cover}
 #fotocamera .scatta{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);background-clip:padding-box}
 #fotocamera .scatta:active{transform:translateX(-50%) scale(.92)}
@@ -1099,6 +1108,14 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .ordine .stato{flex:0 0 auto;display:flex;align-items:center;padding:0 var(--s4) 0 var(--s2);background:transparent;border:0}
 .ordine .stato .pill{white-space:nowrap}
 .ordine .desc:active,.ordine .stato:active{background:var(--surface)}
+/* I sopralluoghi della giornata: ogni riga è una pastiglia isolata, grigia a riposo,
+   azzurra su quello che si sta visualizzando — non più una banda gialla piena
+   (era .ordine.diff, ereditata da una funzione di confronto ordini che non c'è
+   più; richiesta di Simone, 17/09/2026). */
+.ordine.sop{margin:var(--s1) var(--s3);border:2px solid var(--line);border-radius:var(--radius-p);background:transparent}
+.card .ordine.sop:last-child{border-bottom:2px solid var(--line)}
+.ordine.sop.attivo{border-color:var(--azione)}
+.card .ordine.sop.attivo:last-child{border-bottom-color:var(--azione)}
 
 /* ============ 28. IL RITAGLIO DELLA BOLLA ============
    Tutto schermo come la fotocamera: la foto adattata, quattro angoli da
@@ -1132,6 +1149,13 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .tend .et{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 /* Il numero sulla linguetta diventa giallo quando dentro c'è qualcosa da guardare. */
 .tend .n.att{color:var(--gold);font-weight:700}
+/* Una tendina con un tasto piccolo a fianco (Bolle, Documenti, Rilevamento
+   d'ordine, Documenti azienda): stessa riga, stessa altezza — il tasto piccolo
+   non ingrandisce niente, e la riga resta larga come le altre tendine. */
+.tend-riga{display:flex;align-items:center;gap:var(--s2);width:100%}
+.tend-riga > .tend{flex:1;min-width:0;margin:0}
+.tend-riga > .pill.cod{flex:0 0 auto;min-height:30px;padding:0 11px;font-size:var(--t1);text-transform:none;letter-spacing:.02em}
+.tendine.una > .tend-riga,.tendine.una > .tend-riga + div{grid-column:1/-1}
 
 /* ============ 30. LE DIFFERENZE NEGLI ORDINI ============
    Arrivato meno di quanto ordinato, o arrivato senza ordine: la riga è gialla,
@@ -1196,6 +1220,8 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .doc-mini .vedi.scrivi{color:var(--accent)}
 /* La card del verbale di giornata: il titolo è "Verbale di giornata", nel colore primario come il pallino. Niente scritta a destra. */
 .card-capo .et.acc{color:var(--accent)}
+/* "+ nuovo sopralluogo" in testa al box, al posto del numero: verde, è un'azione (17/09/2026). */
+.card-capo .dx.verde{color:var(--accent)}
 /* "Aggiorna il verbale" spento: grigio, non si tocca, resta al suo posto. */
 .avanz .r button.pill:disabled{color:var(--muted);border-color:var(--line);opacity:.7}
 /* Il tasto del verbale in testa alla giornata si allarga fino al conto a destra: niente vuoto in mezzo, e si vede meglio. */
@@ -1203,7 +1229,7 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 /* La giornata in corso, nell'elenco del cantiere: barra e sfondo nel colore di ciò che si consulta, come la sua pastiglia. */
 .giorno.oggi{background:color-mix(in srgb, var(--azione) 6%, transparent);box-shadow:inset 2px 0 0 var(--azione)}
 /* Dentro una tendina aperta il contenuto va a tutta larghezza, come la tendina stessa: niente rientro. */
-.tendine > div > .card{margin-left:0;margin-right:0}
+.tendine > div > .card,.tendine > div > .cerca{margin-left:0;margin-right:0}
 /* Le due card "＋" del cantiere, una di fianco all'altra: una riga sola. */
 .due-card{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-bottom:var(--s2)}
 .due-card > .card{margin:0}
@@ -1214,3 +1240,28 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    non-tasto, riempie la card cosi la riga del verbale resta in fondo. */
 .doc-mini button.q{width:100%;flex:1 1 auto;background:transparent;border:0;font:inherit;cursor:pointer}
 .doc-mini button.q:active{background:var(--surface)}
+
+/* Le tendine di pagina (non in griglia, dirette figlie di #vista) rientrano di un
+   margine come le tendine in griglia (riga sopra, .tendine > div > .card): stessa
+   correzione, stesso motivo. */
+#vista > div > .card,#vista > div > .cerca{margin-left:0;margin-right:0}
+
+/* ============ 34. IL MENU DEI TRE PUNTINI ============
+   Non allunga più la card sotto: un riquadro "fixed", agganciato al tasto,
+   sopra al resto — posizionaMenuPunti (ui.js) calcola dove metterlo dopo ogni
+   disegno. Riusa lo stesso .voce-m delle altre voci (richiesta di Simone,
+   17/09/2026). Un'ombra vera, l'unica dell'app: qui serve a dire "sta sopra,
+   staccato", non a decorare. */
+.menu-punti{position:fixed;z-index:50;min-width:170px;max-width:calc(100vw - 2 * var(--margine));
+  display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--radius-p);box-shadow:0 6px 20px rgba(0,0,0,.4);overflow:hidden}
+.menu-punti .voce-m{
+  width:100%;min-height:52px;padding:var(--s2) var(--s4);
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;
+  background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--text);text-align:left;
+}
+.menu-punti .voce-m:last-child{border-bottom:0}
+.menu-punti .voce-m:active{background:var(--surface)}
+.menu-punti .voce-m b{font-size:var(--t3);font-weight:600;color:var(--azione)}
+.menu-punti .voce-m small{font-size:var(--t1);color:var(--muted)}
+.menu-punti .voce-m.rossa b{color:var(--danger)}

@@ -21,7 +21,6 @@ Le sezioni sono:
 - materiali_impiegati: materiali usati oggi, con la quantità se detta. Una voce per riga.
 - materiali_necessari: materiali che serviranno più avanti, con quando se detto. Una voce per riga.
 - rilievi_ordine: misure prese in cantiere di prodotti da ordinare. Una voce per prodotto, con quantità e misure: "3 finestre 120x150 cm".
-- rilievi_contabilita: misure prese in cantiere di lavorazioni o prodotti da mettere in contabilità. Una voce per riga, con quantità e misure.
 - sicurezza: ponteggi, protezioni, dispositivi, prescrizioni, mancanze rilevate.
 - problemi: anomalie, difetti, ritardi, contestazioni, cose che non vanno.
 - osservazioni: quello che non sta nelle altre sezioni ma va scritto.
@@ -36,7 +35,7 @@ Scrivi ore, misure e quantità in cifre. I nomi propri che trovi nell'elenco all
 
 Dai anche un titolo alla registrazione: tre o quattro parole prese da quello che è stato detto, la cosa più importante. Non un riassunto, un'etichetta: "Getto solaio primo piano", "Ponteggio senza fermapiede".
 
-Rispondi soltanto con un oggetto JSON con queste chiavi: titolo, lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, rilievi_ordine, rilievi_contabilita, sicurezza, problemi, osservazioni, note, da_smistare. Ogni valore è una stringa; negli elenchi separa le voci con un a capo. Niente altro testo.
+Rispondi soltanto con un oggetto JSON con queste chiavi: titolo, lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, rilievi_ordine, sicurezza, problemi, osservazioni, note, da_smistare. Ogni valore è una stringa; negli elenchi separa le voci con un a capo. Niente altro testo.
 Le chiavi rimaste vuote non si scrivono. Nel JSON ci va il titolo piu' soltanto le sezioni che hanno davvero del testo. Una sezione che manca vale come vuota: l'app la lascia com'era. Questo non cambia niente su dove va una frase: le regole di smistamento valgono tutte uguali, e niente si perde.
 
 === COME SI DECIDE DOVE VA UNA FRASE ===
@@ -51,7 +50,6 @@ attrezzature_necessarie: "attrezzature necessarie", "attrezzature che servono", 
 materiali_impiegati: "materiali impiegati", "materiali usati", "materiale usato", "abbiamo usato", "sono stati posati", "impiegati oggi", "consumati", "abbiamo messo", "gettati", "posati".
 materiali_necessari: "materiali necessari", "materiali che servono", "materiale da ordinare", "da ordinare", "bisogna ordinare", "serve materiale", "far arrivare", "mancano", "occorrono", "servono", "ordinare per".
 rilievi_ordine: "rilievo d'ordine", "rilievi d'ordine", "rilievo per l'ordine", "misure da ordinare", "prendo le misure per ordinare", "misuro per l'ordine".
-rilievi_contabilita: "rilievo da contabilità", "rilievi da contabilità", "rilievo per la contabilità", "misure per la contabilità", "misuro per la contabilità", "da mettere in contabilità".
 sicurezza: "sicurezza", "capitolo sicurezza", "per la sicurezza", "DPI", "dispositivi di protezione", "ponteggio" quando si parla di protezioni, "parapetti", "prescrizioni", "coordinatore".
 problemi: "problemi", "anomalie", "problemi o anomalie", "c'è un problema", "non va bene", "contestazione", "contestiamo", "difetto", "ritardo", "è arrivato in ritardo", "sbagliato", "rotto", "non funziona", "danneggiato", "infiltrazione", "crepa", "fessura".
 osservazioni: "osservazioni", "altre osservazioni", "da segnalare", "faccio notare", "segnalo che", "osservo che", "da tenere presente".
@@ -63,7 +61,7 @@ Regole di decisione quando le parole chiave non ci sono:
 3. Persone con nome, ditta o mansione vanno in operai. Se si dice solo un numero ("quattro muratori") la voce è "4 muratori — compito" e la ditta si mette solo se detta.
 4. Un mezzo o un'attrezzatura di cui si dice che è in cantiere va in attrezzature_presenti. Se se ne dice che dovrà arrivare, che va noleggiata o che servirà, va in attrezzature_necessarie.
 5. Un materiale di cui si dice che è stato usato, posato, gettato, consumato va in materiali_impiegati. Se va ordinato, se manca, se servirà, va in materiali_necessari.
-5-bis. Una misura dettata dopo "rilievo d'ordine" va in rilievi_ordine; dopo "rilievo da contabilità" va in rilievi_contabilita. Sono misure di prodotti, con la quantità: non vanno in materiali_necessari, che dice cosa serve e non quanto misura.
+5-bis. Una misura dettata dopo "rilievo d'ordine" va in rilievi_ordine: è la misura di un prodotto, con la quantità, e non va in materiali_necessari, che dice cosa serve e non quanto misura.
 6. Tutto quello che riguarda protezioni, ponteggi come protezione, parapetti, caschi, imbracature, cartelli, recinzioni, prescrizioni del coordinatore va in sicurezza. Se una mancanza di sicurezza è anche un problema, va in sicurezza, non in problemi: la sicurezza ha la precedenza.
 7. Ritardi, difetti, errori, danni, contestazioni, cose rotte, materiale sbagliato vanno in problemi.
 8. Quello che è un'osservazione generale sull'andamento, sul meteo, sulle condizioni del cantiere, sui rapporti con il committente, va in osservazioni.
@@ -239,16 +237,6 @@ Nota sull'esempio 3: "quattro anzi cinque" è una correzione a voce e vale cinqu
 9. La risposta è un solo oggetto JSON, senza testo prima o dopo, senza spazi di rientro?
 10. Hai tolto dal JSON le chiavi rimaste vuote?`;
 
-const REGOLE_CONTABILITA = `Sei l'assistente di un tecnico di cantiere italiano. Ricevi una frase dettata che descrive una o più lavorazioni da mettere in contabilità, e la trasformi in righe.
-
-Per ogni lavorazione ricava: descrizione (in italiano corretto, iniziale maiuscola), quantita (numero), um (unità di misura normalizzata: m, m², m³, kg, q, t, n, h, corpo), prezzo_unitario (numero, solo se detto nella frase, altrimenti null).
-
-"venticinque metri quadrati" fa quantita 25 e um "m²". "tre ore" fa quantita 3 e um "h". Se l'unità non è detta, lascia um vuota.
-
-NON INVENTARE prezzi. Se il prezzo non è nella frase, prezzo_unitario è null.
-
-Rispondi soltanto con un oggetto JSON: {"righe": [{"descrizione": "...", "quantita": 0, "um": "...", "prezzo_unitario": null}]}. Niente altro testo.`;
-
 const REGOLE_LISTINO = `Ricevi le prime righe di un prezzario edile italiano esportato da un foglio di calcolo. Devi capire com'è fatto.
 
 Dimmi: qual è l'indice della riga di intestazione (partendo da 0), quale colonna contiene la descrizione della lavorazione, quale l'unità di misura, quale il prezzo unitario, e quale l'eventuale codice della voce. Le colonne si indicano con il loro indice, partendo da 0.
@@ -298,23 +286,6 @@ Regole:
 
 Rispondi soltanto con le righe del rilievo. Niente altro testo, niente virgolette.`;
 
-/* Dal rilievo d'ordine escono anche le righe, oltre al testo: una per prodotto,
-   con quantità e unità, per farne la lista da mandare al fornitore. */
-const REGOLE_ORDINE = `Ricevi il dettato di un materiale da ordinare in cantiere, già trascritto. Ricavi una riga per prodotto: descrizione, quantità (numero), unità di misura normalizzata (pz, m, m², m³, kg, q, t, corpo), e le misure se dette (per esempio "120x150 cm"). Non inventare quantità: se non è detta, 0.
-Risposta solo JSON:
-{"righe":[{"descrizione":"","quantita":0,"um":"","misure":null}]}`;
-
-/* La bolla di consegna si legge e si confronta con quello che era a ordine:
-   una chiamata sola, con la foto e l'elenco numerato delle righe. */
-const REGOLE_BOLLA = `Ricevi la fotografia di una bolla di consegna e l'elenco numerato del materiale ordinato per quel cantiere. Devi:
-- ricavare fornitore, numero del documento, data, e le righe della merce consegnata (descrizione, quantità, unità di misura normalizzata);
-- dire, per ogni riga consegnata, a quale numero dell'elenco ordinato corrisponde, contando il significato e non le parole esatte. Se non corrisponde a niente, il numero è null.
-Se l'immagine non si legge, rispondi {"leggibile":false} e basta.
-Non inventare niente: quello che non si legge è null.
-Risposta solo JSON:
-{"leggibile":true,"fornitore":null,"numero":null,"data":null,
- "righe":[{"descrizione":"","quantita":0,"um":"","ordine":null}]}`;
-
 const REGOLE_FOTO = `Ricevi la descrizione dettata a voce di una fotografia scattata in cantiere, già trascritta. Scrivi la didascalia di quella foto per il verbale di sopralluogo.
 
 Regole:
@@ -328,7 +299,7 @@ Regole:
 - Correggi le parole di cantiere storpiate dalla trascrizione: "cassieri" diventa casseri, "casse forme" diventa casseforme, "ferma piede" diventa fermapiede, "in palcato" diventa impalcato.
 - Se il dettato non si capisce, riporta il testo così com'è senza inventare.
 
-Dì anche in quale sezione del verbale va questa foto, scegliendo fra: lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, rilievi_ordine, rilievi_contabilita, sicurezza, problemi, osservazioni, note.
+Dì anche in quale sezione del verbale va questa foto, scegliendo fra: lavorazioni_eseguite, lavorazioni_non_eseguite, operai, attrezzature_presenti, attrezzature_necessarie, materiali_impiegati, materiali_necessari, rilievi_ordine, sicurezza, problemi, osservazioni, note.
 Vale la stessa regola del verbale: un lavoro fatto va in lavorazioni_eseguite; una crepa, un difetto, un ritardo vanno in problemi; ponteggi, parapetti e protezioni vanno in sicurezza, che ha la precedenza su problemi; un materiale posato va in materiali_impiegati, uno che manca in materiali_necessari. Se non è chiaro, scrivi osservazioni.
 
 Rispondi soltanto con un oggetto JSON: {"didascalia":"…","sezione":"…"}. Niente altro testo.`;
@@ -526,10 +497,8 @@ function segnaFallito(lavoro) {
 async function eseguiLavoro(l) {
   if (l.tipo === 'trascrizione') return await lavoroTrascrizione(l);
   if (l.tipo === 'riordino') return await lavoroRiordino(l);
-  if (l.tipo === 'contabilita') return await lavoroContabilita(l);
   if (l.tipo === 'nota') return await lavoroNota(l);
   if (l.tipo === 'referto') return await lavoroReferto(l);
   if (l.tipo === 'rilievo') return await lavoroRilievo(l);
-  if (l.tipo === 'bolla') return await lavoroBolla(l);
   throw new Error('Lavoro sconosciuto');
 }

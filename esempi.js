@@ -2,9 +2,29 @@
 'use strict';
 
 
+/* La firma di prova: disegnata al volo in un canvas, non un file da portarsi dietro.
+   Arriva un attimo dopo il resto (è async), così non rallenta il primo disegno
+   dell'app: il verbale già pronto la mostra appena la card si ridisegna da sola. */
+function disegnaFirmaEsempio(nome) {
+  return new Promise(function (ok) {
+    const tela = document.createElement('canvas');
+    tela.width = 300; tela.height = 100;
+    const ctx = tela.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, tela.width, tela.height);
+    ctx.fillStyle = '#1a2b4a';
+    ctx.font = 'italic 40px cursive';
+    ctx.fillText(nome, 15, 60);
+    ctx.strokeStyle = '#1a2b4a'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(15, 78); ctx.lineTo(260, 78); ctx.stroke();
+    tela.toBlob(ok, 'image/png');
+  });
+}
+
 function inserisciDatiEsempio() {
   const oggi = oggiISO();
-  const az = salva('azienda', { nome: 'Geom. Scirè', ragione: '', piva: '', indirizzo: '', telefono: '', mail: '', pec: '', note: '', media: [], esempio: true });
+  // Fase 4, verifica su un verbale vero: un tecnico con firma, per vedere la firma stampata in fondo al PDF.
+  const tecnico = { id: nuovoId(), nome: 'Geom. Marco Scirè', ruolo: 'Direttore lavori', firma: null };
+  const az = salva('azienda', { nome: 'Geom. Scirè', ragione: '', piva: '', indirizzo: '', telefono: '', mail: '', pec: '', note: '', media: [], tecnici: [tecnico], esempio: true });
   const c1 = salva('cantiere', { nome: 'Via Mazzini 14', committente: 'Immobiliare Castelli', indirizzo: 'via Mazzini 14, Vigevano', azienda: az.codice, note: 'Accesso dal cancello sul retro, chiave dal custode.\nReferente del committente: geom. Ferrari, 333 1234567.', aperto: giorniFa(40), stato: 'attivo', esempio: true });
   const c2 = salva('cantiere', { nome: 'Scuola media Pascoli', committente: 'Comune di Mortara', indirizzo: 'via Roma 8, Mortara', azienda: az.codice, note: '', aperto: giorniFa(20), stato: 'attivo', esempio: true });
   salva('cantiere', { nome: 'Villa Serra, rifacimento tetto', committente: 'Famiglia Serra', indirizzo: 'strada per Gambolò 12', azienda: az.codice, note: 'Lavori consegnati.', aperto: giorniFa(120), stato: 'chiuso', esempio: true });
@@ -27,7 +47,7 @@ function inserisciDatiEsempio() {
     ],
     chiuso: null, media: [], posizione: null, esempio: true
   });
-  const v1 = salva('verbale', { sopralluogo: s1.codice, cantiere: c1.codice, giorno: s1.giorno, ora: s1.ora, sezioni: Object.assign({}, s1.sezioni), esempio: true });
+  const v1 = salva('verbale', { sopralluogo: s1.codice, cantiere: c1.codice, giorno: s1.giorno, ora: s1.ora, tecnicoId: tecnico.id, sezioni: Object.assign({}, s1.sezioni), esempio: true });
   s1.chiuso = new Date(daISO(s1.giorno).getTime() + 15 * 3600000 + 10 * 60000).toISOString();
   s1.verbale = v1.codice;
   salva('sopralluogo', s1);
@@ -165,24 +185,16 @@ function inserisciDatiEsempio() {
     ['Ponteggio metallico, nolo per il primo mese', 'm²', 9.50],
     ['Demolizione di pavimento e sottofondo', 'm²', 12.00]
   ];
-  const lis = voci.map(function (v) { return salva('listino', { descrizione: v[0], um: v[1], prezzo: v[2], esempio: true }); });
-
-  // La contabilità del primo cantiere: quattro righe, una senza prezzo (gialla)
-  const righe = [
-    { descrizione: 'Scavo di sbancamento con mezzi meccanici', quantita: 120, um: 'm³', prezzo: 8.50, dallistino: lis[0].codice },
-    { descrizione: 'Calcestruzzo C25/30 per fondazioni', quantita: 45, um: 'm³', prezzo: 145, dallistino: lis[2].codice },
-    { descrizione: 'Acciaio B450C per armature', quantita: 3800, um: 'kg', prezzo: 1.85, dallistino: lis[3].codice },
-    { descrizione: 'Rimozione tettoia in lamiera', quantita: 1, um: 'corpo', prezzo: 0, dallistino: null }
-  ].map(function (r) {
-    r.codice = codiceNuovo('VOCE');
-    r.importo = Math.round(r.quantita * r.prezzo * 100) / 100;
-    r.dacompletare = !(r.prezzo > 0);
-    return r;
-  });
-  salva('contabilita', { cantiere: c1.codice, note: 'Prezzi dal listino 2026. La tettoia va quotata a parte.', righe: righe, esempio: true });
+  voci.forEach(function (v) { salva('listino', { descrizione: v[0], um: v[1], prezzo: v[2], esempio: true }); });
 
   leggiTutto().soloEsempio = true;
   persisti();
+  // La firma arriva dopo, senza bloccare il resto: quando è pronta si salva e la vista si aggiorna da sola.
+  disegnaFirmaEsempio('M. Scirè').then(function (blob) { return salvaMedia(nuovoId(), blob); }).then(function (rif) {
+    tecnico.firma = rif;
+    salva('azienda', az);
+    aggiornaVista();
+  }).catch(function () { /* senza firma il verbale di prova esce lo stesso, solo senza immagine */ });
 }
 
 function buttaDatiEsempio() {
