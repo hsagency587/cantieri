@@ -766,7 +766,9 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
 function boxSopralluoghi(s, espansoId) {
   const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
   if (!fratelli.length) return '';
-  let html = '<div class="card"><div class="card-capo">Sopralluoghi<span class="dx">' + fratelli.length + '</span></div>' + scorrevole(fratelli.map(function (x) { return rigaSopralluogoBoxHtml(x, espansoId); }).join(''));
+  // Al posto del numero, in testa, "+ nuovo sopralluogo" in verde: solo oggi si può aggiungerne uno (17/09/2026).
+  const nuovo = s.giorno === oggiISO() ? '<button class="dx verde" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ nuovo sopralluogo</button>' : '';
+  let html = '<div class="card"><div class="card-capo">Sopralluoghi' + nuovo + '</div>' + scorrevole(fratelli.map(function (x) { return rigaSopralluogoBoxHtml(x, espansoId); }).join(''));
   if (s.giorno === oggiISO()) html += '<div class="card-piede"><button class="link" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ un altro sopralluogo</button></div>';
   return html + '</div>';
 }
