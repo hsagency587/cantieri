@@ -285,13 +285,13 @@ function giorniCantiereHtml(c, lista, oggi) {
   lista.forEach(function (g) {
     const mese = g.giorno.slice(0, 7);
     if (mese !== meseCorrente) { if (meseCorrente) html += '</div>'; html += '<div class="card mese">'; meseCorrente = mese; }
-    const piene = CHIAVI_SEZIONI.filter(function (k) { return g.sops.some(function (s) { return String(s.sezioni[k] || '').trim(); }); }).length;
     const audio = g.sops.reduce(function (t, s) { return t + s.pezzi.length; }, 0);
     const anteprima = g.sops.map(function (s) {
       return CHIAVI_SEZIONI.map(function (k) { return primaRiga(s.sezioni[k]); }).filter(Boolean)[0] || (s.sezioni.da_smistare ? primaRiga(s.sezioni.da_smistare) : '');
     }).filter(Boolean)[0] || (audio ? 'trascrizione in arrivo…' : 'ancora niente');
     let pill;
-    if (g.verbale) pill = '<span class="pill ok">' + h(g.verbale.nome || 'verbale di giornata') + '</span>';
+    // Solo la conferma che il verbale c'è: non il suo nome, che è quello del sopralluogo (17/09/2026).
+    if (g.verbale) pill = '<span class="pill ok">verbale di giornata</span>';
     else if (g.giorno === oggi) pill = '<span class="pill blu">in corso</span>';
     else pill = '<span class="pill att">da chiudere</span>';
     const apre = g.sops.length ? '#/giorno/' + g.sops[0].id : '#/giornata/' + giornataDi(c.codice, g.giorno).id;
@@ -299,7 +299,7 @@ function giorniCantiereHtml(c, lista, oggi) {
     html += '<div class="giorno' + (g.giorno === oggi && !g.verbale ? ' oggi' : '') + '" data-az="vai" data-a="' + h(apre) + '">' +
       '<div class="n"><div class="titolo"><span class="gm">' + h(giornoMese(g.giorno)) + '</span> ' + h(nomeGiornoRelativo(g.giorno)) + ' · ' + g.sops.length + (g.sops.length === 1 ? ' sopralluogo' : ' sopralluoghi') + '</div>' +
       '<div class="prima">' + h(anteprima) + '</div>' +
-      '<div class="stat">' + pill + '<span class="mini">' + piene + '/' + CHIAVI_SEZIONI.length + ' sezioni · ' + audio + ' audio</span>' + tastoPunti(chiavePunti) + '</div></div></div>' +
+      '<div class="stat">' + pill + tastoPunti(chiavePunti) + '</div></div></div>' +
       vociPunti(chiavePunti, 'giornata-elimina', 'data-cantiere="' + h(c.id) + '" data-giorno="' + h(g.giorno) + '"');
   });
   if (meseCorrente) html += '</div>';
