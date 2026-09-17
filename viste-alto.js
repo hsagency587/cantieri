@@ -276,7 +276,7 @@ function tendinaVerbaliCantiere(c) {
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei verbali" value="' + h(filtroVerbaliCant) + '" data-campo="filtro-verbali-cant" autocomplete="off"></div>' +
     '<div class="periodi">' + pill('sopralluogo', 'sopralluoghi') + pill('giornata', 'giornata') + pill('settimana', 'settimana') + '</div>';
   html += filtrati.length ? '<div class="card">' + scorrevole(filtrati.map(rigaVerbaleCercabileHtml).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun verbale con questi filtri.' : 'Nessun verbale ancora.') + '</div>';
-  return tendina('verbali-' + c.id, 'Verbali', html, tutti.length);
+  return tendina('verbali-' + c.id, 'Verbali', html);
 }
 
 /* ---- Tendina 2: Giornate ---- */
@@ -428,7 +428,7 @@ function vistaCantiere(id) {
   const loc = leggiLocale();
   loc.ultimoCantiere = c.id; salvaLocale();
   const sops = sopralluoghiDi(c.codice);
-  const nVerbali = sops.filter(function (s) { return s.chiuso; }).length;
+  const nVerbali = verbaliDiGiornata(c.codice).length;
   const oggi = oggiISO();
   /* Committente e indirizzo stanno su una riga sola sotto il titolo. Resta com'è (6.1). */
   let html = testata({ indietro: '#/', titolo: c.nome,
