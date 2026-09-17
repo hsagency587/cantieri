@@ -745,7 +745,7 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
 function boxSopralluoghi(s, espansoId) {
   const fratelli = sopralluoghiDelGiorno(s.cantiere, s.giorno);
   if (!fratelli.length) return '';
-  let html = '<div class="card">' + scorrevole(fratelli.map(function (x) { return rigaSopralluogoBoxHtml(x, espansoId); }).join(''));
+  let html = '<div class="card"><div class="card-capo">Sopralluoghi<span class="dx">' + fratelli.length + '</span></div>' + scorrevole(fratelli.map(function (x) { return rigaSopralluogoBoxHtml(x, espansoId); }).join(''));
   if (s.giorno === oggiISO()) html += '<div class="card-piede"><button class="link" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ un altro sopralluogo</button></div>';
   return html + '</div>';
 }
@@ -754,6 +754,7 @@ function boxSopralluoghi(s, espansoId) {
    1. rilevamento d'ordine (se c'è) — 2. materiali necessari, sua tendina in cima —
    3. foto del sopralluogo, aperta — 4. le scritte (dettatura originale) — 5. i punti. */
 function contenutoSopralluogoEspanso(x) {
+  const suoNome = String(x.nome || '').trim();
   let html = '';
   if (String(x.sezioni.da_smistare || '').trim()) {
     html += '<div class="card gialla"><div class="card-capo gialla">Da smistare</div>' +
@@ -786,7 +787,7 @@ function contenutoSopralluogoEspanso(x) {
     if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
   });
   if (vuote.length) html += tendina('vuote-' + x.id, vuote.length + (vuote.length === 1 ? ' sezione ancora vuota' : ' sezioni ancora vuote'), vuote.join(''));
-  return html;
+  return '<div class="card"><div class="card-capo">Sopralluogo<span class="dx">' + h(suoNome || x.ora) + '</span></div>' + html + '</div>';
 }
 
 /* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza) — più il
