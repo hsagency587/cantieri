@@ -102,8 +102,14 @@ document.addEventListener('click', function (ev) {
   PUNTI_APERTI = null; ESPORTA_APERTO = null;
   aggiornaVista();
 });
-document.addEventListener('scroll', function () { if (PUNTI_APERTI || ESPORTA_APERTO) { PUNTI_APERTI = null; ESPORTA_APERTO = null; aggiornaVista(); } }, true);
-window.addEventListener('resize', function () { if (PUNTI_APERTI || ESPORTA_APERTO) { PUNTI_APERTI = null; ESPORTA_APERTO = null; aggiornaVista(); } });
+function chiudiMenuFlottanteSuGesto() { if (PUNTI_APERTI || ESPORTA_APERTO) { PUNTI_APERTI = null; ESPORTA_APERTO = null; aggiornaVista(); } }
+/* "wheel"/"touchmove", non "scroll": aggiornaVista() richiama da sola window.scrollTo
+   per tenere il punto dov'era, e quello genera un evento "scroll" che chiuderebbe
+   il menu appena aperto — bug segnalato da Simone il 17/09/2026. Con un gesto vero
+   non si sbaglia mai, e non lo genera mai il codice. */
+document.addEventListener('wheel', chiudiMenuFlottanteSuGesto, { passive: true });
+document.addEventListener('touchmove', chiudiMenuFlottanteSuGesto, { passive: true });
+window.addEventListener('resize', chiudiMenuFlottanteSuGesto);
 function vai(hash) { PUNTI_APERTI = null; ESPORTA_APERTO = null; location.hash = hash; }
 
 /* Il tasto "Esporta" di una card con Visualizza · Esporta · Correggi: toccato,
