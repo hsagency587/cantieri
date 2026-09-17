@@ -261,14 +261,14 @@ function rigaVerbaleCercabileHtml(x) {
     '<small>' + (x.tipo === 'giornata' ? 'verbale di giornata' : 'verbale di sopralluogo') + ' · ' + h(dataSenzaAnno(x.giorno)) + '</small></span><span class="frec">›</span></button>';
 }
 let filtroVerbaliCant = '';
-let selVerbaliCant = { sopralluogo: false, giornata: false, settimana: false };
+// Sempre uno dei tre acceso: non si può più vederli tutti insieme (17/09/2026, richiesta di Simone — prima D13 permetteva "nessuno acceso = tutti").
+let selVerbaliCant = { sopralluogo: true, giornata: false, settimana: false };
 function tendinaVerbaliCantiere(c) {
   const tutti = verbaliCercabili(c);
   const q = senzaAccenti(filtroVerbaliCant.trim());
   const attivi = ['sopralluogo', 'giornata', 'settimana'].filter(function (k) { return selVerbaliCant[k]; });
-  // D13: nessun selettore acceso = si cerca in tutti i documenti.
   const filtrati = tutti.filter(function (x) {
-    if (attivi.length && attivi.indexOf(x.tipo) === -1) return false;
+    if (attivi.indexOf(x.tipo) === -1) return false;
     if (q && senzaAccenti(titoloVerbale(x.tipo === 'settimana' ? { nome: 'Settimana ' + x.dal + ' ' + x.al } : x.v, true)).indexOf(q) === -1) return false;
     return true;
   });
@@ -306,19 +306,11 @@ function giorniCantiereHtml(c, lista, oggi) {
   if (meseCorrente) html += '</div>';
   return html;
 }
-// Sopra le giornate, i verbali di giornata della settimana in corso, in verticale (come le vecchie liste audio).
+// La tendina Giornate: solo i giorni della settimana in corso (i loro verbali si vedono dalla tendina Verbali, 17/09/2026).
 function tendinaGiornateCantiere(c, oggi) {
   const lunedi = lunediDi(oggi);
   const lista = giornateDi(c.codice).filter(function (g) { return g.giorno >= lunedi; });
-  const verbaliSett = verbaliDiGiornata(c.codice).filter(function (v) { return v.giorno >= lunedi; });
-  let html = '';
-  if (verbaliSett.length) {
-    html += '<div class="card"><div class="card-capo">Verbali di giornata<span class="dx">' + verbaliSett.length + '</span></div>' +
-      scorrevole(verbaliSett.map(function (v) {
-        return '<button class="riga" data-az="vai" data-a="#/verbale/' + h(v.id) + '"><span class="desc">' + h(titoloVerbale(v, true)) + '<small>' + h(dataSenzaAnno(v.giorno)) + '</small></span><span class="frec">›</span></button>';
-      }).join('')) + '</div>';
-  }
-  html += lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
+  const html = lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
   return tendina('giornate-' + c.id, 'Giornate', html);
 }
 
@@ -621,11 +613,10 @@ Object.assign(AZIONI, {
   'parla-cantiere': function (el) { const c = cantiere(el.dataset.id); if (c) dettaSu(c); },
   'nuovo-sopralluogo': function (el) { const c = cantiere(el.dataset.id); if (!c) return; const s = sopralluogoPerDettare(c); vai('#/giorno/' + s.id); },
   // --- le sei tendine del cantiere (rework 14/09/2026) ---
-  // Un solo selettore alla volta: si spegne toccando di nuovo lo stesso (D13: nessuno acceso, cerca in tutti).
+  // Un solo selettore alla volta, sempre uno acceso: non si spegne toccando di nuovo lo stesso (17/09/2026).
   'verbali-cant-sel': function (el) {
-    const k = el.dataset.sel, era = selVerbaliCant[k];
     selVerbaliCant = { sopralluogo: false, giornata: false, settimana: false };
-    if (!era) selVerbaliCant[k] = true;
+    selVerbaliCant[el.dataset.sel] = true;
     aggiornaVista();
   },
   'foto-cant-filtro': function (el) {
