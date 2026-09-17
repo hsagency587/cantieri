@@ -78,10 +78,10 @@ let devSbloccato = false;
    aperto per volta; si chiude toccando fuori, scorrendo, o cambiando schermata. */
 let PUNTI_APERTI = null;
 function apriPunti(id) { PUNTI_APERTI = (PUNTI_APERTI === id ? null : id); aggiornaVista(); }
-// Il tasto che ha aperto il menu è quello con la classe "on" e un data-az che comincia per "menu-".
+// Vale anche per il tasto Esporta (tastoMenuAperto, più sotto): stesso menu flottante, stesso calcolo.
 function posizionaMenuPunti() {
   const menu = document.querySelector('.menu-punti');
-  const btn = document.querySelector('.on[data-az^="menu-"]');
+  const btn = tastoMenuAperto();
   if (!menu || !btn) return;
   const margine = 8;
   const r = btn.getBoundingClientRect();
@@ -93,20 +93,23 @@ function posizionaMenuPunti() {
   menu.style.top = top + 'px';
   menu.style.left = left + 'px';
 }
-// Si chiude toccando fuori dal menu (il tasto dei tre puntini si gestisce da sé, in apriPunti) o scorrendo.
+// Trova il tasto che ha aperto il menu flottante in questo momento, puntini o Esporta.
+function tastoMenuAperto() { return document.querySelector('.on[data-az^="menu-"]') || document.querySelector('.on[data-az="esporta-tendina"]'); }
+// Si chiude toccando fuori dal menu (il tasto che l'ha aperto si gestisce da sé) o scorrendo.
 document.addEventListener('click', function (ev) {
-  if (!PUNTI_APERTI) return;
-  if (ev.target.closest('.menu-punti') || ev.target.closest('[data-az^="menu-"]')) return;
-  PUNTI_APERTI = null;
+  if (!PUNTI_APERTI && !ESPORTA_APERTO) return;
+  if (ev.target.closest('.menu-punti') || ev.target.closest('[data-az^="menu-"]') || ev.target.closest('[data-az="esporta-tendina"]')) return;
+  PUNTI_APERTI = null; ESPORTA_APERTO = null;
   aggiornaVista();
 });
-document.addEventListener('scroll', function () { if (PUNTI_APERTI) { PUNTI_APERTI = null; aggiornaVista(); } }, true);
-window.addEventListener('resize', function () { if (PUNTI_APERTI) { PUNTI_APERTI = null; aggiornaVista(); } });
+document.addEventListener('scroll', function () { if (PUNTI_APERTI || ESPORTA_APERTO) { PUNTI_APERTI = null; ESPORTA_APERTO = null; aggiornaVista(); } }, true);
+window.addEventListener('resize', function () { if (PUNTI_APERTI || ESPORTA_APERTO) { PUNTI_APERTI = null; ESPORTA_APERTO = null; aggiornaVista(); } });
 function vai(hash) { PUNTI_APERTI = null; ESPORTA_APERTO = null; location.hash = hash; }
 
 /* Il tasto "Esporta" di una card con Visualizza · Esporta · Correggi: toccato,
-   scende una tendina con le due strade — Esporta (condividi) e Scarica (nel
-   telefono). Una tendina aperta alla volta, e si chiude cambiando schermata. */
+   apre il menu flottante con le due strade — Esporta (condividi) e Scarica (nel
+   telefono), come i tre puntini. Un menu aperto alla volta, e si chiude
+   cambiando schermata. */
 let ESPORTA_APERTO = null;
 // Scelta una voce, la tendina si richiude subito, prima che parta il lavoro.
 function chiudiEsporta() { if (ESPORTA_APERTO) { ESPORTA_APERTO = null; aggiornaVista(); } }
@@ -125,10 +128,10 @@ function vociPunti(chiave, azione, attributi) {
   if (PUNTI_APERTI !== chiave) return '';
   return '<div class="menu-punti"><button class="voce-m rossa" data-az="' + azione + '" ' + attributi + '><b>Elimina</b></button></div>';
 }
-// Le due voci scendono sotto la fila dei tasti, dentro la card: la fila scorre di lato e non può far uscire niente.
+// Flottante come i tre puntini, non più due righe che si aprono sotto (17/09/2026, richiesta di Simone).
 function vociEsporta(chiave, azEsporta, idEsporta, azScarica, idScarica) {
   if (ESPORTA_APERTO !== chiave) return '';
-  return '<div class="esp-voci">' +
+  return '<div class="menu-punti">' +
     '<button class="voce-m" data-az="' + azEsporta + '" data-id="' + h(idEsporta) + '"><b>Esporta</b><small>manda a qualcuno: mail, WhatsApp, stampa</small></button>' +
     '<button class="voce-m" data-az="' + azScarica + '" data-id="' + h(idScarica) + '"><b>Scarica</b><small>salva il PDF nel telefono</small></button></div>';
 }

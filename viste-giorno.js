@@ -426,9 +426,10 @@ function vistaGiornoInCorso(s, c) {
     tastoVerbaleGiornata(vg, s.cantiere, s.giorno) +
     '<span class="dx">' + (registrandoQui ? 'sto ascoltando…' : (audioTotali + ' audio · ' + durataBreve(parlatoTotale) + ' | ' + quanteFoto + ' foto')) + '</span></div></div>';
   if (vg) html += cardVerbaleGiornata(vg);
-  // 7.2 — due tendine in cima: foto e bolle di tutta la giornata.
-  html += cardFotoGiornataConTutte(s);
-  html += bolleGiornataHtml(s);
+  // 7.2 — due tendine in cima: foto e bolle di tutta la giornata, compresse sulla stessa riga
+  // (quella che si apre prende tutta la riga, l'altra scende sotto — griglia già pronta, §29 di STILE.md).
+  html += grigliaTendine([cardFotoGiornataConTutte(s), bolleGiornataHtml(s)]);
+  html += materialiGiornataHtml(s);
   // 7.3 — linea sottile, due tasti: rilevamento d'ordine e bolla. Agiscono sul sopralluogo aperto.
   if (!REG.attiva) {
     html += '<div class="card"><div class="griglia">' +
@@ -444,7 +445,6 @@ function vistaGiornoInCorso(s, c) {
   html += cardRilieviNuovi({ sop: attivo.id });
   // Ingressi nascosti della foto (nessun tasto qui: li apre "Foto" in fondo).
   html += ingressiFoto(attivo);
-  html += materialiGiornataHtml(s);
   html += contenutoSopralluogoEspanso(attivo);
   if (!REG.attiva) {
     html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(attivo.id) + '"><span class="ico ico-microfono"></span> Detta</button>' +
@@ -830,7 +830,6 @@ function contenutoSopralluogoEspanso(x) {
   const rilOrd = String(x.sezioni.rilievi_ordine || '').trim();
   if (rilOrd) html += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
   html += cardFotoGiorno(x);
-  html += tendinaGrezzo(x);
   const pezziVivi = x.pezzi.filter(function (p) { return p.audio || (p.stato && p.stato !== 'riordinato'); });
   if (pezziVivi.length) html += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
   const fotoPer = fotoPerSezione(x);
@@ -859,15 +858,6 @@ function ingressiFoto(s) {
     '<input type="file" accept="image/*" multiple id="file-foto-rullino" hidden data-campo="file-foto" data-id="' + h(s.id) + '" data-origine="rullino">';
 }
 
-// Il testo grezzo resta sempre sotto: è la prova di cosa è stato detto, anche dopo il riordino.
-function tendinaGrezzo(s) {
-  const grezzi = s.pezzi.filter(function (p) { return p.grezzo; });
-  if (!grezzi.length) return '';
-  return tendina('grezzo-' + s.id, 'Dettatura originale',
-    '<div class="card">' + grezzi.map(function (p) {
-      return '<div class="card-capo spenta">' + h(p.titolo || 'Registrazione delle ' + p.ora) + '<span class="dx">' + h(p.ora) + '</span></div><div class="card-corpo" style="color:var(--text-2)">' + h(p.grezzo) + '</div>';
-    }).join('') + '</div>');
-}
 
 /* Chiudere la giornata vuol dire scrivere il verbale, e basta: la giornata non si blocca.
    Si continua a cambiarla, e ogni correzione passa da sola nel verbale. Il verbale è
