@@ -1281,3 +1281,5 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .ordine.sop .desc,.ordine.sop .desc small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 /* L'ora sotto il titolo del sopralluogo: davvero piccola e grigia (richiesta di Simone, 22/09/2026). */
 .ordine.sop .desc small{font-size:var(--t1)}
+/* "+ giorno di oggi" dentro la tendina Giornate: una riga di solo testo, alta come "+ un altro" nei piedi delle card. */
+.tendine > div > .link.blocco{min-height:26px;margin-bottom:var(--s2)}

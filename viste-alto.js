@@ -310,9 +310,10 @@ function tendinaGiornateCantiere(c, oggi) {
   const lunedi = lunediDi(oggi);
   const lista = giornateDi(c.codice).filter(function (g) { return g.giorno >= lunedi; });
   let html = lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
-  // Prima riga, sottile: apre il giorno di oggi senza dettare. Solo finché oggi non c'è ancora (22/09/2026).
+  // Prima riga, solo testo (niente riquadro: non deve sembrare una tendina): apre il giorno di oggi
+  // senza dettare. Solo finché oggi non c'è ancora (22/09/2026).
   if (c.stato !== 'chiuso' && !lista.some(function (g) { return g.giorno === oggi; })) {
-    html = '<div class="card"><button class="riga piu" data-az="giorno-oggi-apri" data-id="' + h(c.id) + '"><span class="desc">＋ giorno di oggi</span></button></div>' + html;
+    html = '<button class="link blocco" data-az="giorno-oggi-apri" data-id="' + h(c.id) + '">＋ giorno di oggi</button>' + html;
   }
   return tendina('giornate-' + c.id, 'Giornate', html);
 }
