@@ -354,32 +354,37 @@ async function lavoroRiordino(l) {
     salva('sopralluogo', sop);
     return;
   }
-  /* Lo scan gira sempre. Se il tecnico ha nominato un sopralluogo, il pezzo ci va
+  /* Lo scan gira solo se la destinazione non e' gia' decisa a mano (assegnaPezzo lo
+     segna con "assegnato"): senza questo, ogni pezzo appena scelto dalla scheda
+     "da assegnare" tornava a chiedere la stessa cosa da capo, e il dettato non
+     entrava mai nelle sezioni. Se il tecnico ha nominato un sopralluogo, il pezzo ci va
      dentro da solo — anche se quel sopralluogo ha gia il verbale fatto, e allora lo
      diciamo. Se non ha nominato niente, il pezzo resta li' da assegnare: la scelta
      compare sulla sua card, e nessun testo entra in una sezione prima di quella. */
-  const scan = await scansionaDestinazione(sop, pezzo.grezzo);
-  if (scan.pulito && scan.pulito !== pezzo.grezzo) { pezzo.grezzo = scan.pulito; salva('sopralluogo', sop); }
-  /* Se il tecnico non ha nominato nessun sopralluogo e nella giornata ce n'è uno solo,
-     è per forza quello: la registrazione ci entra da sola. Si chiede solo quando c'è
-     davvero da scegliere. Che il sopralluogo abbia già il verbale non conta: le
-     sezioni nuove ci passano da sole (allineaVerbale). */
-  const quantiOggi = sopralluoghiDelGiorno(sop.cantiere, sop.giorno).length;
-  const destino = scan.sop || (quantiOggi <= 1 ? sop : null);
-  if (destino && destino.id !== sop.id) {
-    const spostato = spostaPezzo(sop, pezzo, destino);
-    if (spostato) {
-      sop = spostato.sop; pezzo = spostato.pezzo;
-      avvisa('Va nel ' + nomeSopralluogo(sop), 'ok');
+  if (!l.assegnato) {
+    const scan = await scansionaDestinazione(sop, pezzo.grezzo);
+    if (scan.pulito && scan.pulito !== pezzo.grezzo) { pezzo.grezzo = scan.pulito; salva('sopralluogo', sop); }
+    // Se il tecnico non ha nominato nessun sopralluogo e nella giornata ce n'è uno solo,
+    // è per forza quello: la registrazione ci entra da sola. Si chiede solo quando c'è
+    // davvero da scegliere. Che il sopralluogo abbia già il verbale non conta: le
+    // sezioni nuove ci passano da sole (allineaVerbale).
+    const quantiOggi = sopralluoghiDelGiorno(sop.cantiere, sop.giorno).length;
+    const destino = scan.sop || (quantiOggi <= 1 ? sop : null);
+    if (destino && destino.id !== sop.id) {
+      const spostato = spostaPezzo(sop, pezzo, destino);
+      if (spostato) {
+        sop = spostato.sop; pezzo = spostato.pezzo;
+        avvisa('Va nel ' + nomeSopralluogo(sop), 'ok');
+      }
+    } else if (!destino) {
+      pezzo.daAssegnare = true;
+      pezzo.stato = 'da-assegnare';
+      pezzo.titolo = pezzo.titolo || primaRiga(pezzo.grezzo) || ('Registrazione delle ' + pezzo.ora);
+      salva('sopralluogo', sop);
+      avvisa('Dimmi in che sopralluogo va', 'att');
+      aggiornaVista();
+      return;
     }
-  } else if (!destino) {
-    pezzo.daAssegnare = true;
-    pezzo.stato = 'da-assegnare';
-    pezzo.titolo = pezzo.titolo || primaRiga(pezzo.grezzo) || ('Registrazione delle ' + pezzo.ora);
-    salva('sopralluogo', sop);
-    avvisa('Dimmi in che sopralluogo va', 'att');
-    aggiornaVista();
-    return;
   }
   const risultato = await riordinaConClaude(sop, pezzo.grezzo);
   applicaRiordino(sop, pezzo, risultato);
@@ -425,7 +430,7 @@ async function assegnaPezzo(sopId, pezzoId, destId) {
   chiudiFoglio();
   if (dest.id !== sop.id) vai('#/giorno/' + corrente.sop.id);
   aggiornaVista();
-  accoda({ tipo: 'riordino', sop: corrente.sop.id, pezzo: corrente.pezzo.id, etichetta: 'Riordino' });
+  accoda({ tipo: 'riordino', sop: corrente.sop.id, pezzo: corrente.pezzo.id, etichetta: 'Riordino', assegnato: true });
 }
 
 /* All'avvio: le registrazioni rimaste "da assegnare" in una giornata che ha un
