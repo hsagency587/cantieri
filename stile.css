@@ -1279,3 +1279,5 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .ordine.sop .chiudi:disabled{opacity:.7}
 /* Il nome della riga si accorcia con i puntini: il tasto e i tre puntini non vanno a capo né escono dal bordo. */
 .ordine.sop .desc,.ordine.sop .desc small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* L'ora sotto il titolo del sopralluogo: davvero piccola e grigia (richiesta di Simone, 22/09/2026). */
+.ordine.sop .desc small{font-size:var(--t1)}

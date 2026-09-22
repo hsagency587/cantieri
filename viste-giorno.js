@@ -344,10 +344,10 @@ function fotoPerSezione(s) {
   return per;
 }
 
-function creaSopralluogo(c, giorno, ora) {
+function creaSopralluogo(c, giorno, ora, nome) {
   assicuraGiornata(c.codice, giorno || oggiISO());
   return salva('sopralluogo', {
-    cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(), nome: '',
+    cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(), nome: String(nome || '').trim(),
     sezioni: sezioniVuote(), pezzi: [], chiuso: null, media: [], posizione: null
   });
 }
@@ -644,15 +644,21 @@ function menuSopralluogo(idSop) {
    del pomeriggio". Senza nome vale l'ora, e funziona lo stesso. Il posto normale
    per cambiarlo è il foglio della testata, insieme a data e ora; questa resta per
    chi ci arriva da un'altra strada. */
-async function rinominaSopralluogo(idSop) {
-  const s = sopralluogo(idSop);
-  if (!s) return;
-  const ok = await chiedi('Nome del sopralluogo', 'Serve a nominarlo quando detti: "questo va nel controllo del pomeriggio". Se lo lasci vuoto vale l\'ora.', 'Salva', '',
-    '<input class="campo" id="sop-nome" maxlength="60" placeholder="controllo del pomeriggio" value="' + h(s.nome || '') + '">');
+/* Lo stesso foglio serve anche a dare il titolo a un sopralluogo che nasce dal tasto
+   "+ nuovo sopralluogo". Torna il nome (anche vuoto), o null se si annulla. */
+async function chiediNomeSopralluogo(attuale, etichettaOk) {
+  const ok = await chiedi('Nome del sopralluogo', 'Serve a nominarlo quando detti: "questo va nel controllo del pomeriggio". Se lo lasci vuoto vale l\'ora.', etichettaOk, '',
+    '<input class="campo" id="sop-nome" maxlength="60" placeholder="controllo del pomeriggio" value="' + h(attuale || '') + '">');
   const campo = document.getElementById('sop-nome');
   const nome = campo ? campo.value.trim() : '';
   chiudiFoglio();
-  if (!ok) return;
+  return ok ? nome : null;
+}
+async function rinominaSopralluogo(idSop) {
+  const s = sopralluogo(idSop);
+  if (!s) return;
+  const nome = await chiediNomeSopralluogo(s.nome, 'Salva');
+  if (nome === null) return;
   s.nome = nome;
   salva('sopralluogo', s);
   avvisa('Salvato', 'ok');
@@ -799,11 +805,11 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
   // Chiudi sopralluogo finché il verbale non c'è; poi Aggiorna, spento se non è cambiato niente. Mai la parola "verbale".
   const chiudi = allineato
     ? '<button class="pill grigia chiudi" disabled>Aggiorna</button>'
-    : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Chiudi sopralluogo') + '</button>';
+    : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Scrivi sopralluogo') + '</button>';
   return '<div class="ordine sop' + (x.id === espansoId ? ' attivo' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
     (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' + chiudi +
-    '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
+    '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋮</button>' +
     '</div>' + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
 }
 // Il box: righe in verticale, 4-5 per volta (scorrevole si occupa dell'altezza), niente se non c'è niente.
@@ -813,7 +819,6 @@ function boxSopralluoghi(s, espansoId) {
   // Al posto del numero, in testa, "+ nuovo sopralluogo" in verde: solo oggi si può aggiungerne uno (17/09/2026).
   const nuovo = s.giorno === oggiISO() ? '<button class="dx verde" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ nuovo sopralluogo</button>' : '';
   let html = '<div class="card"><div class="card-capo">Sopralluoghi' + nuovo + '</div>' + scorrevole(fratelli.map(function (x) { return rigaSopralluogoBoxHtml(x, espansoId); }).join(''));
-  if (s.giorno === oggiISO()) html += '<div class="card-piede"><button class="link" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ un altro sopralluogo</button></div>';
   return html + '</div>';
 }
 
@@ -1007,13 +1012,16 @@ Object.assign(AZIONI, {
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
   /* Un altro passaggio nello stesso giorno: nasce con l'ora di adesso e si apre subito. */
-  'sopralluogo-nuovo': function (el) {
+  'sopralluogo-nuovo': async function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
     if (s.giorno !== oggiISO()) { avvisa('Sui giorni passati non si aprono sopralluoghi', 'att'); return; }
     const c = cantierePerCodice(s.cantiere);
     if (!c) return;
-    const n = creaSopralluogo(c, s.giorno, oraAdesso());
+    // Prima il titolo, poi il sopralluogo: l'ora resta, in piccolo sotto il nome.
+    const nome = await chiediNomeSopralluogo('', 'Crea');
+    if (nome === null) return;
+    const n = creaSopralluogo(c, s.giorno, oraAdesso(), nome);
     vai('#/giorno/' + n.id);
   },
   'menu-sopralluogo': function (el) { apriPunti(el.dataset.id); },
@@ -1156,10 +1164,12 @@ Object.assign(AZIONI, {
     if (ROTTA.nome === 'cantiere') aggiornaVista(); else vai('#/cantiere/' + c.id);
   },
   // Nella giornata vuota: nasce il primo sopralluogo e ci si entra.
-  'giornata-sopralluogo-nuovo': function (el) {
+  'giornata-sopralluogo-nuovo': async function (el) {
     const c = cantierePerCodice(el.dataset.cantiere);
     if (!c) return;
-    vai('#/giorno/' + creaSopralluogo(c, el.dataset.giorno, oraAdesso()).id);
+    const nome = await chiediNomeSopralluogo('', 'Crea');
+    if (nome === null) return;
+    vai('#/giorno/' + creaSopralluogo(c, el.dataset.giorno, oraAdesso(), nome).id);
   },
   // --- foto ---
   // Il sopralluogo lo dice il tasto; dove non lo dice (schermata della foto) lo sa l'ingresso file.
