@@ -1283,3 +1283,8 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .ordine.sop .desc small{font-size:var(--t1)}
 /* "+ giorno di oggi" dentro la tendina Giornate: una riga di solo testo, alta come "+ un altro" nei piedi delle card. */
 .tendine > div > .link.blocco{min-height:26px;margin-bottom:var(--s2);margin-left:auto;display:flex}
+/* La tendina sottile "tutte le giornate" dentro Giornate: niente riquadro, bassa come
+   "+ giorno di oggi", con la scritta a destra (22/09/2026). Il suo contenuto è la stessa lista dei giorni. */
+.tend-sottile > .tend{width:100%;min-height:26px;padding:0;margin:0 0 var(--s2);background:transparent;justify-content:flex-end}
+.tend-sottile > .tend .et{flex:0 0 auto;text-align:right}
+.tend-sottile > .tend .n{margin-left:0}
