@@ -313,16 +313,24 @@ function descriviStatoFoto(st) {
   return { testo: '', classe: '' };
 }
 
+/* Nel PDF di giornata una foto non ancora toccata da lì segue lo stato del suo
+   sopralluogo (nelPdf): appena qualcuno la marca o smarca dalla card della
+   giornata, nelPdfGiorno diventa esplicito e i due percorsi si separano. */
+function marcataGiorno(f) { return f.nelPdfGiorno !== undefined ? !!f.nelPdfGiorno : !!f.nelPdf; }
+
 // Le miniature in fila. Con opzioni.segna sotto ognuna c'è il tasto per metterla nel PDF o toglierla.
+// opzioni.campo sceglie quale selezione: 'nelPdf' (sopralluogo, default) o 'nelPdfGiorno' (giornata).
 function filaFoto(s, lista, opzioni) {
   opzioni = opzioni || {};
   if (!lista.length) return '';
+  const campo = opzioni.campo === 'nelPdfGiorno' ? 'nelPdfGiorno' : 'nelPdf';
   return '<div class="foto-fila">' + lista.map(function (x) {
     // Un elemento è la foto, oppure { sop, f } quando la fila mette insieme più sopralluoghi.
     const f = x.f || x, sx = x.sop || s;
     const st = statoLavoroFoto(f);
+    const dentro = campo === 'nelPdfGiorno' ? marcataGiorno(f) : !!f.nelPdf;
     const eti = opzioni.doc ? (st.stato === 'lettura' ? 'Leggo…' : (GENERI_BREVI[f.genere] || 'documento')) : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
-    return '<div class="foto-mini' + (f.nelPdf ? ' pdf' : '') + '">' +
+    return '<div class="foto-mini' + (dentro ? ' pdf' : '') + '">' +
       '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(sx.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
       // Una scansione PDF non ha miniatura: l'icona del documento e il numero di pagine.
       (f.file ? (f.formato === 'pdf' ? '<span class="ico ico-documento"></span><small>' + (f.pagine ? f.pagine + ' pag.' : 'PDF') + '</small>' : '<img data-foto="' + h(f.file) + '" alt="">') : '') + '</button>' +
@@ -331,8 +339,8 @@ function filaFoto(s, lista, opzioni) {
       /* Il bollino del PDF sta nell'angolo basso della foto. Dove serve scegliere si tocca,
          e non ruba una riga sotto la miniatura; altrove dice soltanto com'è messa. */
       (opzioni.segna
-        ? '<button class="tacca' + (f.nelPdf ? ' on' : '') + '" data-az="foto-marca" data-sop="' + h(sx.id) + '" data-id="' + h(f.id) + '" aria-label="' + (f.nelPdf ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (f.nelPdf ? '✓ PDF' : '☐ PDF') + '</button>'
-        : (f.nelPdf ? '<span class="tacca on">✓ PDF</span>' : '')) +
+        ? '<button class="tacca' + (dentro ? ' on' : '') + '" data-az="foto-marca" data-campo="' + campo + '" data-sop="' + h(sx.id) + '" data-id="' + h(f.id) + '" aria-label="' + (dentro ? 'Togli dal PDF' : 'Metti nel PDF') + '">' + (dentro ? '✓ PDF' : '☐ PDF') + '</button>'
+        : (dentro ? '<span class="tacca on">✓ PDF</span>' : '')) +
       '<span class="e' + (st.stato === 'errore' ? ' err' : ((st.stato && st.stato !== 'riordinato') ? ' att' : '')) + '">' + h(eti) + '</span>' +
       '</div>';
   }).join('') + '</div>';
@@ -570,10 +578,13 @@ function improntaSopralluogo(s) {
   ]);
 }
 // Il verbale di giornata prende il testo dai verbali dei passaggi, se ci sono; le foto dai passaggi.
+// Le foto marcate per la giornata sono una selezione a parte da quella del sopralluogo
+// (improntaSopralluogo): entrano qui, così "Aggiorna" si accorge anche di quella.
 function improntaGiornata(sops) {
   return JSON.stringify(sops.map(function (x) {
     const vb = verbaleDiSopralluogo(x.codice);
-    return [x.codice, x.ora, x.nome || '', vb ? CHIAVI_SEZIONI.map(function (k) { return vb.sezioni[k] || ''; }) : null, improntaSopralluogo(x)];
+    const fotoGiorno = fotoNormali(x).filter(function (f) { return marcataGiorno(f); }).map(function (f) { return [f.id, f.referto || '', sezioneFoto(f)]; });
+    return [x.codice, x.ora, x.nome || '', vb ? CHIAVI_SEZIONI.map(function (k) { return vb.sezioni[k] || ''; }) : null, improntaSopralluogo(x), fotoGiorno];
   }));
 }
 // Vero se dal verbale in poi non è cambiato niente. Un verbale vecchio senza impronta conta come cambiato.
@@ -750,11 +761,11 @@ function cardFotoGiornataConTutte(s) {
   const lista = [];
   sopralluoghiDelGiorno(s.cantiere, s.giorno).forEach(function (x) { fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); }); });
   if (!lista.length) return '';
-  const nelPdf = lista.filter(function (x) { return x.f.nelPdf; }).length;
+  const nelPdf = lista.filter(function (x) { return marcataGiorno(x.f); }).length;
   const tutte = nelPdf === lista.length;
   return tendina('foto-giorno-' + s.cantiere + '-' + s.giorno, 'Foto della giornata',
     '<div class="card"><div class="card-capo">' + nelPdf + ' su ' + lista.length + ' nel PDF</div>' +
-    filaFoto(null, lista, { segna: true }) +
+    filaFoto(null, lista, { segna: true, campo: 'nelPdfGiorno' }) +
     '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte-giorno" data-cantiere="' + h(s.cantiere) + '" data-giorno="' + h(s.giorno) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div></div>',
     lista.length);
 }
@@ -1041,8 +1052,9 @@ function vistaFoto(sopId, fotoId) {
   const registrandoQui = REG.attiva && REG.destinazione && REG.destinazione.tipo === 'foto' && REG.destinazione.foto === f.id;
   const sezione = sezioneFoto(f);
   const doc = !!GENERI[f.genere];
+  // Una foto normale ha due selezioni indipendenti: il pallino unico non basta più a dirle, restano i due tasti sotto.
   let html = testata({ indietro: '#/giorno/' + s.id, titolo: nomeFoto(f), sotto: h(c.nome) + ' · ' + h(dataBreve(f.giorno)),
-    destra: registrandoQui ? '<span class="pill reg">● rec</span>' : (f.nelPdf ? '<span class="pill ok">nel PDF</span>' : '<span class="pill grigia">non nel PDF</span>') });
+    destra: registrandoQui ? '<span class="pill reg">● rec</span>' : (doc ? (f.nelPdf ? '<span class="pill ok">nel PDF</span>' : '<span class="pill grigia">non nel PDF</span>') : '') });
   html += '<div class="foto-grande' + (f.file ? '' : ' manca') + '">' +
     (f.file
       ? (f.formato === 'pdf'
@@ -1059,7 +1071,11 @@ function vistaFoto(sopId, fotoId) {
     '</div></div>';
   html += '<div class="modulo">' +
     (f.genere ? '<button class="btn' + (f.cantiere ? ' btn-ok' : '') + '" style="margin-bottom:8px" data-az="foto-cantiere" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.cantiere ? '✓ Vale per tutto il cantiere' : 'Vale per tutto il cantiere') + '</button>' : '') +
-    '<button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>' +
+    (doc
+      ? '<button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-campo="nelPdf" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>'
+      // Una foto normale: due tasti, uno per ogni PDF — sopralluogo e giornata sono selezioni indipendenti.
+      : '<button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" style="margin-bottom:8px" data-az="foto-marca" data-campo="nelPdf" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF sopralluogo' : 'Metti nel PDF sopralluogo') + '</button>' +
+        '<button class="btn' + (marcataGiorno(f) ? ' btn-ok' : '') + '" data-az="foto-marca" data-campo="nelPdfGiorno" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (marcataGiorno(f) ? '✓ Nel PDF giornata' : 'Metti nel PDF giornata') + '</button>') +
     '<button class="btn btn-rosso medio" data-az="foto-elimina" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" style="margin-top:12px">' + (doc ? 'Elimina il documento' : 'Elimina la foto') + '</button></div>';
   // I tasti della foto restano anche qui: caricata una, la successiva parte da questa schermata.
   html += ingressiFoto(s);
@@ -1116,9 +1132,9 @@ Object.assign(AZIONI, {
     const lista = [];
     sopralluoghiDelGiorno(el.dataset.cantiere, el.dataset.giorno).forEach(function (x) { fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); }); });
     if (!lista.length) return;
-    const tutte = lista.every(function (x) { return x.f.nelPdf; });
+    const tutte = lista.every(function (x) { return marcataGiorno(x.f); });
     const tocchi = {};
-    lista.forEach(function (x) { x.f.nelPdf = !tutte; tocchi[x.sop.id] = x.sop; });
+    lista.forEach(function (x) { x.f.nelPdfGiorno = !tutte; tocchi[x.sop.id] = x.sop; });
     Object.keys(tocchi).forEach(function (id) { salva('sopralluogo', tocchi[id]); });
     avvisa(tutte ? 'Nessuna nel PDF' : 'Tutte nel PDF', tutte ? undefined : 'ok');
     aggiornaVista();
@@ -1278,9 +1294,12 @@ Object.assign(AZIONI, {
     const s = sopralluogo(el.dataset.sop);
     const f = s && trovaFoto(s, el.dataset.id);
     if (!f) return;
-    f.nelPdf = !f.nelPdf;
+    // data-campo dice quale selezione toccare: 'nelPdf' (sopralluogo, default) o 'nelPdfGiorno' (giornata).
+    const campo = el.dataset.campo === 'nelPdfGiorno' ? 'nelPdfGiorno' : 'nelPdf';
+    const attuale = campo === 'nelPdfGiorno' ? marcataGiorno(f) : !!f.nelPdf;
+    f[campo] = !attuale;
     salva('sopralluogo', s);
-    avvisa(f.nelPdf ? 'Nel PDF' : 'Fuori dal PDF', f.nelPdf ? 'ok' : undefined);
+    avvisa(f[campo] ? 'Nel PDF' : 'Fuori dal PDF', f[campo] ? 'ok' : undefined);
     aggiornaVista();
   },
   'foto-marca-tutte': function (el) {
