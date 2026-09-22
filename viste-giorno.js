@@ -805,12 +805,21 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
   // Chiudi sopralluogo finché il verbale non c'è; poi Aggiorna, spento se non è cambiato niente. Mai la parola "verbale".
   const chiudi = allineato
     ? '<button class="pill grigia chiudi" disabled>Aggiorna</button>'
-    : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Scrivi sopralluogo') + '</button>';
-  return '<div class="ordine sop' + (x.id === espansoId ? ' attivo' : '') + '">' +
+    : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Chiudi sopralluogo') + '</button>';
+  const attivo = x.id === espansoId;
+  /* Chiuso: sotto la riga, attaccata e sottile, la tendina del suo verbale — Visualizza,
+     Esporta (con la sua tendina), Modifica. Gli stessi tre tasti della card del verbale di giornata (22/09/2026). */
+  const verbale = !vb ? '' : '<div class="sop-verbale' + (attivo ? ' attivo' : '') + '">' +
+    tendina('vb-sop-' + x.id, 'Verbale', '<div class="griglia tre">' +
+      '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' +
+      tastoEsporta('vb-' + vb.id) +
+      '<button class="btn" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button></div>' +
+      vociEsporta('vb-' + vb.id, 'verbale-esporta', vb.id, 'verbale-scarica', vb.id)) + '</div>';
+  return '<div class="ordine sop' + (attivo ? ' attivo' : '') + (vb ? ' con-verbale' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
     (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' + chiudi +
     '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋮</button>' +
-    '</div>' + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
+    '</div>' + verbale + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
 }
 // Il box: righe in verticale, 4-5 per volta (scorrevole si occupa dell'altezza), niente se non c'è niente.
 function boxSopralluoghi(s, espansoId) {

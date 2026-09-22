@@ -1270,9 +1270,9 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    La riga che separa la visione della giornata da quella del sopralluogo: due
    etichette ai lati, ognuna con la sua freccia (carattere, come le tendine), e in
    mezzo la linea. A 360 px si accorcia la linea, mai le scritte. */
-.sep-giorno{display:flex;align-items:center;gap:var(--s2);margin:var(--s3) 0 var(--s2);font-size:var(--t2);color:var(--muted)}
+.sep-giorno{display:flex;align-items:center;gap:var(--s2);margin:var(--s3) 0 var(--s2);font-size:var(--t2);color:var(--accent)}
 .sep-giorno span{flex:0 0 auto;white-space:nowrap}
-.sep-giorno .linea{flex:1 1 0;min-width:0;height:1px;background:var(--line)}
+.sep-giorno .linea{flex:1 1 0;min-width:0;height:1px;background:var(--accent)}
 /* Sulla riga del sopralluogo, fra il nome e i puntini: Chiudi sopralluogo / Aggiorna.
    Stessa misura dei pill piccoli delle righe; spento come il tasto in testa alla giornata. */
 .ordine.sop .chiudi{flex:0 0 auto;align-self:center;min-height:30px;padding:0 10px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:0;white-space:nowrap}
@@ -1288,3 +1288,13 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .tend-sottile > .tend{width:100%;min-height:26px;padding:0;margin:0 0 var(--s2);background:transparent;justify-content:flex-end}
 .tend-sottile > .tend .et{flex:0 0 auto;text-align:right}
 .tend-sottile > .tend .n{margin-left:0}
+/* Il verbale del sopralluogo chiuso: una tendina sottile attaccata sotto la sua riga, nello
+   stesso riquadro (stesso bordo, angoli in basso). Aperta, i tre tasti Visualizza · Esporta · Modifica (22/09/2026). */
+.ordine.sop.con-verbale{margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
+.card .ordine.sop.con-verbale:last-child,.card .ordine.sop.con-verbale.attivo:last-child{border-bottom:0}
+.sop-verbale{margin:0 var(--s3) var(--s1);border:2px solid var(--line);border-top:0;border-radius:0 0 var(--radius-p) var(--radius-p)}
+.sop-verbale.attivo{border-color:var(--azione)}
+.sop-verbale > .tend{width:100%;min-height:22px;margin:0;padding:0 var(--s4);background:transparent;border-radius:0;font-size:var(--t1);font-weight:600;color:var(--muted);justify-content:flex-end}
+.sop-verbale > .tend .et{flex:0 0 auto}
+.sop-verbale > div > .griglia{padding:0 var(--s2) var(--s2)}
+.sop-verbale .griglia .btn{min-height:32px}
