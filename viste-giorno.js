@@ -807,14 +807,13 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
     ? '<button class="pill grigia chiudi" disabled>Aggiorna</button>'
     : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Chiudi sopralluogo') + '</button>';
   const attivo = x.id === espansoId;
-  /* Chiuso: sotto la riga, attaccata e sottile, la tendina del suo verbale — Visualizza,
-     Esporta (con la sua tendina), Modifica. Gli stessi tre tasti della card del verbale di giornata (22/09/2026). */
-  const verbale = !vb ? '' : '<div class="sop-verbale' + (attivo ? ' attivo' : '') + '">' +
-    tendina('vb-sop-' + x.id, 'Verbale', '<div class="griglia tre">' +
-      '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' +
-      tastoEsporta('vb-' + vb.id) +
-      '<button class="btn" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button></div>' +
-      vociEsporta('vb-' + vb.id, 'verbale-esporta', vb.id, 'verbale-scarica', vb.id)) + '</div>';
+  /* Chiuso: sotto la riga, nello stesso riquadro e senza tendina, i tre tastini del suo verbale —
+     Visualizza, Esporta (con la sua tendina), Modifica: gli stessi della card del verbale di giornata (22/09/2026). */
+  const verbale = !vb ? '' : '<div class="sop-verbale' + (attivo ? ' attivo' : '') + '"><div class="griglia tre">' +
+    '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' +
+    tastoEsporta('vb-' + vb.id) +
+    '<button class="btn" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button></div>' +
+    vociEsporta('vb-' + vb.id, 'verbale-esporta', vb.id, 'verbale-scarica', vb.id) + '</div>';
   return '<div class="ordine sop' + (attivo ? ' attivo' : '') + (vb ? ' con-verbale' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
     (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' + chiudi +
