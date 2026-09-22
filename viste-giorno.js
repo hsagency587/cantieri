@@ -465,7 +465,7 @@ function vistaGiornoInCorso(s, c) {
     html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(attivo.id) + '"><span class="ico ico-microfono"></span> Detta</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(attivo.id) + '"><span class="ico ico-fotocamera"></span> Foto</button></div>';
   }
-  requestAnimationFrame(misuraFiloSopralluogo);
+  requestAnimationFrame(function () { scrollASopralluogoAttivo(); misuraFiloSopralluogo(); });
   return html;
 }
 
@@ -880,6 +880,15 @@ function contenutoSopralluogoEspanso(x) {
   interno += vuote.join('');
   html += tendinaApertaPerDefault('sez-sop-' + x.id, 'Sezioni del sopralluogo', interno, conta);
   return html;
+}
+
+/* Il box dei sopralluoghi scorre da sé (max-height, .audio-lista.corta): se quello
+   scelto non è nella parte visibile, il filo azzurro punta a una riga che non si vede
+   e non si capisce più qual è (richiesta di Simone, 22/09/2026). Si riporta in vista
+   solo se serve: scrollIntoView("nearest") non muove niente se la riga già si vede. */
+function scrollASopralluogoAttivo() {
+  const riga = document.querySelector('.zona-sop .ordine.sop.attivo');
+  if (riga) riga.scrollIntoView({ block: 'nearest' });
 }
 
 /* Il filo azzurro che lega la riga scelta nel box (.ordine.sop.attivo) alle sue sezioni
