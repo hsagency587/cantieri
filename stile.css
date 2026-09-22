@@ -1275,8 +1275,10 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .sep-giorno .linea{flex:1 1 0;min-width:0;height:1px;background:var(--accent)}
 /* Sulla riga del sopralluogo, fra il nome e i puntini: Chiudi sopralluogo / Aggiorna.
    Stessa misura dei pill piccoli delle righe; spento come il tasto in testa alla giornata. */
-.ordine.sop .chiudi{flex:0 0 auto;align-self:center;min-height:30px;padding:0 10px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:0;white-space:nowrap}
-.ordine.sop .chiudi:disabled{opacity:.7}
+.ordine.sop .chiudi{flex:0 0 auto;align-self:center;min-height:30px;padding:0 10px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:0;white-space:nowrap;background:transparent;border:1px solid var(--line)}
+/* Come "Aggiorna verbale di giornata" in testa: solo bordo e scritta nel colore, cosi si riconosce subito (22/09/2026). */
+.ordine.sop .chiudi.ok{color:var(--accent);border-color:var(--accent)}
+.ordine.sop .chiudi:disabled{color:var(--muted);border-color:var(--line);opacity:.7}
 /* Il nome della riga si accorcia con i puntini: il tasto e i tre puntini non vanno a capo né escono dal bordo. */
 .ordine.sop .desc,.ordine.sop .desc small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 /* L'ora sotto il titolo del sopralluogo: davvero piccola e grigia (richiesta di Simone, 22/09/2026). */
