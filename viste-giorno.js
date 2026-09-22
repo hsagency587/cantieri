@@ -886,7 +886,7 @@ function misuraFiloSopralluogo() {
   const riga = zona && zona.querySelector('.ordine.sop.attivo');
   const tend = zona && zona.querySelector(':scope > .tend');
   if (!zona || !riga || !tend) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
-  const X1 = 2, X2 = 20, R = 9, GIU = 34;
+  const X1 = 2, X2 = 12, R = 9, GIU = 34;
   const zr = zona.getBoundingClientRect(), rr = riga.getBoundingClientRect(), tr = tend.getBoundingClientRect();
   const lista = riga.closest('.audio-lista') || riga.parentElement;
   const lr = lista.getBoundingClientRect();

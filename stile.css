@@ -1320,13 +1320,12 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .zona-sop .card + .card{margin-top:var(--s1)}
 .zona-sop .tend{width:100%;margin-bottom:var(--s1)}
 
-/* Il tasto della tendina unica rientra come le righe del box sopra (stesso --s3), le
-   sue card un poco di più — appena oltre X2 (20, il filo verticale) così restano
-   vicine al filo invece di lasciargli intorno spazio vuoto (23/09/2026, su misura).
-   --s6 qui non basta: vale 18px da riga 623 in giù, meno di X2 — si userebbe la card
-   sopra il filo invece che accanto. */
+/* Il tasto della tendina unica rientra come le righe del box sopra (stesso --s3).
+   Le card, appena oltre X2 (12 in viste-giorno.js, il filo verticale che gli corre
+   di fianco): il minimo che le tiene a destra del filo senza che ci finisca sopra
+   (23/09/2026, su misura, il filo avvicinato al bordo sinistro su richiesta di Simone). */
 .zona-sop > .tend{margin-left:var(--s3)}
-.zona-sop > .tend + div .card{margin-left:var(--s7)}
+.zona-sop > .tend + div .card{margin-left:14px}
 
 /* Riga del sopralluogo non attiva: spenta, ma il tasto di chiusura resta leggibile.
    L'opacità va su desc/stato e non sull'intera riga: un genitore con opacity ridotta
