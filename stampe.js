@@ -729,7 +729,8 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
   const sops = valori(leggiTutto().sopralluoghi);
   for (const v of verbali) {
     for (const s of sopralluoghiDelVerbale(v, sops)) for (const f of fotoNormali(s)) {
-      if (!f.nelPdf) continue;
+      // Il verbale di giornata legge la selezione di giornata (marcataGiorno), quello del sopralluogo la sua (nelPdf): sono due scelte indipendenti.
+      if (!(v.giornata ? marcataGiorno(f) : f.nelPdf)) continue;
       const k = sezioneFoto(f);
       if (soloSezione && k !== soloSezione) continue;
       let img = null;
