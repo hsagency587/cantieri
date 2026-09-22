@@ -1265,3 +1265,17 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .menu-punti .voce-m b{font-size:var(--t3);font-weight:600;color:var(--azione)}
 .menu-punti .voce-m small{font-size:var(--t1);color:var(--muted)}
 .menu-punti .voce-m.rossa b{color:var(--danger)}
+
+/* ============ 35. LA GIORNATA PIÙ CHIARA (22/09/2026) ============
+   La riga che separa la visione della giornata da quella del sopralluogo: due
+   etichette ai lati, ognuna con la sua freccia (carattere, come le tendine), e in
+   mezzo la linea. A 360 px si accorcia la linea, mai le scritte. */
+.sep-giorno{display:flex;align-items:center;gap:var(--s2);margin:var(--s3) 0 var(--s2);font-size:var(--t2);color:var(--muted)}
+.sep-giorno span{flex:0 0 auto;white-space:nowrap}
+.sep-giorno .linea{flex:1 1 0;min-width:0;height:1px;background:var(--line)}
+/* Sulla riga del sopralluogo, fra il nome e i puntini: Chiudi sopralluogo / Aggiorna.
+   Stessa misura dei pill piccoli delle righe; spento come il tasto in testa alla giornata. */
+.ordine.sop .chiudi{flex:0 0 auto;align-self:center;min-height:30px;padding:0 10px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:0;white-space:nowrap}
+.ordine.sop .chiudi:disabled{opacity:.7}
+/* Il nome della riga si accorcia con i puntini: il tasto e i tre puntini non vanno a capo né escono dal bordo. */
+.ordine.sop .desc,.ordine.sop .desc small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

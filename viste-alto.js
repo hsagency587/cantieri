@@ -587,7 +587,8 @@ function righeListiniForm() {
 Object.assign(AZIONI, {
   /* Da Aziende o da un'azienda: i cantieri attivi (dell'azienda, o tutti). Uno solo
      parte subito; due o più si scelgono da un foglio. Il tocco sul cantiere è il
-     gesto dell'utente: il microfono parte da lì, senza timer in mezzo. */
+     gesto dell'utente: il microfono parte da lì, senza timer in mezzo. Scelto il
+     cantiere, dettaSu (audio.js) può chiedere ancora in quale sopralluogo di oggi. */
   'parla-dashboard': function (el) {
     const idAz = el.dataset.azienda;
     const base = idAz === 'senza' ? cantieriSenzaAzienda() : (idAz ? cantieriDiAzienda((azienda(idAz) || {}).codice) : valori(leggiTutto().cantieri));

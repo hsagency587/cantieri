@@ -351,10 +351,10 @@ function creaSopralluogo(c, giorno, ora) {
     sezioni: sezioniVuote(), pezzi: [], chiuso: null, media: [], posizione: null
   });
 }
-/* Dove va a finire quello che si detta adesso. In una giornata i sopralluoghi possono
-   essere più d'uno: si scrive sull'ultimo rimasto aperto. Se sono tutti chiusi, o non ce
-   n'è ancora nessuno, ne nasce uno con l'ora di adesso. La scelta vera, quando serve,
-   arriva dopo: a testo trascritto, non prima di premere. */
+/* Il sopralluogo di oggi su cui lavorano i tasti senza domanda (nuovo sopralluogo,
+   rilevamento creato a mano): l'ultimo rimasto aperto, o uno nuovo con l'ora di adesso.
+   La voce dettata non passa più di qui: dettaSu e "Detta" (audio.js) chiedono dove va
+   quando il sopralluogo è chiuso o ce n'è più d'uno. */
 function sopralluogoPerDettare(c) {
   const aperti = sopralluoghiApertiOggi(c.codice);
   return aperti.length ? aperti[aperti.length - 1] : creaSopralluogo(c);
@@ -395,8 +395,8 @@ function vistaGiornata(id) {
 /* Il tasto in testa alla giornata: verde per scrivere il verbale, verde per aggiornarlo
    se dal verbale in poi è cambiato qualcosa; grigio e spento se non c'è niente da aggiornare. */
 function tastoVerbaleGiornata(vg, codiceCantiere, giorno) {
-  if (vg && verbaleAllineato(vg)) return '<button class="pill grigia" disabled>Aggiorna il verbale</button>';
-  return '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(codiceCantiere) + '" data-giorno="' + h(giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>';
+  if (vg && verbaleAllineato(vg)) return '<button class="pill grigia" disabled>Aggiorna verbale di giornata</button>';
+  return '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(codiceCantiere) + '" data-giorno="' + h(giorno) + '">' + (vg ? 'Aggiorna verbale di giornata' : 'Chiudi verbale di giornata') + '</button>';
 }
 // La card del verbale di giornata: il titolo nel colore primario, come il pallino, e i tre tasti.
 function cardVerbaleGiornata(vg) {
@@ -438,7 +438,9 @@ function vistaGiornoInCorso(s, c) {
       '</div></div>';
   }
   html += ingressiDocumento(attivo);
-  // 7.4 — box dei sopralluoghi, righe in verticale.
+  // 7.4 — box dei sopralluoghi, righe in verticale. Sopra, la riga che separa la giornata dal
+  // sopralluogo: solo se il box c'è, cioè se la giornata ha almeno un sopralluogo.
+  if (fratelli.length) html += '<div class="sep-giorno"><span>▲ visione giornata</span><span class="linea"></span><span>visione sopralluogo ▼</span></div>';
   html += boxSopralluoghi(s, attivo.id);
   html += cardDaAssegnare(s);
   // 7.5-7.6 — il sopralluogo aperto: non una pagina nuova, il contenuto compare qui sotto.
@@ -595,15 +597,12 @@ function vociMenuVerbale(v) {
     '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(v.id) + '"><b>Scarica</b></button>' +
     '<button class="voce-m rossa" data-az="verbale-elimina" data-id="' + h(v.id) + '"><b>Elimina</b></button>';
 }
-/* Sul sopralluogo: prima del verbale si scrive o si modifica la giornata; dopo,
-   le stesse voci del verbale. Elimina c'è sempre, e porta via anche il verbale. */
+/* Sul sopralluogo: prima del verbale si modifica la giornata (chiuderlo lo fa il tasto
+   verde sulla riga); dopo, le stesse voci del verbale. Elimina c'è sempre, e porta via anche il verbale. */
 function vociMenuSopralluogo(x) {
   const vb = verbaleDiSopralluogo(x.codice);
   const elimina = '<button class="voce-m rossa" data-az="sopralluogo-elimina" data-id="' + h(x.id) + '"><b>Elimina</b></button>';
-  if (!vb) {
-    return '<button class="voce-m" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '"><b>Scrivi il verbale</b></button>' +
-      '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '"><b>Modifica</b></button>' + elimina;
-  }
+  if (!vb) return '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '"><b>Modifica</b></button>' + elimina;
   return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(vb.id) + '"><b>Modifica</b></button>' +
     '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(vb.id) + '"><b>Esporta</b></button>' +
     '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(vb.id) + '"><b>Scarica</b></button>' + elimina;
@@ -624,8 +623,8 @@ function menuVerbale(idVerbale) {
 
 /* Gli stessi tre puntini su un sopralluogo: portano al suo verbale, se c'è. */
 /* I tre puntini del sopralluogo lavorano sul suo verbale: modificarlo,
-   mandarlo fuori, salvarlo. Finché il verbale non c'è, l'unica cosa da fare
-   è scriverlo, e il menu lo dice invece di mostrare tasti che non fanno niente. */
+   mandarlo fuori, salvarlo. Finché il verbale non c'è, il menu dice dove si
+   chiude il sopralluogo (il tasto verde sulla riga) invece di mostrare tasti che non fanno niente. */
 function menuSopralluogo(idSop) {
   const s = sopralluogo(idSop);
   if (!s) return;
@@ -636,8 +635,7 @@ function menuSopralluogo(idSop) {
       ? '<button class="btn btn-ok" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button>' +
         '<button class="btn" data-az="verbale-esporta" data-id="' + h(vb.id) + '">Esporta</button>' +
         '<button class="btn" data-az="verbale-scarica" data-id="' + h(vb.id) + '">Scarica</button>'
-      : '<p style="color:var(--muted)">Il verbale non c\'è ancora.</p>' +
-        '<button class="btn btn-ok" data-az="sopralluogo-chiudi" data-id="' + h(s.id) + '">Scrivi il verbale</button>') +
+      : '<p style="color:var(--muted)">Il sopralluogo non è ancora chiuso. Si chiude dal tasto verde sulla sua riga.</p>') +
     '<button class="btn" data-az="chiudi-foglio">Chiudi</button>'
   );
 }
@@ -787,19 +785,24 @@ function tendinaApertaPerDefault(chiave, etichetta, contenuto, n) {
 }
 
 /* La riga di un sopralluogo dentro il box del giorno (Fase 7.4): un tocco lo apre sotto,
-   i puntini portano a Scrivi/Aggiorna il verbale, Modifica, Esporta, Elimina. */
+   il tasto verde lo chiude (o aggiorna il suo verbale), i puntini portano a Modifica, Esporta, Elimina. */
 function rigaSopralluogoBoxHtml(x, espansoId) {
   const vb = verbaleDiSopralluogo(x.codice);
+  const allineato = !!vb && verbaleAllineato(vb);
   const suoNome = String(x.nome || '').trim();
   const aperto = PUNTI_APERTI === x.id;
   // "da scrivere" è lo stato di partenza, ovvio: si scrive solo quando dice altro (17/09/2026).
-  const stato = !vb ? '' : (verbaleAllineato(vb) ? 'verbale fatto' : 'da aggiornare');
+  const stato = !vb ? '' : (allineato ? 'verbale fatto' : 'da aggiornare');
   const sotto = [];
   if (suoNome) sotto.push(h(x.ora));
   if (stato) sotto.push(h(stato));
+  // Chiudi sopralluogo finché il verbale non c'è; poi Aggiorna, spento se non è cambiato niente. Mai la parola "verbale".
+  const chiudi = allineato
+    ? '<button class="pill grigia chiudi" disabled>Aggiorna</button>'
+    : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Chiudi sopralluogo') + '</button>';
   return '<div class="ordine sop' + (x.id === espansoId ? ' attivo' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
-    (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' +
+    (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' + chiudi +
     '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
     '</div>' + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
 }
