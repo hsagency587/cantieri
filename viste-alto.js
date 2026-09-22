@@ -275,7 +275,7 @@ function tendinaVerbaliCantiere(c) {
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nei verbali" value="' + h(filtroVerbaliCant) + '" data-campo="filtro-verbali-cant" autocomplete="off"></div>' +
     '<div class="periodi">' + pill('sopralluogo', 'sopralluoghi') + pill('giornata', 'giornata') + pill('settimana', 'settimana') + '</div>';
   html += filtrati.length ? '<div class="card">' + scorrevole(filtrati.map(rigaVerbaleCercabileHtml).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun verbale con questi filtri.' : 'Nessun verbale ancora.') + '</div>';
-  return tendina('verbali-' + c.id, 'Verbali', html);
+  return tendina('verbali-' + c.id, 'Tutti i verbali', html);
 }
 
 /* ---- Tendina 2: Giornate ---- */
@@ -305,11 +305,21 @@ function giorniCantiereHtml(c, lista, oggi) {
   if (meseCorrente) html += '</div>';
   return html;
 }
-// La tendina Giornate: solo i giorni della settimana in corso (i loro verbali si vedono dalla tendina Verbali, 17/09/2026).
+/* La tendina Giornate: i giorni della settimana in corso, e sotto — in una tendina sottile
+   con la scritta a destra — tutte le giornate prima di questa settimana. Le giornate non
+   spariscono più da una settimana all'altra (22/09/2026). */
 function tendinaGiornateCantiere(c, oggi) {
   const lunedi = lunediDi(oggi);
-  const lista = giornateDi(c.codice).filter(function (g) { return g.giorno >= lunedi; });
-  const html = lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
+  const tutte = giornateDi(c.codice);
+  const lista = tutte.filter(function (g) { return g.giorno >= lunedi; });
+  const prima = tutte.filter(function (g) { return g.giorno < lunedi; });
+  let html = lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
+  // Prima riga, solo testo (niente riquadro: non deve sembrare una tendina): apre il giorno di oggi
+  // senza dettare. Solo finché oggi non c'è ancora (22/09/2026).
+  if (c.stato !== 'chiuso' && !lista.some(function (g) { return g.giorno === oggi; })) {
+    html = '<button class="link blocco" data-az="giorno-oggi-apri" data-id="' + h(c.id) + '">＋ giorno di oggi</button>' + html;
+  }
+  if (prima.length) html += '<div class="tend-sottile">' + tendina('giornate-tutte-' + c.id, 'tutte le giornate', giorniCantiereHtml(c, prima, oggi), prima.length) + '</div>';
   return tendina('giornate-' + c.id, 'Giornate', html);
 }
 
@@ -344,7 +354,7 @@ function tendinaFotoCantiere(c) {
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
   const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true, c.aperto || '') +
     (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">' + (tutti.length ? 'Nessuna foto con questo filtro.' : 'Nessuna foto ancora.') + '</div>');
-  return tendina('foto-cant-' + c.id, 'Foto', html, tutti.length || null);
+  return tendina('foto-cant-' + c.id, 'Tutte le foto', html, tutti.length || null);
 }
 let filtroBolleCant = '';
 // Niente "tutte" qui: solo giorno e settimana, non c'è un'altra categoria con cui contrastarla.
@@ -360,7 +370,7 @@ function tendinaBolleCantiere(c) {
   html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false, c.aperto || '');
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
-  return tendinaConAzione('bolle-cant-' + c.id, 'Bolle', html, azione, tutti.length || null);
+  return tendinaConAzione('bolle-cant-' + c.id, 'Tutte le bolle', html, azione, tutti.length || null);
 }
 
 /* ---- Tendina 5: Documenti ---- */
@@ -409,7 +419,7 @@ function tendinaRilievoOrdineCantiere(c) {
     return '<button class="riga" data-az="vai" data-a="#/giorno/' + h(x.sop.id) + '"><span class="desc">' + h(dataEstesa(x.giorno)) + '<small>' + h(primaRiga(x.testo)) + '</small></span><span class="frec">›</span></button>';
   }).join('')) + '</div>' : '<div class="vuoto-stato">' + (tutti.length ? 'Nessun rilevamento con questa data.' : 'Nessun rilevamento ancora.') + '</div>';
   const azione = '<button class="pill cod" data-az="crea-rilevamento" data-id="' + h(c.id) + '">＋ crea</button>';
-  return tendinaConAzione('rilord-cant-' + c.id, "Rilevamento d'ordine", html, azione);
+  return tendinaConAzione('rilord-cant-' + c.id, "Tutti i rilevamenti d'ordine", html, azione);
 }
 
 /* ---------------- CANTIERE: la pagina ---------------- */
@@ -587,7 +597,8 @@ function righeListiniForm() {
 Object.assign(AZIONI, {
   /* Da Aziende o da un'azienda: i cantieri attivi (dell'azienda, o tutti). Uno solo
      parte subito; due o più si scelgono da un foglio. Il tocco sul cantiere è il
-     gesto dell'utente: il microfono parte da lì, senza timer in mezzo. */
+     gesto dell'utente: il microfono parte da lì, senza timer in mezzo. Scelto il
+     cantiere, dettaSu (audio.js) può chiedere ancora in quale sopralluogo di oggi. */
   'parla-dashboard': function (el) {
     const idAz = el.dataset.azienda;
     const base = idAz === 'senza' ? cantieriSenzaAzienda() : (idAz ? cantieriDiAzienda((azienda(idAz) || {}).codice) : valori(leggiTutto().cantieri));
@@ -611,6 +622,8 @@ Object.assign(AZIONI, {
   'detta-cantiere-scelto': function (el) { const c = cantiere(el.dataset.id); chiudiFoglio(); if (c) return dettaSu(c); },
   'parla-cantiere': function (el) { const c = cantiere(el.dataset.id); if (c) dettaSu(c); },
   'nuovo-sopralluogo': function (el) { const c = cantiere(el.dataset.id); if (!c) return; const s = sopralluogoPerDettare(c); vai('#/giorno/' + s.id); },
+  // Dalla tendina Giornate: il giorno di oggi nasce vuoto e si apre, senza sopralluogo e senza microfono.
+  'giorno-oggi-apri': function (el) { const c = cantiere(el.dataset.id); if (!c) return; vai('#/giornata/' + assicuraGiornata(c.codice, oggiISO()).id); },
   // --- le sei tendine del cantiere (rework 14/09/2026) ---
   // Un solo selettore alla volta, sempre uno acceso: non si spegne toccando di nuovo lo stesso (17/09/2026).
   'verbali-cant-sel': function (el) {

@@ -835,10 +835,37 @@ function statoLavoroPezzo(pezzo) {
   return copia;
 }
 
-async function dettaSu(c) {
-  const s = sopralluogoPerDettare(c);
-  vai('#/giorno/' + s.id);
-  await avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
+/* Un sopralluogo in un elenco si scrive in una maniera sola, in tutta l'app: il nome in
+   grassetto (o l'ora, se non ha nome) e sotto, in piccolo, l'ora e lo stato. */
+function voceSopralluogoDaDettare(x) {
+  const nome = String(x.nome || '').trim();
+  const stato = x.chiuso ? 'chiuso — il suo verbale andrà aggiornato' : 'aperto';
+  return '<button class="btn scelta" data-az="detta-in-sopralluogo" data-id="' + h(x.id) + '"><b>' + h(nome || x.ora) + '</b>' +
+    '<small>' + h((nome ? x.ora + ' · ' : '') + stato) + '</small></button>';
+}
+/* Il foglio che chiede dove va la voce. Le voci arrivano già fatte; "Apri un sopralluogo
+   nuovo" solo se si può (la giornata è oggi). La registrazione parte dentro il tocco sulla
+   voce, come in detta-cantiere-scelto: su iPhone il microfono si accende solo nel gesto. */
+function apriFoglioDoveDetta(titolo, voci, idCantiereNuovo) {
+  apriFoglio('<h2>' + h(titolo) + '</h2>' + voci +
+    (idCantiereNuovo ? '<button class="btn scelta" data-az="detta-sopralluogo-nuovo" data-id="' + h(idCantiereNuovo) + '"><b>Apri un sopralluogo nuovo</b></button>' : '') +
+    '<button class="btn" data-az="chiudi-foglio" style="margin-top:8px">Annulla</button>');
+}
+// Da fuori della giornata: parte da solo solo se oggi c'è un sopralluogo aperto e uno solo, o nessuno.
+function dettaSu(c) {
+  const oggi = sopralluoghiDiOggi(c.codice);
+  if (!oggi.length) return dettaInNuovo(c);
+  if (oggi.length === 1 && !oggi[0].chiuso) return dettaIn(oggi[0]);
+  apriFoglioDoveDetta('In quale sopralluogo?', oggi.map(function (x) { return voceSopralluogoDaDettare(x); }).join(''), c.id);
+}
+// Si va sulla giornata con quel sopralluogo aperto nel box, e il microfono parte: niente in mezzo.
+function dettaIn(s) {
+  sopralluogoEspanso = s.id;
+  if (location.hash !== '#/giorno/' + s.id) vai('#/giorno/' + s.id);
+  return avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
+}
+function dettaInNuovo(c) {
+  return dettaIn(creaSopralluogo(c));
 }
 
 // Le azioni di questo file.
@@ -888,11 +915,22 @@ Object.assign(AZIONI, {
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     card.classList.remove('lampeggia'); void card.offsetWidth; card.classList.add('lampeggia');
   },
+  /* "Detta" dentro la giornata: nel sopralluogo aperto nel box, se non è chiuso. Se è chiuso
+     si chiede: aggiungere lì, uno degli altri sopralluoghi del giorno ancora aperti, o uno nuovo (solo oggi). */
   'detta': function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
-    avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
+    if (!s.chiuso) return avviaRegistrazione({ tipo: 'sopralluogo', id: s.id });
+    const c = cantierePerCodice(s.cantiere);
+    const altri = sopralluoghiDelGiorno(s.cantiere, s.giorno).filter(function (x) { return x.id !== s.id && !x.chiuso; });
+    apriFoglioDoveDetta('Questo sopralluogo è chiuso. Dove metto quello che detti?',
+      '<button class="btn scelta" data-az="detta-in-sopralluogo" data-id="' + h(s.id) + '"><b>Aggiungi a questo sopralluogo</b><small>il suo verbale andrà aggiornato</small></button>' +
+      altri.map(function (x) { return voceSopralluogoDaDettare(x); }).join(''),
+      c && s.giorno === oggiISO() ? c.id : null);
   },
+  // Le voci dei fogli qui sopra: il microfono parte dentro il tocco, senza timer né attese prima.
+  'detta-in-sopralluogo': function (el) { const s = sopralluogo(el.dataset.id); chiudiFoglio(); if (s) return dettaIn(s); },
+  'detta-sopralluogo-nuovo': function (el) { const c = cantiere(el.dataset.id); chiudiFoglio(); if (c) return dettaInNuovo(c); },
   'detta-rilievo': function (el) {
     const s = giornoDelTasto(el);
     if (!s) return;

@@ -1265,3 +1265,71 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .menu-punti .voce-m b{font-size:var(--t3);font-weight:600;color:var(--azione)}
 .menu-punti .voce-m small{font-size:var(--t1);color:var(--muted)}
 .menu-punti .voce-m.rossa b{color:var(--danger)}
+
+/* ============ 35. LA GIORNATA PIÙ CHIARA (22/09/2026) ============
+   La riga che separa la visione della giornata da quella del sopralluogo: due
+   etichette ai lati, ognuna con la sua freccia (carattere, come le tendine), e in
+   mezzo la linea. A 360 px si accorcia la linea, mai le scritte. */
+.sep-giorno{display:flex;align-items:center;gap:var(--s2);margin:var(--s3) 0 var(--s2);font-size:var(--t2);color:var(--accent)}
+.sep-giorno span{flex:0 0 auto;white-space:nowrap}
+.sep-giorno .linea{flex:1 1 0;min-width:0;height:1px;background:var(--accent)}
+/* Le frecce: a linea, come le altre icone dell'app (stessa maschera SVG della freccia delle tendine,
+   spessore 2.2), nel colore del testo: il segno del carattere di sistema era troppo sottile (22/09/2026). */
+.sep-giorno .fr{display:inline-block;width:16px;height:16px;vertical-align:-3px;background-color:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20V4M5 11l7-7 7 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20V4M5 11l7-7 7 7'/%3E%3C/svg%3E") center/contain no-repeat}
+.sep-giorno .fr.giu{transform:rotate(180deg)}
+/* Sulla riga del sopralluogo, fra il nome e i puntini: Chiudi sopralluogo / Aggiorna.
+   Stessa misura dei pill piccoli delle righe; spento come il tasto in testa alla giornata. */
+.ordine.sop .chiudi{flex:0 0 auto;align-self:center;min-height:30px;padding:0 10px;font-size:var(--t1);font-weight:600;text-transform:none;letter-spacing:0;white-space:nowrap;background:transparent;border:1px solid var(--line)}
+/* Come "Aggiorna verbale di giornata" in testa: solo bordo e scritta nel colore, cosi si riconosce subito (22/09/2026). */
+.ordine.sop .chiudi.ok{color:var(--accent);border-color:var(--accent)}
+.ordine.sop .chiudi:disabled{color:var(--muted);border-color:var(--line);opacity:.7}
+/* Il nome della riga si accorcia con i puntini: il tasto e i tre puntini non vanno a capo né escono dal bordo. */
+.ordine.sop .desc,.ordine.sop .desc small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* L'ora sotto il titolo del sopralluogo: davvero piccola e grigia (richiesta di Simone, 22/09/2026). */
+.ordine.sop .desc small{font-size:var(--t1)}
+/* "+ giorno di oggi" dentro la tendina Giornate: una riga di solo testo, alta come "+ un altro" nei piedi delle card. */
+.tendine > div > .link.blocco{min-height:26px;margin-bottom:var(--s2);margin-left:auto;display:flex}
+/* La tendina sottile "tutte le giornate" dentro Giornate: niente riquadro, bassa come
+   "+ giorno di oggi", con la scritta a destra (22/09/2026). Il suo contenuto è la stessa lista dei giorni. */
+.tend-sottile > .tend{width:100%;min-height:26px;padding:0;margin:0 0 var(--s2);background:transparent;justify-content:flex-end}
+.tend-sottile > .tend .et{flex:0 0 auto;text-align:right}
+.tend-sottile > .tend .n{margin-left:0}
+/* Il verbale del sopralluogo chiuso: i tre tastini Visualizza · Esporta · Modifica direttamente sotto la
+   sua riga, nello stesso riquadro, senza riga di divisione in mezzo e senza tendina (22/09/2026). */
+.ordine.sop.con-verbale{margin-bottom:0;border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
+.card .ordine.sop.con-verbale:last-child,.card .ordine.sop.con-verbale.attivo:last-child{border-bottom:0}
+.sop-verbale{margin:0 var(--s3) var(--s1);border:2px solid var(--line);border-top:0;border-radius:0 0 var(--radius-p) var(--radius-p)}
+.sop-verbale.attivo{border-color:var(--azione)}
+.sop-verbale > .griglia{padding:0 var(--s2) var(--s2);gap:var(--s1)}
+.sop-verbale .griglia .btn{min-height:28px;font-size:var(--t1)}
+
+/* ============ 36. IL FILO DEL SOPRALLUOGO (22/09/2026) ============
+   Il sopralluogo scelto nel box si lega alle sue sezioni con un filo azzurro:
+   un SVG sovrapposto, misurato da misuraFiloSopralluogo in viste-giorno.js.
+   Qui solo lo strato visivo: il contenitore, l'SVG, i rientri, la riga spenta. */
+
+.zona-sop{position:relative}
+.zona-sop > svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:3}
+.zona-sop > svg path{fill:none;stroke:var(--azione);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Il box e la tendina delle sezioni non sono più figli diretti di #vista: senza queste
+   righe perderebbero i margini e la larghezza che le regole #vista > .card/.tend danno
+   altrove (sezioni 4 e 21) — stessi valori, qui per discendenza invece che per figlio diretto. */
+.zona-sop .card,.zona-sop .tend{margin-left:0;margin-right:0}
+.zona-sop .card{margin-bottom:var(--s1)}
+.zona-sop .card + .card{margin-top:var(--s1)}
+.zona-sop .tend{width:100%;margin-bottom:var(--s1)}
+
+/* Il tasto della tendina unica rientra come le righe del box sopra (stesso --s3).
+   Le card, appena oltre X2 (12 in viste-giorno.js, il filo verticale che gli corre
+   di fianco): il minimo che le tiene a destra del filo senza che ci finisca sopra
+   (23/09/2026, su misura, il filo avvicinato al bordo sinistro su richiesta di Simone). */
+.zona-sop > .tend{margin-left:var(--s3)}
+.zona-sop > .tend + div .card{margin-left:14px}
+
+/* Riga del sopralluogo non attiva: spenta, ma il tasto di chiusura resta leggibile.
+   L'opacità va su desc/stato e non sull'intera riga: un genitore con opacity ridotta
+   spegne comunque i figli quando si compone lo schermo, anche quelli con opacity:1 —
+   non c'è modo di far risalire .chiudi da dentro, quindi resta fuori dalla regola. */
+.ordine.sop:not(.attivo) > .desc,
+.ordine.sop:not(.attivo) > .stato{opacity:.45}

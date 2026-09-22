@@ -344,17 +344,17 @@ function fotoPerSezione(s) {
   return per;
 }
 
-function creaSopralluogo(c, giorno, ora) {
+function creaSopralluogo(c, giorno, ora, nome) {
   assicuraGiornata(c.codice, giorno || oggiISO());
   return salva('sopralluogo', {
-    cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(), nome: '',
+    cantiere: c.codice, giorno: giorno || oggiISO(), ora: ora || oraAdesso(), nome: String(nome || '').trim(),
     sezioni: sezioniVuote(), pezzi: [], chiuso: null, media: [], posizione: null
   });
 }
-/* Dove va a finire quello che si detta adesso. In una giornata i sopralluoghi possono
-   essere più d'uno: si scrive sull'ultimo rimasto aperto. Se sono tutti chiusi, o non ce
-   n'è ancora nessuno, ne nasce uno con l'ora di adesso. La scelta vera, quando serve,
-   arriva dopo: a testo trascritto, non prima di premere. */
+/* Il sopralluogo di oggi su cui lavorano i tasti senza domanda (nuovo sopralluogo,
+   rilevamento creato a mano): l'ultimo rimasto aperto, o uno nuovo con l'ora di adesso.
+   La voce dettata non passa più di qui: dettaSu e "Detta" (audio.js) chiedono dove va
+   quando il sopralluogo è chiuso o ce n'è più d'uno. */
 function sopralluogoPerDettare(c) {
   const aperti = sopralluoghiApertiOggi(c.codice);
   return aperti.length ? aperti[aperti.length - 1] : creaSopralluogo(c);
@@ -395,8 +395,8 @@ function vistaGiornata(id) {
 /* Il tasto in testa alla giornata: verde per scrivere il verbale, verde per aggiornarlo
    se dal verbale in poi è cambiato qualcosa; grigio e spento se non c'è niente da aggiornare. */
 function tastoVerbaleGiornata(vg, codiceCantiere, giorno) {
-  if (vg && verbaleAllineato(vg)) return '<button class="pill grigia" disabled>Aggiorna il verbale</button>';
-  return '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(codiceCantiere) + '" data-giorno="' + h(giorno) + '">' + (vg ? 'Aggiorna il verbale' : 'Scrivi il verbale') + '</button>';
+  if (vg && verbaleAllineato(vg)) return '<button class="pill grigia" disabled>Aggiorna verbale di giornata</button>';
+  return '<button class="pill ok" data-az="giornata-verbale" data-cantiere="' + h(codiceCantiere) + '" data-giorno="' + h(giorno) + '">' + (vg ? 'Aggiorna verbale di giornata' : 'Chiudi verbale di giornata') + '</button>';
 }
 // La card del verbale di giornata: il titolo nel colore primario, come il pallino, e i tre tasti.
 function cardVerbaleGiornata(vg) {
@@ -438,18 +438,26 @@ function vistaGiornoInCorso(s, c) {
       '</div></div>';
   }
   html += ingressiDocumento(attivo);
-  // 7.4 — box dei sopralluoghi, righe in verticale.
-  html += boxSopralluoghi(s, attivo.id);
+  // Da assegnare è roba di giornata, non del sopralluogo: sopra la separazione (22/09/2026).
   html += cardDaAssegnare(s);
+  // 7.4 — box dei sopralluoghi, righe in verticale. Sopra, la riga che separa la giornata dal
+  // sopralluogo: solo se il box c'è, cioè se la giornata ha almeno un sopralluogo.
+  if (fratelli.length) html += '<div class="sep-giorno"><span><i class="fr su"></i> visione giornata</span><span class="linea"></span><span>visione sopralluogo <i class="fr giu"></i></span></div>';
+  /* Il filo azzurro (22/09/2026): lega la riga scelta nel box alle sue sezioni. zona-sop
+     è il contenitore posizionato di cui misuraFiloSopralluogo calcola i due path. */
+  html += '<div class="zona-sop"><svg aria-hidden="true"><path id="filo-sop"></path><path id="filo-sez"></path></svg>';
+  html += boxSopralluoghi(s, attivo.id);
   // 7.5-7.6 — il sopralluogo aperto: non una pagina nuova, il contenuto compare qui sotto.
   html += cardRilieviNuovi({ sop: attivo.id });
   // Ingressi nascosti della foto (nessun tasto qui: li apre "Foto" in fondo).
   html += ingressiFoto(attivo);
   html += contenutoSopralluogoEspanso(attivo);
+  html += '</div>';
   if (!REG.attiva) {
     html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(attivo.id) + '"><span class="ico ico-microfono"></span> Detta</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(attivo.id) + '"><span class="ico ico-fotocamera"></span> Foto</button></div>';
   }
+  requestAnimationFrame(misuraFiloSopralluogo);
   return html;
 }
 
@@ -595,15 +603,12 @@ function vociMenuVerbale(v) {
     '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(v.id) + '"><b>Scarica</b></button>' +
     '<button class="voce-m rossa" data-az="verbale-elimina" data-id="' + h(v.id) + '"><b>Elimina</b></button>';
 }
-/* Sul sopralluogo: prima del verbale si scrive o si modifica la giornata; dopo,
-   le stesse voci del verbale. Elimina c'è sempre, e porta via anche il verbale. */
+/* Sul sopralluogo: prima del verbale si modifica la giornata (chiuderlo lo fa il tasto
+   verde sulla riga); dopo, le stesse voci del verbale. Elimina c'è sempre, e porta via anche il verbale. */
 function vociMenuSopralluogo(x) {
   const vb = verbaleDiSopralluogo(x.codice);
   const elimina = '<button class="voce-m rossa" data-az="sopralluogo-elimina" data-id="' + h(x.id) + '"><b>Elimina</b></button>';
-  if (!vb) {
-    return '<button class="voce-m" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '"><b>Scrivi il verbale</b></button>' +
-      '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '"><b>Modifica</b></button>' + elimina;
-  }
+  if (!vb) return '<button class="voce-m" data-az="vai" data-a="#/giorno/' + h(x.id) + '"><b>Modifica</b></button>' + elimina;
   return '<button class="voce-m" data-az="pdf-modifica" data-id="' + h(vb.id) + '"><b>Modifica</b></button>' +
     '<button class="voce-m" data-az="verbale-esporta" data-id="' + h(vb.id) + '"><b>Esporta</b></button>' +
     '<button class="voce-m" data-az="verbale-scarica" data-id="' + h(vb.id) + '"><b>Scarica</b></button>' + elimina;
@@ -624,8 +629,8 @@ function menuVerbale(idVerbale) {
 
 /* Gli stessi tre puntini su un sopralluogo: portano al suo verbale, se c'è. */
 /* I tre puntini del sopralluogo lavorano sul suo verbale: modificarlo,
-   mandarlo fuori, salvarlo. Finché il verbale non c'è, l'unica cosa da fare
-   è scriverlo, e il menu lo dice invece di mostrare tasti che non fanno niente. */
+   mandarlo fuori, salvarlo. Finché il verbale non c'è, il menu dice dove si
+   chiude il sopralluogo (il tasto verde sulla riga) invece di mostrare tasti che non fanno niente. */
 function menuSopralluogo(idSop) {
   const s = sopralluogo(idSop);
   if (!s) return;
@@ -636,8 +641,7 @@ function menuSopralluogo(idSop) {
       ? '<button class="btn btn-ok" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button>' +
         '<button class="btn" data-az="verbale-esporta" data-id="' + h(vb.id) + '">Esporta</button>' +
         '<button class="btn" data-az="verbale-scarica" data-id="' + h(vb.id) + '">Scarica</button>'
-      : '<p style="color:var(--muted)">Il verbale non c\'è ancora.</p>' +
-        '<button class="btn btn-ok" data-az="sopralluogo-chiudi" data-id="' + h(s.id) + '">Scrivi il verbale</button>') +
+      : '<p style="color:var(--muted)">Il sopralluogo non è ancora chiuso. Si chiude dal tasto verde sulla sua riga.</p>') +
     '<button class="btn" data-az="chiudi-foglio">Chiudi</button>'
   );
 }
@@ -646,15 +650,21 @@ function menuSopralluogo(idSop) {
    del pomeriggio". Senza nome vale l'ora, e funziona lo stesso. Il posto normale
    per cambiarlo è il foglio della testata, insieme a data e ora; questa resta per
    chi ci arriva da un'altra strada. */
-async function rinominaSopralluogo(idSop) {
-  const s = sopralluogo(idSop);
-  if (!s) return;
-  const ok = await chiedi('Nome del sopralluogo', 'Serve a nominarlo quando detti: "questo va nel controllo del pomeriggio". Se lo lasci vuoto vale l\'ora.', 'Salva', '',
-    '<input class="campo" id="sop-nome" maxlength="60" placeholder="controllo del pomeriggio" value="' + h(s.nome || '') + '">');
+/* Lo stesso foglio serve anche a dare il titolo a un sopralluogo che nasce dal tasto
+   "+ nuovo sopralluogo". Torna il nome (anche vuoto), o null se si annulla. */
+async function chiediNomeSopralluogo(attuale, etichettaOk) {
+  const ok = await chiedi('Nome del sopralluogo', 'Serve a nominarlo quando detti: "questo va nel controllo del pomeriggio". Se lo lasci vuoto vale l\'ora.', etichettaOk, '',
+    '<input class="campo" id="sop-nome" maxlength="60" placeholder="controllo del pomeriggio" value="' + h(attuale || '') + '">');
   const campo = document.getElementById('sop-nome');
   const nome = campo ? campo.value.trim() : '';
   chiudiFoglio();
-  if (!ok) return;
+  return ok ? nome : null;
+}
+async function rinominaSopralluogo(idSop) {
+  const s = sopralluogo(idSop);
+  if (!s) return;
+  const nome = await chiediNomeSopralluogo(s.nome, 'Salva');
+  if (nome === null) return;
   s.nome = nome;
   salva('sopralluogo', s);
   avvisa('Salvato', 'ok');
@@ -787,21 +797,34 @@ function tendinaApertaPerDefault(chiave, etichetta, contenuto, n) {
 }
 
 /* La riga di un sopralluogo dentro il box del giorno (Fase 7.4): un tocco lo apre sotto,
-   i puntini portano a Scrivi/Aggiorna il verbale, Modifica, Esporta, Elimina. */
+   il tasto verde lo chiude (o aggiorna il suo verbale), i puntini portano a Modifica, Esporta, Elimina. */
 function rigaSopralluogoBoxHtml(x, espansoId) {
   const vb = verbaleDiSopralluogo(x.codice);
+  const allineato = !!vb && verbaleAllineato(vb);
   const suoNome = String(x.nome || '').trim();
   const aperto = PUNTI_APERTI === x.id;
   // "da scrivere" è lo stato di partenza, ovvio: si scrive solo quando dice altro (17/09/2026).
-  const stato = !vb ? '' : (verbaleAllineato(vb) ? 'verbale fatto' : 'da aggiornare');
+  const stato = !vb ? '' : (allineato ? 'verbale fatto' : 'da aggiornare');
   const sotto = [];
   if (suoNome) sotto.push(h(x.ora));
   if (stato) sotto.push(h(stato));
-  return '<div class="ordine sop' + (x.id === espansoId ? ' attivo' : '') + '">' +
+  // Chiudi sopralluogo finché il verbale non c'è; poi Aggiorna, spento se non è cambiato niente. Mai la parola "verbale".
+  const chiudi = allineato
+    ? '<button class="pill grigia chiudi" disabled>Aggiorna</button>'
+    : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Chiudi sopralluogo') + '</button>';
+  const attivo = x.id === espansoId;
+  /* Chiuso: sotto la riga, nello stesso riquadro e senza tendina, i tre tastini del suo verbale —
+     Visualizza, Esporta (con la sua tendina), Modifica: gli stessi della card del verbale di giornata (22/09/2026). */
+  const verbale = !vb ? '' : '<div class="sop-verbale' + (attivo ? ' attivo' : '') + '"><div class="griglia tre">' +
+    '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' +
+    tastoEsporta('vb-' + vb.id) +
+    '<button class="btn" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button></div>' +
+    vociEsporta('vb-' + vb.id, 'verbale-esporta', vb.id, 'verbale-scarica', vb.id) + '</div>';
+  return '<div class="ordine sop' + (attivo ? ' attivo' : '') + (vb ? ' con-verbale' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
-    (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' +
-    '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋯</button>' +
-    '</div>' + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
+    (sotto.length ? '<small>' + sotto.join(' · ') + '</small>' : '') + '</button>' + chiudi +
+    '<button class="stato pill cod puntini' + (aperto ? ' on' : '') + '" data-az="menu-sopralluogo" data-id="' + h(x.id) + '" aria-label="Altro">⋮</button>' +
+    '</div>' + verbale + (aperto ? '<div class="menu-punti">' + vociMenuSopralluogo(x) + '</div>' : '');
 }
 // Il box: righe in verticale, 4-5 per volta (scorrevole si occupa dell'altezza), niente se non c'è niente.
 function boxSopralluoghi(s, espansoId) {
@@ -810,14 +833,13 @@ function boxSopralluoghi(s, espansoId) {
   // Al posto del numero, in testa, "+ nuovo sopralluogo" in verde: solo oggi si può aggiungerne uno (17/09/2026).
   const nuovo = s.giorno === oggiISO() ? '<button class="dx verde" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ nuovo sopralluogo</button>' : '';
   let html = '<div class="card"><div class="card-capo">Sopralluoghi' + nuovo + '</div>' + scorrevole(fratelli.map(function (x) { return rigaSopralluogoBoxHtml(x, espansoId); }).join(''));
-  if (s.giorno === oggiISO()) html += '<div class="card-piede"><button class="link" data-az="sopralluogo-nuovo" data-id="' + h(s.id) + '">＋ un altro sopralluogo</button></div>';
   return html + '</div>';
 }
 
-/* Il contenuto del sopralluogo aperto (Fase 7.5-7.6), in ordine:
+/* Il contenuto del sopralluogo aperto, in un'unica tendina (22/09/2026), in ordine:
    1. rilevamento d'ordine (se c'è) — 2. foto del sopralluogo, aperta —
-   3. le scritte (dettatura originale) — 4. i punti. Materiali necessari non è più
-   qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
+   3. le scritte (dettatura originale), piene poi vuote in coda. Materiali necessari
+   non è più qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
 function contenutoSopralluogoEspanso(x) {
   let html = '';
   if (String(x.sezioni.da_smistare || '').trim()) {
@@ -827,26 +849,80 @@ function contenutoSopralluogoEspanso(x) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(x.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
+  let interno = '';
   const rilOrd = String(x.sezioni.rilievi_ordine || '').trim();
-  if (rilOrd) html += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
-  html += cardFotoGiorno(x);
+  if (rilOrd) interno += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
+  interno += cardFotoGiorno(x);
   const pezziVivi = x.pezzi.filter(function (p) { return p.audio || (p.stato && p.stato !== 'riordinato'); });
-  if (pezziVivi.length) html += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
+  if (pezziVivi.length) interno += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
   const fotoPer = fotoPerSezione(x);
   const vuote = [];
+  let conta = 0;
   SEZIONI.forEach(function (z) {
     if (z.chiave === 'rilievi_ordine' || z.chiave === 'materiali_necessari') return;
+    conta++;
     const testo = x.sezioni[z.chiave] || '';
     const pezziQui = pezziVivi.filter(function (p) { return (p.sezioni || []).indexOf(z.chiave) !== -1 || p.sezione === z.chiave; });
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(x.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      listaAudio(x, pezziQui, { dentroSezione: true, chiave: x.id + '-' + z.chiave }) + filaFoto(x, fotoQui, { segna: true }) + '</div>';
-    if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
+      listaAudio(x, pezziQui, { dentroSezione: true, chiave: x.id + '-' + z.chiave }) + '</div>';
+    if (testo.trim() || fotoQui.length) interno += card; else vuote.push(card);
   });
-  if (vuote.length) html += tendina('vuote-' + x.id, 'Stendi le sezioni sotto', vuote.join(''), vuote.length);
+  interno += vuote.join('');
+  html += tendinaApertaPerDefault('sez-sop-' + x.id, 'Sezioni del sopralluogo', interno, conta);
   return html;
 }
+
+/* Il filo azzurro che lega la riga scelta nel box (.ordine.sop.attivo) alle sue sezioni
+   (dentro .zona-sop): due <path> disegnati in coordinate relative a .zona-sop (nessun
+   viewBox, quindi 1 unità = 1px). Se la vista non è la giornata, o non c'è riga attiva,
+   .zona-sop/.ordine.sop.attivo/il tasto della tendina non esistono più nel DOM: i due
+   path restano vuoti da soli, senza bisogno di controllare la rotta. */
+function misuraFiloSopralluogo() {
+  const filoSop = document.getElementById('filo-sop'), filoSez = document.getElementById('filo-sez');
+  if (!filoSop || !filoSez) return;
+  const zona = document.querySelector('.zona-sop');
+  const riga = zona && zona.querySelector('.ordine.sop.attivo');
+  const tend = zona && zona.querySelector(':scope > .tend');
+  if (!zona || !riga || !tend) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
+  const X1 = 2, X2 = 12, R = 9, GIU = 34;
+  const zr = zona.getBoundingClientRect(), rr = riga.getBoundingClientRect(), tr = tend.getBoundingClientRect();
+  const lista = riga.closest('.audio-lista') || riga.parentElement;
+  const lr = lista.getBoundingClientRect();
+  const xRiga = rr.left - zr.left;
+  let centro = (rr.top + rr.bottom) / 2 - zr.top;
+  centro = Math.min(Math.max(centro, lr.top - zr.top), lr.bottom - zr.top);
+  const yTend = (tr.top + tr.bottom) / 2 - zr.top;
+  const ySotto = (tr.bottom - zr.top) + 4;
+  if (tend.getAttribute('aria-expanded') !== 'true') {
+    filoSop.setAttribute('d', 'M ' + xRiga + ' ' + centro + ' H ' + (X1 + R) + ' Q ' + X1 + ' ' + centro + ' ' + X1 + ' ' + (centro + R) +
+      ' V ' + (yTend - R) + ' Q ' + X1 + ' ' + yTend + ' ' + (X1 + R) + ' ' + yTend + ' H ' + (X1 + X2));
+    filoSez.setAttribute('d', '');
+    return;
+  }
+  const box = tend.nextElementSibling;
+  const carte = box ? Array.prototype.filter.call(box.querySelectorAll('.card'), function (c) { return c.offsetParent !== null; }) : [];
+  if (!carte.length) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
+  const yCima = carte[0].getBoundingClientRect().top - zr.top;
+  const yFine = carte[carte.length - 1].getBoundingClientRect().bottom - zr.top;
+  const yAtterra = Math.min(yCima + GIU, yFine - 8);
+  const s = (yAtterra - ySotto) * 0.55;
+  filoSop.setAttribute('d', 'M ' + xRiga + ' ' + centro + ' H ' + (X1 + R) + ' Q ' + X1 + ' ' + centro + ' ' + X1 + ' ' + (centro + R) +
+    ' V ' + ySotto + ' C ' + X1 + ' ' + (ySotto + s) + ' ' + X2 + ' ' + (yAtterra - s) + ' ' + X2 + ' ' + yAtterra);
+  filoSez.setAttribute('d', 'M ' + X2 + ' ' + yCima + ' V ' + yFine);
+}
+// Scroll della lista dei sopralluoghi e resize: il filo si ricalcola. La cattura è l'unico
+// modo per intercettare lo scroll di un div interno (non bolle) senza toccare ui.js.
+document.addEventListener('scroll', function (ev) {
+  if (ev.target && ev.target.closest && ev.target.closest('.zona-sop')) misuraFiloSopralluogo();
+}, true);
+window.addEventListener('resize', misuraFiloSopralluogo);
+// La tendina (ui.js) tocca l'hidden direttamente, senza aggiornaVista(): si ricalcola dopo,
+// non prima, quindi in coda alla stessa serie di click listener sincroni (setTimeout 0).
+document.addEventListener('click', function (ev) {
+  if (ev.target && ev.target.closest && ev.target.closest('[data-az="tendina"]')) setTimeout(misuraFiloSopralluogo, 0);
+});
 
 /* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza). Nessun
    tasto visibile: li apre il foglio di scelta di scegliFoto (tolto il link diretto
@@ -1004,13 +1080,16 @@ Object.assign(AZIONI, {
   },
   'chiudi-giornata': function (el) { chiudiGiornata(el.dataset.id); },
   /* Un altro passaggio nello stesso giorno: nasce con l'ora di adesso e si apre subito. */
-  'sopralluogo-nuovo': function (el) {
+  'sopralluogo-nuovo': async function (el) {
     const s = sopralluogo(el.dataset.id);
     if (!s) return;
     if (s.giorno !== oggiISO()) { avvisa('Sui giorni passati non si aprono sopralluoghi', 'att'); return; }
     const c = cantierePerCodice(s.cantiere);
     if (!c) return;
-    const n = creaSopralluogo(c, s.giorno, oraAdesso());
+    // Prima il titolo, poi il sopralluogo: l'ora resta, in piccolo sotto il nome.
+    const nome = await chiediNomeSopralluogo('', 'Crea');
+    if (nome === null) return;
+    const n = creaSopralluogo(c, s.giorno, oraAdesso(), nome);
     vai('#/giorno/' + n.id);
   },
   'menu-sopralluogo': function (el) { apriPunti(el.dataset.id); },
@@ -1153,10 +1232,12 @@ Object.assign(AZIONI, {
     if (ROTTA.nome === 'cantiere') aggiornaVista(); else vai('#/cantiere/' + c.id);
   },
   // Nella giornata vuota: nasce il primo sopralluogo e ci si entra.
-  'giornata-sopralluogo-nuovo': function (el) {
+  'giornata-sopralluogo-nuovo': async function (el) {
     const c = cantierePerCodice(el.dataset.cantiere);
     if (!c) return;
-    vai('#/giorno/' + creaSopralluogo(c, el.dataset.giorno, oraAdesso()).id);
+    const nome = await chiediNomeSopralluogo('', 'Crea');
+    if (nome === null) return;
+    vai('#/giorno/' + creaSopralluogo(c, el.dataset.giorno, oraAdesso(), nome).id);
   },
   // --- foto ---
   // Il sopralluogo lo dice il tasto; dove non lo dice (schermata della foto) lo sa l'ingresso file.
