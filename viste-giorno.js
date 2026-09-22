@@ -438,20 +438,26 @@ function vistaGiornoInCorso(s, c) {
       '</div></div>';
   }
   html += ingressiDocumento(attivo);
+  // Da assegnare è roba di giornata, non del sopralluogo: sopra la separazione (22/09/2026).
+  html += cardDaAssegnare(s);
   // 7.4 — box dei sopralluoghi, righe in verticale. Sopra, la riga che separa la giornata dal
   // sopralluogo: solo se il box c'è, cioè se la giornata ha almeno un sopralluogo.
   if (fratelli.length) html += '<div class="sep-giorno"><span><i class="fr su"></i> visione giornata</span><span class="linea"></span><span>visione sopralluogo <i class="fr giu"></i></span></div>';
+  /* Il filo azzurro (22/09/2026): lega la riga scelta nel box alle sue sezioni. zona-sop
+     è il contenitore posizionato di cui misuraFiloSopralluogo calcola i due path. */
+  html += '<div class="zona-sop"><svg aria-hidden="true"><path id="filo-sop"></path><path id="filo-sez"></path></svg>';
   html += boxSopralluoghi(s, attivo.id);
-  html += cardDaAssegnare(s);
   // 7.5-7.6 — il sopralluogo aperto: non una pagina nuova, il contenuto compare qui sotto.
   html += cardRilieviNuovi({ sop: attivo.id });
   // Ingressi nascosti della foto (nessun tasto qui: li apre "Foto" in fondo).
   html += ingressiFoto(attivo);
   html += contenutoSopralluogoEspanso(attivo);
+  html += '</div>';
   if (!REG.attiva) {
     html += '<div class="barra"><button class="az verde" data-az="detta" data-id="' + h(attivo.id) + '"><span class="ico ico-microfono"></span> Detta</button>' +
       '<button class="az verde" data-az="foto-scatta" data-id="' + h(attivo.id) + '"><span class="ico ico-fotocamera"></span> Foto</button></div>';
   }
+  requestAnimationFrame(misuraFiloSopralluogo);
   return html;
 }
 
@@ -830,10 +836,10 @@ function boxSopralluoghi(s, espansoId) {
   return html + '</div>';
 }
 
-/* Il contenuto del sopralluogo aperto (Fase 7.5-7.6), in ordine:
+/* Il contenuto del sopralluogo aperto, in un'unica tendina (22/09/2026), in ordine:
    1. rilevamento d'ordine (se c'è) — 2. foto del sopralluogo, aperta —
-   3. le scritte (dettatura originale) — 4. i punti. Materiali necessari non è più
-   qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
+   3. le scritte (dettatura originale), piene poi vuote in coda. Materiali necessari
+   non è più qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
 function contenutoSopralluogoEspanso(x) {
   let html = '';
   if (String(x.sezioni.da_smistare || '').trim()) {
@@ -843,26 +849,80 @@ function contenutoSopralluogoEspanso(x) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(x.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
+  let interno = '';
   const rilOrd = String(x.sezioni.rilievi_ordine || '').trim();
-  if (rilOrd) html += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
-  html += cardFotoGiorno(x);
+  if (rilOrd) interno += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
+  interno += cardFotoGiorno(x);
   const pezziVivi = x.pezzi.filter(function (p) { return p.audio || (p.stato && p.stato !== 'riordinato'); });
-  if (pezziVivi.length) html += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
+  if (pezziVivi.length) interno += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
   const fotoPer = fotoPerSezione(x);
   const vuote = [];
+  let conta = 0;
   SEZIONI.forEach(function (z) {
     if (z.chiave === 'rilievi_ordine' || z.chiave === 'materiali_necessari') return;
+    conta++;
     const testo = x.sezioni[z.chiave] || '';
     const pezziQui = pezziVivi.filter(function (p) { return (p.sezioni || []).indexOf(z.chiave) !== -1 || p.sezione === z.chiave; });
     const fotoQui = fotoPer[z.chiave] || [];
     const card = '<div class="card" id="sez-' + z.chiave + '"><div class="card-capo' + (testo.trim() ? '' : ' spenta') + '">' + h(z.nome) + '</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(x.id) + '" data-sezione="' + z.chiave + '" placeholder="' + (z.elenco ? 'una voce per riga' : '—') + '">' + h(testo) + '</textarea>' +
-      listaAudio(x, pezziQui, { dentroSezione: true, chiave: x.id + '-' + z.chiave }) + filaFoto(x, fotoQui, { segna: true }) + '</div>';
-    if (testo.trim() || fotoQui.length) html += card; else vuote.push(card);
+      listaAudio(x, pezziQui, { dentroSezione: true, chiave: x.id + '-' + z.chiave }) + '</div>';
+    if (testo.trim() || fotoQui.length) interno += card; else vuote.push(card);
   });
-  if (vuote.length) html += tendina('vuote-' + x.id, 'Stendi le sezioni sotto', vuote.join(''), vuote.length);
+  interno += vuote.join('');
+  html += tendinaApertaPerDefault('sez-sop-' + x.id, 'Sezioni del sopralluogo', interno, conta);
   return html;
 }
+
+/* Il filo azzurro che lega la riga scelta nel box (.ordine.sop.attivo) alle sue sezioni
+   (dentro .zona-sop): due <path> disegnati in coordinate relative a .zona-sop (nessun
+   viewBox, quindi 1 unità = 1px). Se la vista non è la giornata, o non c'è riga attiva,
+   .zona-sop/.ordine.sop.attivo/il tasto della tendina non esistono più nel DOM: i due
+   path restano vuoti da soli, senza bisogno di controllare la rotta. */
+function misuraFiloSopralluogo() {
+  const filoSop = document.getElementById('filo-sop'), filoSez = document.getElementById('filo-sez');
+  if (!filoSop || !filoSez) return;
+  const zona = document.querySelector('.zona-sop');
+  const riga = zona && zona.querySelector('.ordine.sop.attivo');
+  const tend = zona && zona.querySelector(':scope > .tend');
+  if (!zona || !riga || !tend) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
+  const X1 = 2, X2 = 20, R = 9, GIU = 34;
+  const zr = zona.getBoundingClientRect(), rr = riga.getBoundingClientRect(), tr = tend.getBoundingClientRect();
+  const lista = riga.closest('.audio-lista') || riga.parentElement;
+  const lr = lista.getBoundingClientRect();
+  const xRiga = rr.left - zr.left;
+  let centro = (rr.top + rr.bottom) / 2 - zr.top;
+  centro = Math.min(Math.max(centro, lr.top - zr.top), lr.bottom - zr.top);
+  const yTend = (tr.top + tr.bottom) / 2 - zr.top;
+  const ySotto = (tr.bottom - zr.top) + 4;
+  if (tend.getAttribute('aria-expanded') !== 'true') {
+    filoSop.setAttribute('d', 'M ' + xRiga + ' ' + centro + ' H ' + (X1 + R) + ' Q ' + X1 + ' ' + centro + ' ' + X1 + ' ' + (centro + R) +
+      ' V ' + (yTend - R) + ' Q ' + X1 + ' ' + yTend + ' ' + (X1 + R) + ' ' + yTend + ' H ' + (X1 + X2));
+    filoSez.setAttribute('d', '');
+    return;
+  }
+  const box = tend.nextElementSibling;
+  const carte = box ? Array.prototype.filter.call(box.querySelectorAll('.card'), function (c) { return c.offsetParent !== null; }) : [];
+  if (!carte.length) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
+  const yCima = carte[0].getBoundingClientRect().top - zr.top;
+  const yFine = carte[carte.length - 1].getBoundingClientRect().bottom - zr.top;
+  const yAtterra = Math.min(yCima + GIU, yFine - 8);
+  const s = (yAtterra - ySotto) * 0.55;
+  filoSop.setAttribute('d', 'M ' + xRiga + ' ' + centro + ' H ' + (X1 + R) + ' Q ' + X1 + ' ' + centro + ' ' + X1 + ' ' + (centro + R) +
+    ' V ' + ySotto + ' C ' + X1 + ' ' + (ySotto + s) + ' ' + X2 + ' ' + (yAtterra - s) + ' ' + X2 + ' ' + yAtterra);
+  filoSez.setAttribute('d', 'M ' + X2 + ' ' + yCima + ' V ' + yFine);
+}
+// Scroll della lista dei sopralluoghi e resize: il filo si ricalcola. La cattura è l'unico
+// modo per intercettare lo scroll di un div interno (non bolle) senza toccare ui.js.
+document.addEventListener('scroll', function (ev) {
+  if (ev.target && ev.target.closest && ev.target.closest('.zona-sop')) misuraFiloSopralluogo();
+}, true);
+window.addEventListener('resize', misuraFiloSopralluogo);
+// La tendina (ui.js) tocca l'hidden direttamente, senza aggiornaVista(): si ricalcola dopo,
+// non prima, quindi in coda alla stessa serie di click listener sincroni (setTimeout 0).
+document.addEventListener('click', function (ev) {
+  if (ev.target && ev.target.closest && ev.target.closest('[data-az="tendina"]')) setTimeout(misuraFiloSopralluogo, 0);
+});
 
 /* I due ingressi nascosti — la fotocamera (capture) e il rullino (senza). Nessun
    tasto visibile: li apre il foglio di scelta di scegliFoto (tolto il link diretto
