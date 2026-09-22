@@ -309,7 +309,11 @@ function giorniCantiereHtml(c, lista, oggi) {
 function tendinaGiornateCantiere(c, oggi) {
   const lunedi = lunediDi(oggi);
   const lista = giornateDi(c.codice).filter(function (g) { return g.giorno >= lunedi; });
-  const html = lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
+  let html = lista.length ? giorniCantiereHtml(c, lista, oggi) : '<div class="vuoto-stato">Nessun giorno questa settimana.</div>';
+  // Prima riga, sottile: apre il giorno di oggi senza dettare. Solo finché oggi non c'è ancora (22/09/2026).
+  if (c.stato !== 'chiuso' && !lista.some(function (g) { return g.giorno === oggi; })) {
+    html = '<div class="card"><button class="riga piu" data-az="giorno-oggi-apri" data-id="' + h(c.id) + '"><span class="desc">＋ giorno di oggi</span></button></div>' + html;
+  }
   return tendina('giornate-' + c.id, 'Giornate', html);
 }
 
@@ -612,6 +616,8 @@ Object.assign(AZIONI, {
   'detta-cantiere-scelto': function (el) { const c = cantiere(el.dataset.id); chiudiFoglio(); if (c) return dettaSu(c); },
   'parla-cantiere': function (el) { const c = cantiere(el.dataset.id); if (c) dettaSu(c); },
   'nuovo-sopralluogo': function (el) { const c = cantiere(el.dataset.id); if (!c) return; const s = sopralluogoPerDettare(c); vai('#/giorno/' + s.id); },
+  // Dalla tendina Giornate: il giorno di oggi nasce vuoto e si apre, senza sopralluogo e senza microfono.
+  'giorno-oggi-apri': function (el) { const c = cantiere(el.dataset.id); if (!c) return; vai('#/giornata/' + assicuraGiornata(c.codice, oggiISO()).id); },
   // --- le sei tendine del cantiere (rework 14/09/2026) ---
   // Un solo selettore alla volta, sempre uno acceso: non si spegne toccando di nuovo lo stesso (17/09/2026).
   'verbali-cant-sel': function (el) {
