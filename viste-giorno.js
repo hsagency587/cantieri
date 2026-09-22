@@ -440,7 +440,7 @@ function vistaGiornoInCorso(s, c) {
   html += ingressiDocumento(attivo);
   // 7.4 — box dei sopralluoghi, righe in verticale. Sopra, la riga che separa la giornata dal
   // sopralluogo: solo se il box c'è, cioè se la giornata ha almeno un sopralluogo.
-  if (fratelli.length) html += '<div class="sep-giorno"><span>▲ visione giornata</span><span class="linea"></span><span>visione sopralluogo ▼</span></div>';
+  if (fratelli.length) html += '<div class="sep-giorno"><span>↑ visione giornata</span><span class="linea"></span><span>visione sopralluogo ↓</span></div>';
   html += boxSopralluoghi(s, attivo.id);
   html += cardDaAssegnare(s);
   // 7.5-7.6 — il sopralluogo aperto: non una pagina nuova, il contenuto compare qui sotto.
