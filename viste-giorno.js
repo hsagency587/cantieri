@@ -409,8 +409,16 @@ function cardVerbaleGiornata(vg) {
 }
 // Il sopralluogo aperto sotto il box (Fase 7.5): resta quello scelto finché si sta in questa giornata.
 let sopralluogoEspanso = null;
+/* La tendina "Sezioni del sopralluogo" riparte chiusa ogni volta che si sceglie un
+   sopralluogo o si apre la giornata (22/09/2026, richiesta di Simone): non è più
+   "aperta finché non la tocchi" per questa chiave, la si chiude a mano qui. */
+function chiudiSezioniSopralluogo(id) {
+  const loc = leggiLocale();
+  loc.tendine['sez-sop-' + id] = false;
+  salvaLocale();
+}
 function vistaGiornoInCorso(s, c) {
-  if (!sopralluogoEspanso || !sopralluoghiDelGiorno(s.cantiere, s.giorno).some(function (x) { return x.id === sopralluogoEspanso; })) sopralluogoEspanso = s.id;
+  if (!sopralluogoEspanso || !sopralluoghiDelGiorno(s.cantiere, s.giorno).some(function (x) { return x.id === sopralluogoEspanso; })) { sopralluogoEspanso = s.id; chiudiSezioniSopralluogo(s.id); }
   const attivo = sopralluogo(sopralluogoEspanso) || s;
   const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === attivo.id) ||
     (REG.destinazione.tipo === 'rilievo' && REG.destinazione.sop === attivo.id));
@@ -773,17 +781,18 @@ function materialiGiornataHtml(s) {
   return tendina('matnec-giorno-' + s.cantiere + '-' + s.giorno, 'Materiali necessari', box, pieni || null);
 }
 
-/* Le foto di un solo sopralluogo: tendina aperta di default (Fase 7.5), con "Marca tutte/Smarca tutte". */
+/* Le foto di un solo sopralluogo: una card piatta, non una tendina propria — sta dentro
+   quella unica di "Sezioni del sopralluogo" come le altre, altrimenti il filo si rompe
+   contro il tasto di una tendina annidata (22/09/2026, bug segnalato da Simone). */
 function cardFotoGiorno(s) {
   const foto = fotoNormali(s);
   if (!foto.length) return '';
   const nelPdf = foto.filter(function (f) { return f.nelPdf; }).length;
   const tutte = nelPdf === foto.length;
-  return tendinaApertaPerDefault('foto-' + s.id, 'Foto del sopralluogo',
-    '<div class="card"><div class="card-capo">' + nelPdf + ' su ' + foto.length + ' nel PDF</div>' +
+  return '<div class="card"><div class="card-capo">Foto del sopralluogo<span class="dx">' + nelPdf + ' su ' + foto.length + ' nel PDF</span></div>' +
     filaFoto(s, foto, { segna: true }) +
     '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' +
-    '</div>', foto.length);
+    '</div>';
 }
 /* Una tendina come tendina(), ma aperta di default finché nessuno la tocca (Fase 7.5:
    "parte aperta. Tutte le altre partono chiuse."). Una volta toccata, vale la sua scelta. */
@@ -837,7 +846,7 @@ function boxSopralluoghi(s, espansoId) {
 }
 
 /* Il contenuto del sopralluogo aperto, in un'unica tendina (22/09/2026), in ordine:
-   1. rilevamento d'ordine (se c'è) — 2. foto del sopralluogo, aperta —
+   1. foto del sopralluogo, prima sezione, card piatta — 2. rilevamento d'ordine (se c'è) —
    3. le scritte (dettatura originale), piene poi vuote in coda. Materiali necessari
    non è più qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
 function contenutoSopralluogoEspanso(x) {
@@ -849,10 +858,9 @@ function contenutoSopralluogoEspanso(x) {
       SEZIONI.map(function (z) { return '<button class="btn" data-az="smista" data-id="' + h(x.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
       '</div></div>';
   }
-  let interno = '';
+  let interno = cardFotoGiorno(x);
   const rilOrd = String(x.sezioni.rilievi_ordine || '').trim();
   if (rilOrd) interno += tendina('rilord-sop-' + x.id, "Rilevamento d'ordine", '<div class="card"><div class="card-corpo">' + testoElenco(rilOrd, true) + '</div></div>', righeElenco(rilOrd).length);
-  interno += cardFotoGiorno(x);
   const pezziVivi = x.pezzi.filter(function (p) { return p.audio || (p.stato && p.stato !== 'riordinato'); });
   if (pezziVivi.length) interno += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
   const fotoPer = fotoPerSezione(x);
@@ -1094,7 +1102,7 @@ Object.assign(AZIONI, {
   },
   'menu-sopralluogo': function (el) { apriPunti(el.dataset.id); },
   // Un tocco su una riga del box apre quel sopralluogo qui sotto: non si cambia pagina (Fase 7.5).
-  'sopralluogo-espandi': function (el) { sopralluogoEspanso = el.dataset.id; PUNTI_APERTI = null; aggiornaVista(); },
+  'sopralluogo-espandi': function (el) { sopralluogoEspanso = el.dataset.id; chiudiSezioniSopralluogo(el.dataset.id); PUNTI_APERTI = null; aggiornaVista(); },
   'foto-marca-tutte-giorno': function (el) {
     const lista = [];
     sopralluoghiDelGiorno(el.dataset.cantiere, el.dataset.giorno).forEach(function (x) { fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); }); });
