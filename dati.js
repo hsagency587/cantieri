@@ -236,7 +236,7 @@ function elencaMedia() {
       const req = db.transaction(STORE_IDB, 'readonly').objectStore(STORE_IDB).openCursor();
       req.onsuccess = function () {
         const c = req.result;
-        if (c) { elenco.push({ id: c.value.id, peso: c.value.peso || (c.value.blob ? c.value.blob.size : 0), quando: c.value.quando }); c.continue(); }
+        if (c) { elenco.push({ id: c.value.id, peso: c.value.peso || (c.value.blob ? c.value.blob.size : 0), quando: c.value.quando, tipo: c.value.tipo || (c.value.blob ? c.value.blob.type : '') }); c.continue(); }
         else ok(elenco);
       };
       req.onerror = function () { no(req.error); };

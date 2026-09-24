@@ -80,8 +80,9 @@ async function misuraSpazio() {
   elenco.forEach(function (m) {
     if (perPdf[m.id]) { SPAZIO.pdfByte += m.peso || 0; SPAZIO.pdfN += 1; return; }
     const rif = perId[m.id];
-    // Un audio senza documento (una nota già trascritta, un pezzo di un sopralluogo cancellato) è solo peso morto.
-    if (!rif) { SPAZIO.orfani.push(m.id); return; }
+    /* Un audio senza documento (una nota già trascritta, un pezzo di un sopralluogo cancellato) è solo peso morto.
+       Solo l'audio, come svuotaSettimana (24/09/2026): una foto o un'immagine senza scheda non si butta mai da qui. */
+    if (!rif) { if (/^audio\//.test(m.tipo || '')) SPAZIO.orfani.push(m.id); return; }
     const mese = rif.sop.giorno.slice(0, 7);
     const voce = SPAZIO.mesi[mese] || (SPAZIO.mesi[mese] = { byte: 0, n: 0, scaricati: 0, foto: { byte: 0, n: 0, scaricati: 0 } });
     if (rif.foto) {
@@ -100,6 +101,46 @@ async function misuraSpazio() {
   return SPAZIO;
 }
 
+/* Memoria protetta (24/09/2026): si chiede al browser di non cancellare da solo i dati
+   dell'app. Su iPhone Safari toglie i dati di un sito non installato dopo sette giorni
+   senza uso: probabile causa delle foto sparite. null = il browser non lo dice. */
+let MEMORIA_PROTETTA = null;
+async function proteggiMemoria() {
+  try {
+    if (!navigator.storage || !navigator.storage.persist) return;
+    MEMORIA_PROTETTA = (navigator.storage.persisted && await navigator.storage.persisted()) || await navigator.storage.persist();
+  } catch (e) { MEMORIA_PROTETTA = null; }
+}
+
+/* L'avviso di memoria quasi piena (24/09/2026): all'avvio e dopo ogni foto salvata.
+   Nel codice non c'è un tetto fisso: vale la quota che dice il browser. Si avvisa a 80,
+   85, 90%…: la soglia già avvisata sta in locale ("Più tardi" vale come visto), e si
+   azzera quando si torna sotto l'80%. "?memoria=85" nell'indirizzo finge l'uso, per
+   provarlo senza toccare dati veri. */
+async function controllaMemoria() {
+  let perc = null;
+  const finto = /[?&]memoria=(\d+)/.exec(location.search);
+  if (finto) perc = Number(finto[1]);
+  else {
+    try {
+      if (!navigator.storage || !navigator.storage.estimate) return;
+      const e = await navigator.storage.estimate();
+      if (!e.quota) return;
+      perc = (e.usage || 0) / e.quota * 100;
+    } catch (e) { return; }
+  }
+  const loc = leggiLocale();
+  if (perc < 80) { if (loc.avvisoMemoria) { loc.avvisoMemoria = 0; salvaLocale(); } return; }
+  const soglia = Math.floor(perc / 5) * 5;
+  // Un'altra domanda aperta non si copre: si riprova alla prossima foto o apertura.
+  if (soglia <= (loc.avvisoMemoria || 0) || foglioAperto()) return;
+  loc.avvisoMemoria = soglia;
+  salvaLocale();
+  const si = await chiedi('Memoria quasi piena (' + Math.round(perc) + '%)', 'Scarica i file sul PC o sul telefono.', 'Scarica i file', 'ok', '', 'Più tardi');
+  chiudiFoglio();
+  if (si) vai('#/impostazioni/scarica');
+}
+
 /* Le impostazioni: quello che l'utente cambia davvero. La roba tecnica —
    chiavi, coda, spazio, copia su GitHub — resta nel modo tecnico, che da qui
    si raggiunge con una riga. */
@@ -113,6 +154,7 @@ function vistaImpostazioni() {
   html += '<div class="card">' +
     voce('aspetto', 'Aspetto', (tinta(c.primario) || tinta('verde')).nome + ' e ' + (tinta(c.secondario) || tinta('azzurro')).nome) +
     voce('archivio', 'Archivio', 'aziende, cantieri, verbali') +
+    voce('scarica', 'Scarica i file', 'foto, bolle, documenti e PDF di un cantiere') +
     '<button class="riga" data-az="vai" data-a="#/dev"><span class="desc">Modo tecnico<small>chiavi, coda, spazio, copia su GitHub</small></span><span class="frec">›</span></button>' +
     '</div>';
   return html;
@@ -122,19 +164,11 @@ function vistaImpostazioniAspetto() {
   const c = (leggiLocale().colori) || {};
   const blocco = function (quale, sceltoId, difetto, titolo, spiega) {
     const ora = tinta(sceltoId) || tinta(difetto);
-    const suMisura = /^#/.test(String(sceltoId || ''));
-    /* Una riga sola che scorre di lato, come la striscia delle foto. Il primo
-       posto è del pennello: si vede subito che il colore te lo puoi fare tu. */
+    // Il colore scelto, e un tocco apre il foglio dei colori (24/09/2026: prima era la fila di tinte col pennello).
     return '<div class="card"><div class="card-capo">' + h(titolo) + '<span class="dx">' + h(ora.nome) + '</span></div>' +
-      '<div class="tinte">' +
-      '<span class="pennello-box' + (suMisura ? ' scelta' : '') + '">' +
-      '<input type="color" class="pennello" value="' + h(ora.val) + '" data-campo="colore-libero" data-quale="' + quale + '" aria-label="Fatti il colore che vuoi" title="Fatti il colore che vuoi">' +
-      '</span>' +
-      TINTE.map(function (t) {
-        const scelto = !suMisura && (sceltoId ? t.id === sceltoId : t.id === difetto);
-        return '<button class="tinta' + (scelto ? ' scelta' : '') + '" data-az="colore" data-quale="' + quale + '" data-tinta="' + t.id + '"' +
-          ' style="--tinta:' + t.val + '" aria-label="' + h(t.nome) + '" title="' + h(t.nome) + '"></button>';
-      }).join('') + '</div>' +
+      '<button class="riga colore-scelto" data-az="colore-apri" data-quale="' + quale + '">' +
+      '<span class="campione" style="--tinta:' + h(ora.val) + '"></span>' +
+      '<span class="desc">' + h(ora.nome) + '<small>' + h(ora.val) + ' · tocca per cambiarlo</small></span><span class="frec">›</span></button>' +
       '<div class="card-piede"><span style="flex:1">' + h(spiega) + '</span>' +
       '<button class="link" data-az="colore" data-quale="' + quale + '" data-tinta="' + difetto + '">torna a ' + h(tinta(difetto).nome.toLowerCase()) + '</button></div>' +
       '</div>';
@@ -145,6 +179,139 @@ function vistaImpostazioniAspetto() {
   return html;
 }
 
+/* ---- Il foglio dei colori, come quello di Paint (24/09/2026) ----
+   Le 24 tinte in righe da 8, sotto una riga di 8 colori personalizzati (salvati in locale,
+   loc.coloriMiei). "Modifica colori" apre il quadrato tinta/saturazione, la barra della
+   luminosità, l'anteprima, l'esadecimale e Rosso/Verde/Blu, tutti legati fra loro.
+   Il colore si tiene in HSL: così portando la luminosità a zero la tinta non si perde. */
+const PERSONALIZZATI = 8;
+let COLORE_ED = null; // { quale, h: 0-360, s: 0-1, l: 0-1 } mentre il foglio è aperto
+function coloriMiei() { const l = leggiLocale().coloriMiei; return Array.isArray(l) ? l : []; }
+function hslRgb(hh, s, l) {
+  const k = function (n) { return (n + hh / 30) % 12; };
+  const a = s * Math.min(l, 1 - l);
+  const f = function (n) { return Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))); };
+  return [f(0), f(8), f(4)];
+}
+function rgbHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const hh = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [hh * 60, s, l];
+}
+function rgbHex(rgb) { return '#' + rgb.map(function (x) { return x.toString(16).padStart(2, '0'); }).join(''); }
+function hexRgb(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim()); if (!m) return null; const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function coloreEd() { return rgbHex(hslRgb(COLORE_ED.h, COLORE_ED.s, COLORE_ED.l)); }
+
+function htmlFoglioColori(quale, conEditor) {
+  const c = leggiLocale().colori || {};
+  const difetto = quale === 'primario' ? 'verde' : 'azzurro';
+  const ora = tinta(c[quale]) || tinta(difetto);
+  const casella = function (id, val, nome) {
+    return '<button class="tav-c' + (ora.val === val ? ' scelta' : '') + '" data-az="colore" data-quale="' + quale + '" data-tinta="' + h(id) + '" style="--tinta:' + h(val) + '" aria-label="' + h(nome) + '"></button>';
+  };
+  const miei = coloriMiei();
+  let righeMiei = '';
+  for (let i = 0; i < PERSONALIZZATI; i++) righeMiei += miei[i] ? casella(miei[i], miei[i], 'Personalizzato ' + miei[i]) : '<span class="tav-c vuota" aria-hidden="true"></span>';
+  let html = '<h2>' + (quale === 'primario' ? 'Colore principale' : 'Colore secondario') + '</h2>' +
+    '<div class="tav">' + TINTE.map(function (t) { return casella(t.id, t.val, t.nome); }).join('') + '</div>' +
+    '<div class="tav-eti">Personalizzati</div><div class="tav">' + righeMiei + '</div>';
+  if (!conEditor) {
+    return html + '<button class="btn" data-az="colore-modifica" data-quale="' + quale + '">Modifica colori</button>' +
+      '<button class="btn" data-az="chiudi-foglio">Annulla</button>';
+  }
+  const campo = function (chiave, etichetta, attr) { return '<label class="col-campo"><span>' + etichetta + '</span><input class="campo" data-col="' + chiave + '" ' + attr + ' autocomplete="off"></label>'; };
+  return html +
+    '<div class="col-ed"><div class="col-qu" data-trascina="qu"><canvas></canvas><i class="col-mira"></i></div>' +
+    '<div class="col-lum" data-trascina="lum"><canvas></canvas><i class="col-fr"></i></div></div>' +
+    '<div class="col-dati"><span class="col-ante" aria-hidden="true"></span>' +
+    campo('hex', 'Esadecimale', 'maxlength="7" spellcheck="false" autocapitalize="off"') +
+    campo('r', 'Rosso', 'type="number" min="0" max="255" inputmode="numeric"') +
+    campo('g', 'Verde', 'type="number" min="0" max="255" inputmode="numeric"') +
+    campo('b', 'Blu', 'type="number" min="0" max="255" inputmode="numeric"') + '</div>' +
+    '<button class="btn" data-az="colore-aggiungi">Aggiungi ai personalizzati</button>' +
+    '<div class="griglia"><button class="btn btn-ok" data-az="colore-ok">OK</button><button class="btn" data-az="chiudi-foglio">Annulla</button></div>';
+}
+function mostraFoglioColori(quale, conEditor) {
+  const foglio = document.querySelector('#finestra .foglio');
+  if (foglio) foglio.innerHTML = htmlFoglioColori(quale, conEditor);
+  else apriFoglio(htmlFoglioColori(quale, conEditor));
+  if (conEditor) { disegnaQuadrato(); aggiornaEditor(''); }
+}
+// Il quadrato: la tinta da sinistra a destra, la saturazione dall'alto (piena) al basso (grigio), a luminosità media.
+function disegnaQuadrato() {
+  const tela = document.querySelector('.col-qu canvas');
+  if (!tela) return;
+  const r = window.devicePixelRatio || 1;
+  tela.width = tela.clientWidth * r; tela.height = tela.clientHeight * r;
+  const x = tela.getContext('2d');
+  const tinte = x.createLinearGradient(0, 0, tela.width, 0);
+  for (let i = 0; i <= 6; i++) tinte.addColorStop(i / 6, 'hsl(' + (i * 60) + ',100%,50%)');
+  x.fillStyle = tinte; x.fillRect(0, 0, tela.width, tela.height);
+  const grigio = x.createLinearGradient(0, 0, 0, tela.height);
+  grigio.addColorStop(0, 'rgba(128,128,128,0)'); grigio.addColorStop(1, 'rgba(128,128,128,1)');
+  x.fillStyle = grigio; x.fillRect(0, 0, tela.width, tela.height);
+}
+// Tutto il resto segue COLORE_ED; il campo che si sta scrivendo (fonte) non si riscrive sotto le dita.
+function aggiornaEditor(fonte) {
+  const hex = coloreEd(), rgb = hexRgb(hex);
+  const lum = document.querySelector('.col-lum canvas');
+  if (lum) {
+    const r = window.devicePixelRatio || 1;
+    lum.width = lum.clientWidth * r; lum.height = lum.clientHeight * r;
+    const x = lum.getContext('2d'), g = x.createLinearGradient(0, 0, 0, lum.height);
+    const pieno = 'hsl(' + COLORE_ED.h + ',' + (COLORE_ED.s * 100) + '%,50%)';
+    g.addColorStop(0, '#fff'); g.addColorStop(0.5, pieno); g.addColorStop(1, '#000');
+    x.fillStyle = g; x.fillRect(0, 0, lum.width, lum.height);
+  }
+  const mira = document.querySelector('.col-mira'), freccia = document.querySelector('.col-fr'), ante = document.querySelector('.col-ante');
+  if (mira) { mira.style.left = (COLORE_ED.h / 360 * 100) + '%'; mira.style.top = ((1 - COLORE_ED.s) * 100) + '%'; }
+  if (freccia) freccia.style.top = ((1 - COLORE_ED.l) * 100) + '%';
+  if (ante) ante.style.background = hex;
+  const metti = function (chiave, v) { const el = document.querySelector('[data-col="' + chiave + '"]'); if (el && chiave !== fonte) el.value = v; };
+  metti('hex', hex); metti('r', rgb[0]); metti('g', rgb[1]); metti('b', rgb[2]);
+}
+function coloreDaRgb(rgb) { const x = rgbHsl(rgb[0], rgb[1], rgb[2]); COLORE_ED.l = x[2]; if (x[1] > 0) { COLORE_ED.h = x[0]; COLORE_ED.s = x[1]; } else COLORE_ED.s = 0; }
+
+// I campi: esadecimale e Rosso/Verde/Blu. Un valore a metà (es. "#3d") non cambia niente finché non è intero.
+document.addEventListener('input', function (ev) {
+  const el = ev.target.closest && ev.target.closest('[data-col]');
+  if (!el || !COLORE_ED) return;
+  if (el.dataset.col === 'hex') { const rgb = hexRgb(el.value); if (!rgb) return; coloreDaRgb(rgb); }
+  else {
+    const vals = ['r', 'g', 'b'].map(function (k) { const v = document.querySelector('[data-col="' + k + '"]').value; return v === '' ? NaN : Math.round(Number(v)); });
+    if (vals.some(function (v) { return !(v >= 0 && v <= 255); })) return;
+    coloreDaRgb(vals);
+  }
+  aggiornaEditor(el.dataset.col);
+});
+/* Quadrato e barra si trascinano col dito (pointer events, touch-action:none in stile.css).
+   Finito un trascinamento, il clic che il telefono manda dopo non deve chiudere il foglio
+   (il dito può staccarsi sul velo): per un attimo i clic si ignorano. */
+let fineTrascina = 0;
+document.addEventListener('pointerdown', function (ev) {
+  const zona = ev.target.closest && ev.target.closest('[data-trascina]');
+  if (!zona || !COLORE_ED) return;
+  ev.preventDefault();
+  const muovi = function (e) {
+    const r = zona.getBoundingClientRect();
+    const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    if (zona.dataset.trascina === 'qu') { COLORE_ED.h = fx * 360; COLORE_ED.s = 1 - fy; } else COLORE_ED.l = 1 - fy;
+    aggiornaEditor('');
+  };
+  const fine = function () { fineTrascina = Date.now(); zona.removeEventListener('pointermove', muovi); zona.removeEventListener('pointerup', fine); zona.removeEventListener('pointercancel', fine); };
+  try { zona.setPointerCapture(ev.pointerId); } catch (e) { /* senza cattura si segue lo stesso */ }
+  zona.addEventListener('pointermove', muovi);
+  zona.addEventListener('pointerup', fine);
+  zona.addEventListener('pointercancel', fine);
+  muovi(ev);
+});
+document.addEventListener('click', function (ev) {
+  if (Date.now() - fineTrascina < 400) { ev.stopPropagation(); ev.preventDefault(); }
+}, true);
+
 function vistaImpostazioniArchivio() {
   const db = leggiTutto();
   const az = valori(db.aziende || {});
@@ -152,6 +319,9 @@ function vistaImpostazioniArchivio() {
   const verb = valori(db.verbali).sort(function (a, b) { return (b.giorno + b.ora).localeCompare(a.giorno + a.ora); });
   const pdf = pdfArchiviati().sort(function (a, b) { return String(b.quando).localeCompare(String(a.quando)); });
   let html = testata({ indietro: '#/impostazioni', titolo: 'Archivio' });
+  html += '<div class="card"><div class="card-capo">Memoria protetta<span class="dx">' + (MEMORIA_PROTETTA ? 'sì' : 'no') + '</span></div>' +
+    '<div class="card-corpo">' + (MEMORIA_PROTETTA ? 'Il telefono non cancella da solo foto, verbali e PDF dell\'app.'
+      : 'Il telefono può cancellare da solo i dati dell\'app se non la usi per qualche giorno. Installa l\'app sulla schermata Home: su iPhone, in Safari, tocca Condividi e poi "Aggiungi alla schermata Home".') + '</div></div>';
 
   html += tendina('arc-aziende', 'Aziende', '<div class="card">' + (az.length ? az.map(function (a) {
     return '<button class="riga" data-az="vai" data-a="#/azienda/' + h(a.id) + '">' +
@@ -359,14 +529,149 @@ async function liberaSpazioMese(mese) {
   aggiornaVista();
 }
 
+/* ---- Scarica i file (24/09/2026) ----
+   Un cantiere alla volta: foto, bolle, documenti e PDF, ognuno un file suo, da segnare.
+   Escono con portaFuori (il menu Condividi, o i Download del telefono); poi si chiede se
+   toglierli dal telefono. Una foto tolta resta come scheda: scaricato e archiviato con la data. */
+const TIPI_SCARICO = { bolla: 'bolla', firme: 'presenze', documento: 'documento' };
+let SCARICO = { cantiere: '', segnati: {} };
+function fileScaricabili(c) {
+  const lista = [];
+  sopralluoghiDi(c.codice).forEach(function (s) {
+    fotoDi(s).forEach(function (f) {
+      if (!f.file) return;
+      lista.push({ chiave: 'f-' + f.id, tipo: f.genere ? (TIPI_SCARICO[f.genere] || 'documento') : 'foto', giorno: f.giorno || s.giorno, quando: f.quando || '',
+        est: f.formato === 'pdf' ? 'pdf' : 'jpg', rif: f.file, peso: f.peso, f: f, sop: s });
+    });
+  });
+  pdfDi(c.codice).forEach(function (p) {
+    if (!p.file) return;
+    const tipo = p.tipo === 'periodo' ? 'settimana' : p.tipo === 'relazione' ? 'relazione' : (p.sopralluogo ? 'verbale' : 'giornata');
+    lista.push({ chiave: 'p-' + p.id, tipo: tipo, giorno: p.giorno, quando: p.quando || '', est: 'pdf', rif: p.file, peso: p.peso, pdf: p });
+  });
+  lista.sort(function (a, b) { return (a.giorno + a.quando).localeCompare(b.giorno + b.quando); });
+  // <cantiere>_<AAAA-MM-GG>_<tipo>-<nn>.<est>: il numero conta i file dello stesso tipo nello stesso giorno.
+  const contati = {}, nome = nomeFile(c.nome);
+  lista.forEach(function (x) {
+    const k = x.giorno + x.tipo;
+    contati[k] = (contati[k] || 0) + 1;
+    x.nome = nome + '_' + x.giorno + '_' + x.tipo + '-' + String(contati[k]).padStart(2, '0') + '.' + x.est;
+  });
+  return lista;
+}
+function vistaScaricaFile(id) {
+  const c = id ? cantiere(id) : null;
+  if (!c) {
+    const cant = valori(leggiTutto().cantieri).sort(function (a, b) { return a.nome.localeCompare(b.nome); });
+    return testata({ indietro: '#/impostazioni', titolo: 'Scarica i file', sotto: 'scegli il cantiere' }) +
+      '<div class="card">' + (cant.length ? cant.map(function (x) {
+        const n = fileScaricabili(x).length;
+        return '<button class="riga" data-az="vai" data-a="#/impostazioni/scarica/' + h(x.id) + '">' +
+          '<span class="desc">' + h(x.nome) + '<small>' + (n ? n + ' file nel telefono' : 'nessun file nel telefono') + (x.stato === 'chiuso' ? ' · chiuso' : '') + '</small></span>' +
+          '<span class="frec">›</span></button>';
+      }).join('') : '<div class="card-corpo">Nessun cantiere.</div>') + '</div>';
+  }
+  if (SCARICO.cantiere !== c.id) SCARICO = { cantiere: c.id, segnati: {} };
+  const lista = fileScaricabili(c);
+  const quanti = lista.filter(function (x) { return SCARICO.segnati[x.chiave]; }).length;
+  const tolti = sopralluoghiDi(c.codice).reduce(function (n, s) { return n + fotoDi(s).filter(function (f) { return !f.file && f.archiviato; }).length; }, 0);
+  let html = testata({ indietro: '#/impostazioni/scarica', titolo: 'Scarica i file', sotto: h(c.nome) });
+  if (!lista.length) html += '<div class="vuoto-stato">Nessun file di questo cantiere nel telefono.</div>';
+  else {
+    html += '<div class="card"><div class="card-capo">File nel telefono<button class="dx link" data-az="scarica-tutti">' + (quanti === lista.length ? 'Togli tutti' : 'Segna tutti') + '</button></div>' +
+      lista.map(function (x) {
+        const on = !!SCARICO.segnati[x.chiave];
+        return '<button class="riga scarica' + (on ? ' on' : '') + '" role="checkbox" aria-checked="' + on + '" data-az="scarica-segna" data-chiave="' + h(x.chiave) + '">' +
+          '<span class="casella" aria-hidden="true">' + (on ? '✓' : '') + '</span>' +
+          '<span class="desc">' + h(x.nome) + '<small>' + h(dataSenzaAnno(x.giorno)) + (x.peso ? ' · ' + h(pesoFile(x.peso)) : '') + '</small></span></button>';
+      }).join('') + '</div>';
+    html += '<div class="modulo"><button class="btn btn-ok" data-az="scarica-vai" data-id="' + h(c.id) + '"' + (quanti ? '' : ' disabled') + '>Scarica' + (quanti ? ' (' + quanti + ')' : '') + '</button>' +
+      '<p class="nota-scarica">Senza cavo: scegli dove mandarli. Con il cavo: finiscono nei Download del telefono, poi li copi sul PC.</p></div>';
+  }
+  if (tolti) html += '<div class="vuoto-stato">' + tolti + (tolti === 1 ? ' file già scaricato e tolto' : ' file già scaricati e tolti') + ' dal telefono.</div>';
+  return html;
+}
+async function scaricaSegnati(c) {
+  const scelti = fileScaricabili(c).filter(function (x) { return SCARICO.segnati[x.chiave]; });
+  const file = [], presi = [];
+  for (const x of scelti) {
+    const blob = await leggiMedia(x.rif);
+    if (!blob) continue;
+    file.push(new File([blob], x.nome, { type: x.f ? tipoMedia(x.f, blob) : 'application/pdf' }));
+    presi.push(x);
+  }
+  if (!file.length) { avvisa('Niente da scaricare', 'att'); return; }
+  if (!(await portaFuori(file, 'CANTIERI · ' + c.nome))) return;
+  const adesso = adessoISO(), oggi = oggiISO();
+  const toccati = new Set();
+  presi.forEach(function (x) { if (x.f) { x.f.scaricato = adesso; toccati.add(x.sop); } });
+  toccati.forEach(function (s) { salva('sopralluogo', s); });
+  const via = await chiedi('Vuoi cancellare dal telefono i file scaricati?', 'I PDF già fatti tengono le foto; un verbale rifatto dopo non le avrà più.', 'Sì, cancella', 'rosso', '', 'No, tienili');
+  chiudiFoglio();
+  if (via) {
+    for (const x of presi) {
+      if (x.pdf) { await eliminaPdf(x.pdf.id); continue; }
+      scordaFoto(x.f.file);
+      await cancellaMedia(x.f.file);
+      x.f.file = null; x.f.archiviato = oggi;
+    }
+    toccati.forEach(function (s) { salva('sopralluogo', s); });
+  }
+  SCARICO.segnati = {};
+  avvisa(via ? 'Scaricati e tolti dal telefono' : 'Scaricati', 'ok');
+  aggiornaVista();
+}
+
 // Le azioni di questo file.
 Object.assign(AZIONI, {
+  'scarica-segna': function (el) { SCARICO.segnati[el.dataset.chiave] = !SCARICO.segnati[el.dataset.chiave]; aggiornaVista(); },
+  'scarica-tutti': function () {
+    const c = cantiere(SCARICO.cantiere);
+    if (!c) return;
+    const lista = fileScaricabili(c);
+    const tutti = lista.every(function (x) { return SCARICO.segnati[x.chiave]; });
+    SCARICO.segnati = {};
+    if (!tutti) lista.forEach(function (x) { SCARICO.segnati[x.chiave] = true; });
+    aggiornaVista();
+  },
+  'scarica-vai': function (el) { const c = cantiere(el.dataset.id); if (c) scaricaSegnati(c); },
   'colore': function (el) {
     const loc = leggiLocale();
     if (!loc.colori) loc.colori = { primario: '', secondario: '' };
     loc.colori[el.dataset.quale] = el.dataset.tinta;
     salvaLocale();
     applicaColori();
+    // Toccato un colore nel foglio, il foglio si chiude: la scelta è fatta (24/09/2026).
+    if (foglioAperto()) { COLORE_ED = null; chiudiFoglio(); }
+    disegna();
+  },
+  'colore-apri': function (el) { COLORE_ED = null; mostraFoglioColori(el.dataset.quale, false); },
+  // L'editor parte dal colore scelto adesso.
+  'colore-modifica': function (el) {
+    const c = leggiLocale().colori || {};
+    const ora = tinta(c[el.dataset.quale]) || tinta(el.dataset.quale === 'primario' ? 'verde' : 'azzurro');
+    const x = hexRgb(ora.val), hsl = rgbHsl(x[0], x[1], x[2]);
+    COLORE_ED = { quale: el.dataset.quale, h: hsl[0], s: hsl[1], l: hsl[2] };
+    mostraFoglioColori(el.dataset.quale, true);
+  },
+  // Il nuovo va in testa; se c'era già, sale in testa. Ne restano otto.
+  'colore-aggiungi': function () {
+    if (!COLORE_ED) return;
+    const hex = coloreEd(), loc = leggiLocale();
+    loc.coloriMiei = [hex].concat(coloriMiei().filter(function (x) { return x !== hex; })).slice(0, PERSONALIZZATI);
+    salvaLocale();
+    mostraFoglioColori(COLORE_ED.quale, true);
+    avvisa('Aggiunto', 'ok');
+  },
+  'colore-ok': function () {
+    if (!COLORE_ED) return;
+    const loc = leggiLocale();
+    if (!loc.colori) loc.colori = { primario: '', secondario: '' };
+    loc.colori[COLORE_ED.quale] = coloreEd();
+    COLORE_ED = null;
+    salvaLocale();
+    applicaColori();
+    chiudiFoglio();
     disegna();
   },
   // --- modo sviluppatore ---

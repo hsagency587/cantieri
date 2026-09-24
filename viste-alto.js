@@ -31,16 +31,15 @@ function vistaAziende() {
       '<span class="frec">›</span></button>';
   };
   /* La riga dell'azienda apre e chiude i suoi cantieri: con più aziende in
-     elenco si vedono prima le imprese, e si apre solo quella che serve. Con una
-     sola azienda resta aperta, se no ci sarebbe un tocco in più ogni volta.
+     elenco si vedono prima le imprese, e si apre solo quella che serve. Parte
+     chiusa anche con una sola azienda (24/09/2026: tutte le tendine partono chiuse).
      La scheda dell'azienda si raggiunge dall'ultima riga di dentro. */
   aziende.forEach(function (a) {
     const cant = cantieriDiAzienda(a.codice).sort(function (x, z) { return x.nome.localeCompare(z.nome); });
     const attivi = cant.filter(function (c) { return c.stato !== 'chiuso'; });
     const daFare = attivi.filter(function (c) { return statoCantiere(c).nome === 'da fare'; }).length;
     const chiave = 'azienda-' + a.codice;
-    const memoria = leggiLocale().tendine;
-    const aperta = Object.prototype.hasOwnProperty.call(memoria, chiave) ? !!memoria[chiave] : aziende.length === 1;
+    const aperta = !!leggiLocale().tendine[chiave];
     /* Due tasti sulla stessa riga: il grosso apre e chiude i cantieri, quello
        piccolo a destra porta dritto nella scheda dell'azienda senza dover
        aprire niente. */
@@ -329,22 +328,27 @@ function fotoTutteCantiere(c) {
   sopralluoghiDi(c.codice).forEach(function (s) { fotoNormali(s).forEach(function (f) { lista.push({ sop: s, f: f, giorno: s.giorno }); }); });
   return lista.sort(function (a, b) { return String(b.f.quando).localeCompare(String(a.f.quando)); });
 }
-/* Tre stati fissi, non un elenco di ogni giorno/settimana passati: tutte (se richiesta),
-   giorno (oggi), settimana (quella corrente, da lunedì). Un tocco, un filtro solo. */
-/* Il pulsante "giorno": di norma fisso, un tocco vale "oggi". Passando aperto
-   (la data di apertura del cantiere) diventa invece l'apertura di un calendario
-   nativo, per scegliere un giorno qualsiasi da quando il cantiere è aperto a
-   oggi (chiesto per la tendina Foto: "ispezionare le foto" di un giorno passato). */
-function pilloleGiornoSettimana(chiave, sel, conTutte, aperto) {
-  const pill = function (tipo, etichetta) {
-    const attivo = tipo === 'tutte' ? (!sel.giorno && !sel.settimana) : tipo === 'giorno' ? !!sel.giorno : !!sel.settimana;
+/* Tre tasti: tutte (se richiesta), giorno, settimana. Giorno e settimana aprono il
+   calendario dell'app (apriCalendario, ui.js — 24/09/2026: prima il giorno era un campo
+   data nascosto, che su iPhone non si apriva, e la settimana era solo quella in corso).
+   Il tasto mostra la scelta fatta. */
+function pilloleGiornoSettimana(chiave, sel, conTutte) {
+  const pill = function (tipo, etichetta, attivo) {
     return '<button class="pill cod' + (attivo ? ' on' : '') + '" data-az="' + chiave + '-filtro" data-tipo="' + tipo + '">' + etichetta + '</button>';
   };
-  const giorno = aperto
-    ? '<button class="pill cod' + (sel.giorno ? ' on' : '') + '" data-az="' + chiave + '-giorno-apri" data-input="' + chiave + '-giorno-input">' + (sel.giorno ? h(dataSenzaAnno(sel.giorno)) : 'giorno') + '</button>' +
-      '<input type="date" id="' + chiave + '-giorno-input" hidden data-campo="' + chiave + '-giorno" min="' + h(aperto) + '" max="' + h(oggiISO()) + '" value="' + h(sel.giorno || '') + '">'
-    : pill('giorno', 'giorno');
-  return '<div class="periodi">' + (conTutte ? pill('tutte', 'tutte') : '') + giorno + pill('settimana', 'settimana') + '</div>';
+  const lun = daISO(sel.settimana);
+  const sett = sel.settimana ? giornoMese(sel.settimana) + ' – ' + giornoMese(dataLocaleISO(new Date(lun.getFullYear(), lun.getMonth(), lun.getDate() + 6))) : 'settimana';
+  return '<div class="periodi">' + (conTutte ? pill('tutte', 'tutte', !sel.giorno && !sel.settimana) : '') +
+    pill('giorno', sel.giorno ? h(giornoMese(sel.giorno)) : 'giorno', !!sel.giorno) +
+    pill('settimana', h(sett), !!sel.settimana) + '</div>';
+}
+/* Il calendario di un filtro: parte dalla scelta fatta, ha il puntino sui giorni con
+   qualcosa, va dall'apertura del cantiere a oggi (o dalla foto più vecchia, se una presa
+   dal rullino è di prima dell'apertura). */
+function calendarioFiltro(c, tipo, sel, giorni, imposta) {
+  apriCalendario({ modo: tipo, scelto: tipo === 'giorno' ? sel.giorno : sel.settimana, punti: giorni,
+    min: [c.aperto].concat(giorni).filter(Boolean).sort()[0] || '', max: oggiISO(),
+    scegli: function (iso) { imposta(tipo === 'giorno' ? { giorno: iso, settimana: '' } : { giorno: '', settimana: iso }); aggiornaVista(); } });
 }
 let selFotoCant = { giorno: '', settimana: '' };
 function tendinaFotoCantiere(c) {
@@ -352,7 +356,7 @@ function tendinaFotoCantiere(c) {
   let lista = tutti;
   if (selFotoCant.giorno) lista = lista.filter(function (x) { return x.giorno === selFotoCant.giorno; });
   else if (selFotoCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.giorno) === selFotoCant.settimana; });
-  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true, c.aperto || '') +
+  const html = pilloleGiornoSettimana('foto-cant', selFotoCant, true) +
     (lista.length ? filaFoto(null, lista, {}) : '<div class="vuoto-stato">' + (tutti.length ? 'Nessuna foto con questo filtro.' : 'Nessuna foto ancora.') + '</div>');
   return tendina('foto-cant-' + c.id, 'Tutte le foto', html, tutti.length || null);
 }
@@ -367,7 +371,7 @@ function tendinaBolleCantiere(c) {
   if (selBolleCant.giorno) lista = lista.filter(function (x) { return x.f.giorno === selBolleCant.giorno; });
   else if (selBolleCant.settimana) lista = lista.filter(function (x) { return lunediDi(x.f.giorno) === selBolleCant.settimana; });
   let html = '<div class="cerca"><span class="ico ico-lente"></span> <input type="search" placeholder="Cerca nelle bolle" value="' + h(filtroBolleCant) + '" data-campo="filtro-bolle-cant" autocomplete="off"></div>';
-  html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false, c.aperto || '');
+  html += pilloleGiornoSettimana('bolle-cant', selBolleCant, false);
   html += lista.length ? '<div class="card">' + scorrevole(lista.map(rigaDocumentoHtml).join('')) + '</div>' : '<div class="vuoto-stato">Nessuna bolla con questi filtri.</div>';
   const azione = '<button class="pill cod" data-az="doc-scansiona" data-cantiere="' + h(c.id) + '" data-genere="bolla">Rileva bolla</button>';
   return tendinaConAzione('bolle-cant-' + c.id, 'Tutte le bolle', html, azione, tutti.length || null);
@@ -631,29 +635,16 @@ Object.assign(AZIONI, {
     selVerbaliCant[el.dataset.sel] = true;
     aggiornaVista();
   },
+  // "tutte" azzera; "giorno" e "settimana" aprono il calendario dell'app (24/09/2026).
   'foto-cant-filtro': function (el) {
-    // "giorno" qui non c'è: apre il calendario con un'azione sua (foto-cant-giorno-apri).
-    if (el.dataset.tipo === 'tutte') selFotoCant = { giorno: '', settimana: '' };
-    else selFotoCant = { giorno: '', settimana: lunediDi(oggiISO()) };
-    aggiornaVista();
-  },
-  // Il pulsante "giorno" di Foto apre il calendario nativo invece di fissarsi su oggi.
-  'foto-cant-giorno-apri': function (el) {
-    const input = document.getElementById(el.dataset.input);
-    if (!input) return;
-    try { input.showPicker(); } catch (e) { input.focus(); try { input.click(); } catch (e2) {} }
+    const c = cantiere(ROTTA.parametri[0]);
+    if (el.dataset.tipo === 'tutte' || !c) { selFotoCant = { giorno: '', settimana: '' }; aggiornaVista(); return; }
+    calendarioFiltro(c, el.dataset.tipo, selFotoCant, fotoTutteCantiere(c).map(function (x) { return x.giorno; }), function (s) { selFotoCant = s; });
   },
   'bolle-cant-filtro': function (el) {
-    // "giorno" qui non c'è: apre il calendario con un'azione sua (bolle-cant-giorno-apri).
-    if (el.dataset.tipo === 'tutte') selBolleCant = { giorno: '', settimana: '' };
-    else selBolleCant = { giorno: '', settimana: lunediDi(oggiISO()) };
-    aggiornaVista();
-  },
-  // Il pulsante "giorno" di Bolle apre il calendario nativo, come in Foto.
-  'bolle-cant-giorno-apri': function (el) {
-    const input = document.getElementById(el.dataset.input);
-    if (!input) return;
-    try { input.showPicker(); } catch (e) { input.focus(); try { input.click(); } catch (e2) {} }
+    const c = cantiere(ROTTA.parametri[0]);
+    if (!c) return;
+    calendarioFiltro(c, el.dataset.tipo, selBolleCant, documentiTutti(c.codice, 'bolla').map(function (x) { return x.f.giorno; }), function (s) { selBolleCant = s; });
   },
   'doc-cant-sel': function (el) { selDocCant = el.dataset.sel; aggiornaVista(); },
   // Un solo tasto "＋ documento": chiede se è il registro firme o un documento generale, poi apre lo scanner con quel genere.

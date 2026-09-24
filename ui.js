@@ -34,12 +34,13 @@ function chiudiFoglio() {
 function foglioAperto() { return !document.getElementById('finestra').hidden; }
 
 // Le conferme non usano confirm(): su iPhone installata esce un riquadro piccolo e grigio, illeggibile.
-function chiedi(titolo, testo, etichettaOk, tipoOk, extra) {
+// etichettaNo, se c'è, cambia la scritta del tasto che dice di no (di norma "Annulla").
+function chiedi(titolo, testo, etichettaOk, tipoOk, extra, etichettaNo) {
   return new Promise(function (ok) {
     apriFoglio(
       '<h2>' + h(titolo) + '</h2>' + (testo ? '<p>' + h(testo) + '</p>' : '') + (extra || '') +
       '<button class="btn ' + (tipoOk === 'rosso' ? 'btn-rosso' : 'btn-ok') + '" data-az="conferma-si">' + h(etichettaOk || 'Conferma') + '</button>' +
-      '<button class="btn" data-az="conferma-no">Annulla</button>'
+      '<button class="btn" data-az="conferma-no">' + h(etichettaNo || 'Annulla') + '</button>'
     );
     attesaConferma = ok;
   });
@@ -141,6 +142,49 @@ function vociEsporta(chiave, azEsporta, idEsporta, azScarica, idScarica) {
     '<button class="voce-m" data-az="' + azEsporta + '" data-id="' + h(idEsporta) + '"><b>Esporta</b><small>manda a qualcuno: mail, WhatsApp, stampa</small></button>' +
     '<button class="voce-m" data-az="' + azScarica + '" data-id="' + h(idScarica) + '"><b>Scarica</b><small>salva il PDF nel telefono</small></button></div>';
 }
+/* Il calendario del mese, fatto dall'app (24/09/2026): il campo data nascosto non si
+   apriva su iPhone, e un selettore di settimana su iOS non esiste. Un componente solo,
+   in un foglio, per il filtro Giorno e per il filtro Settimana delle tendine Foto e Bolle.
+   o = { modo: 'giorno'|'settimana', scelto: il giorno (o il lunedì) già scelto,
+         punti: i giorni che hanno qualcosa, min, max, scegli: function (iso) }.
+   In settimana il tocco su un giorno qualsiasi sceglie il lunedì della sua settimana. */
+let CAL = null;
+function apriCalendario(o) {
+  CAL = Object.assign({}, o, { mese: (o.scelto || o.max || oggiISO()).slice(0, 7) });
+  apriFoglio(htmlCalendario());
+}
+function htmlCalendario() {
+  const c = CAL;
+  const primo = daISO(c.mese + '-01');
+  const giorno = function (n) { return dataLocaleISO(new Date(primo.getFullYear(), primo.getMonth(), n)); };
+  const punti = new Set(c.punti || []);
+  const oggi = oggiISO();
+  const settimana = c.modo === 'settimana';
+  const inizio = 1 - ((primo.getDay() + 6) % 7);
+  let righe = '';
+  for (let w = inizio; giorno(w).slice(0, 7) <= c.mese; w += 7) {
+    const lun = giorno(w), dom = giorno(w + 6);
+    // In settimana si spegne solo una settimana tutta fuori dai limiti, non il singolo giorno.
+    const settFuori = (c.max && lun > c.max) || (c.min && dom < c.min);
+    let celle = '';
+    for (let d = 0; d < 7; d++) {
+      const g = giorno(w + d);
+      const spento = settimana ? settFuori : ((c.max && g > c.max) || (c.min && g < c.min));
+      celle += '<button class="cal-g' + (g.slice(0, 7) !== c.mese ? ' fuori' : '') + (!settimana && g === c.scelto ? ' on' : '') +
+        (g === oggi ? ' oggi' : '') + (punti.has(g) ? ' punto' : '') + '" data-az="cal-scegli" data-g="' + g + '"' + (spento ? ' disabled' : '') +
+        ' aria-label="' + h(dataSenzaAnno(g)) + '">' + Number(g.slice(8)) + '</button>';
+    }
+    righe += '<div class="cal-riga' + (settimana && lun === c.scelto ? ' on' : '') + '">' + celle + '</div>';
+  }
+  const primoMese = c.min ? c.min.slice(0, 7) : '', ultimoMese = c.max ? c.max.slice(0, 7) : '';
+  return '<h2>' + (settimana ? 'Scegli la settimana' : 'Scegli il giorno') + '</h2>' +
+    '<div class="cal-capo"><button class="cal-fr" data-az="cal-mese" data-verso="-1" aria-label="Mese prima"' + (primoMese && c.mese <= primoMese ? ' disabled' : '') + '>‹</button>' +
+    '<b>' + h(titoloMese(c.mese + '-01')) + '</b>' +
+    '<button class="cal-fr" data-az="cal-mese" data-verso="1" aria-label="Mese dopo"' + (ultimoMese && c.mese >= ultimoMese ? ' disabled' : '') + '>›</button></div>' +
+    '<div class="cal' + (settimana ? ' sett' : '') + '"><div class="cal-riga cal-nomi"><span>L</span><span>M</span><span>M</span><span>G</span><span>V</span><span>S</span><span>D</span></div>' + righe + '</div>' +
+    '<p class="nota-piccola">' + (settimana ? 'Tocca un giorno: si sceglie la sua settimana, da lunedì a domenica.' : 'Tocca un giorno.') + ' Il puntino dice che quel giorno c\'è qualcosa.</p>' +
+    '<button class="btn" data-az="chiudi-foglio">Annulla</button>';
+}
 function leggiRotta() {
   const p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   ROTTA = { nome: p[0] || 'dashboard', parametri: p.slice(1).map(decodeURIComponent) };
@@ -194,6 +238,7 @@ function disegna() {
       case 'impostazioni':
         html = ROTTA.parametri[0] === 'aspetto' ? vistaImpostazioniAspetto()
           : ROTTA.parametri[0] === 'archivio' ? vistaImpostazioniArchivio()
+          : ROTTA.parametri[0] === 'scarica' ? vistaScaricaFile(ROTTA.parametri[1])
           : vistaImpostazioni();
         break;
       case 'dev': html = vistaDev(); break;
@@ -248,6 +293,14 @@ function testata(o) {
     (o.sotto ? '<div class="sub">' + o.sotto + '</div>' : '') + (o.tocca ? '</button>' : '') + '</div>' +
     (o.destra ? '<div class="destra">' + o.destra + '</div>' : '') +
     '</div>';
+}
+/* Le tendine partono chiuse a ogni schermata (24/09/2026): la scelta vale finché si resta
+   lì, poi si scorda. Si chiama all'apertura dell'app e a ogni cambio di rotta. */
+function chiudiTendine() {
+  const loc = leggiLocale();
+  if (!Object.keys(loc.tendine).length) return;
+  loc.tendine = {};
+  salvaLocale();
 }
 function tendina(chiave, etichetta, contenuto, n) {
   const aperta = !!leggiLocale().tendine[chiave];
@@ -328,6 +381,21 @@ Object.assign(AZIONI, {
       // Le file dentro erano nascoste: le freccette si ricalcolano adesso che hanno una larghezza.
       box.querySelectorAll('.frec-s.sx').forEach(function (f) { f.parentElement.dispatchEvent(new Event('scroll')); });
     }
+  },
+  // Il calendario: le frecce cambiano mese dentro lo stesso foglio, un tocco sceglie.
+  'cal-mese': function (el) {
+    if (!CAL) return;
+    const d = daISO(CAL.mese + '-01');
+    CAL.mese = dataLocaleISO(new Date(d.getFullYear(), d.getMonth() + Number(el.dataset.verso), 1)).slice(0, 7);
+    const foglio = document.querySelector('#finestra .foglio');
+    if (foglio) foglio.innerHTML = htmlCalendario();
+  },
+  'cal-scegli': function (el) {
+    if (!CAL) return;
+    const scegli = CAL.scegli, g = CAL.modo === 'settimana' ? lunediDi(el.dataset.g) : el.dataset.g;
+    CAL = null;
+    chiudiFoglio();
+    scegli(g);
   },
   'esporta-tendina': function (el) { ESPORTA_APERTO = (ESPORTA_APERTO === el.dataset.chiave ? null : el.dataset.chiave); aggiornaVista(); },
   'menu-punti': function (el) { apriPunti(el.dataset.chiave); },

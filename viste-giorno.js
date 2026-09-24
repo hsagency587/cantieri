@@ -199,6 +199,7 @@ async function aggiungiFoto(file, sopId, origine, genere) {
   if (pdf) { f.formato = 'pdf'; f.pagine = ridotta.pagine; }
   s.media.push(f);
   salva('sopralluogo', s);
+  controllaMemoria();
   /* Dopo uno scatto non si cambia schermata: in cantiere le foto si fanno in fila, e
      cambiare pagina fra una e l'altra costava un tocco ogni volta. La miniatura compare
      da sola nella striscia; il referto si detta toccandola, quando si ha tempo. */
@@ -331,7 +332,8 @@ function filaFoto(s, lista, opzioni) {
     const dentro = campo === 'nelPdfGiorno' ? marcataGiorno(f) : !!f.nelPdf;
     const eti = opzioni.doc ? (st.stato === 'lettura' ? 'Leggo…' : (GENERI_BREVI[f.genere] || 'documento')) : (st.stato === 'errore' ? 'non riuscito' : ((st.stato && st.stato !== 'riordinato') ? 'referto…' : f.ora));
     return '<div class="foto-mini' + (dentro ? ' pdf' : '') + '">' +
-      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '" data-az="vai" data-a="#/foto/' + h(sx.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
+      // Tolta dal telefono dopo lo scarico: la miniatura dice quando (24/09/2026, vedi stile.css §38).
+      '<button class="q' + (f.file ? '' : ' manca') + (f.formato === 'pdf' ? ' scan' : '') + '"' + (!f.file && f.archiviato ? ' data-quando="' + h(giornoMese(f.archiviato)) + '"' : '') + ' data-az="vai" data-a="#/foto/' + h(sx.id) + '/' + h(f.id) + '" aria-label="Apri ' + h(nomeFoto(f)) + '">' +
       // Una scansione PDF non ha miniatura: l'icona del documento e il numero di pagine.
       (f.file ? (f.formato === 'pdf' ? '<span class="ico ico-documento"></span><small>' + (f.pagine ? f.pagine + ' pag.' : 'PDF') + '</small>' : '<img data-foto="' + h(f.file) + '" alt="">') : '') + '</button>' +
       // La ✕ sull'angolo della miniatura: una foto sbagliata si butta senza aprirla, sempre.
@@ -417,16 +419,8 @@ function cardVerbaleGiornata(vg) {
 }
 // Il sopralluogo aperto sotto il box (Fase 7.5): resta quello scelto finché si sta in questa giornata.
 let sopralluogoEspanso = null;
-/* La tendina "Sezioni del sopralluogo" riparte chiusa ogni volta che si sceglie un
-   sopralluogo o si apre la giornata (22/09/2026, richiesta di Simone): non è più
-   "aperta finché non la tocchi" per questa chiave, la si chiude a mano qui. */
-function chiudiSezioniSopralluogo(id) {
-  const loc = leggiLocale();
-  loc.tendine['sez-sop-' + id] = false;
-  salvaLocale();
-}
 function vistaGiornoInCorso(s, c) {
-  if (!sopralluogoEspanso || !sopralluoghiDelGiorno(s.cantiere, s.giorno).some(function (x) { return x.id === sopralluogoEspanso; })) { sopralluogoEspanso = s.id; chiudiSezioniSopralluogo(s.id); }
+  if (!sopralluogoEspanso || !sopralluoghiDelGiorno(s.cantiere, s.giorno).some(function (x) { return x.id === sopralluogoEspanso; })) sopralluogoEspanso = s.id;
   const attivo = sopralluogo(sopralluogoEspanso) || s;
   const registrandoQui = REG.attiva && REG.destinazione && ((REG.destinazione.tipo === 'sopralluogo' && REG.destinazione.id === attivo.id) ||
     (REG.destinazione.tipo === 'rilievo' && REG.destinazione.sop === attivo.id));
@@ -592,7 +586,10 @@ function verbaleAllineato(v) {
   if (!v || !v.impronta) return false;
   if (v.giornata) return improntaGiornata(sopralluoghiDelGiorno(v.cantiere, v.giorno)) === v.impronta;
   const s = sopralluogoPerCodice(v.sopralluogo);
-  return !!s && improntaSopralluogo(s) === v.impronta;
+  if (!s || improntaSopralluogo(s) !== v.impronta) return false;
+  // Cambiato chi firma dopo la chiusura (D22): il verbale va rifatto con la firma giusta.
+  const f = firmatarioDi(s);
+  return !f || (f === 'nessuno' ? null : f) === (v.tecnicoId || null);
 }
 function scriviVerbaleGiornata(codiceCantiere, giorno, nomeScelto) {
   const sops = sopralluoghiDelGiorno(codiceCantiere, giorno);
@@ -805,17 +802,6 @@ function cardFotoGiorno(s) {
     '<div class="card-piede dx"><button class="pill cod" data-az="foto-marca-tutte" data-id="' + h(s.id) + '">' + (tutte ? 'Smarca tutte' : 'Marca tutte') + '</button></div>' +
     '</div>';
 }
-/* Una tendina come tendina(), ma aperta di default finché nessuno la tocca (Fase 7.5:
-   "parte aperta. Tutte le altre partono chiuse."). Una volta toccata, vale la sua scelta. */
-function tendinaApertaPerDefault(chiave, etichetta, contenuto, n) {
-  const loc = leggiLocale();
-  const aperta = Object.prototype.hasOwnProperty.call(loc.tendine, chiave) ? !!loc.tendine[chiave] : true;
-  const att = n && typeof n === 'object'; if (att) n = n.n;
-  return '<button class="tend" data-az="tendina" data-chiave="' + h(chiave) + '" aria-expanded="' + aperta + '">' +
-    '<span class="frec">▶</span> <span class="et">' + h(etichetta) + '</span>' + (n != null ? '<span class="n' + (att ? ' att' : '') + '">' + h(n) + '</span>' : '') + '</button>' +
-    '<div' + (aperta ? '' : ' hidden') + '>' + contenuto + '</div>';
-}
-
 /* La riga di un sopralluogo dentro il box del giorno (Fase 7.4): un tocco lo apre sotto,
    il tasto verde lo chiude (o aggiorna il suo verbale), i puntini portano a Modifica, Esporta, Elimina. */
 function rigaSopralluogoBoxHtml(x, espansoId) {
@@ -833,12 +819,11 @@ function rigaSopralluogoBoxHtml(x, espansoId) {
     ? '<button class="pill grigia chiudi" disabled>Aggiorna</button>'
     : '<button class="pill ok chiudi" data-az="sopralluogo-chiudi" data-id="' + h(x.id) + '">' + (vb ? 'Aggiorna' : 'Chiudi sopralluogo') + '</button>';
   const attivo = x.id === espansoId;
-  /* Chiuso: sotto la riga, nello stesso riquadro e senza tendina, i tre tastini del suo verbale —
-     Visualizza, Esporta (con la sua tendina), Modifica: gli stessi della card del verbale di giornata (22/09/2026). */
-  const verbale = !vb ? '' : '<div class="sop-verbale' + (attivo ? ' attivo' : '') + '"><div class="griglia tre">' +
+  /* Chiuso: sotto la riga, nello stesso riquadro e senza tendina, i due tastini del suo verbale —
+     Visualizza ed Esporta (con la sua tendina). Modifica è uscito il 24/09/2026: resta nei tre puntini. */
+  const verbale = !vb ? '' : '<div class="sop-verbale' + (attivo ? ' attivo' : '') + '"><div class="griglia">' +
     '<button class="btn" data-az="verbale-vedi" data-id="' + h(vb.id) + '">Visualizza</button>' +
-    tastoEsporta('vb-' + vb.id) +
-    '<button class="btn" data-az="pdf-modifica" data-id="' + h(vb.id) + '">Modifica</button></div>' +
+    tastoEsporta('vb-' + vb.id) + '</div>' +
     vociEsporta('vb-' + vb.id, 'verbale-esporta', vb.id, 'verbale-scarica', vb.id) + '</div>';
   return '<div class="ordine sop' + (attivo ? ' attivo' : '') + (vb ? ' con-verbale' : '') + '">' +
     '<button class="desc" data-az="sopralluogo-espandi" data-id="' + h(x.id) + '">' + h(suoNome || x.ora) +
@@ -856,12 +841,49 @@ function boxSopralluoghi(s, espansoId) {
   return html + '</div>';
 }
 
-/* Il contenuto del sopralluogo aperto, in un'unica tendina (22/09/2026), in ordine:
+/* Chi firma il sopralluogo (D22, 24/09/2026). Si sceglie nel sopralluogo, prima di chiuderlo:
+   s.firmatario è '' (non ancora scelto), 'nessuno', o l'id di un tecnico della scheda azienda.
+   Un sopralluogo chiuso prima ritrova il tecnico del suo verbale; un tecnico tolto dalla
+   scheda azienda vale come "non scelto". */
+function tecniciDi(s) { const az = aziendaDiCantiere(cantierePerCodice(s.cantiere)); return (az && az.tecnici) || []; }
+function firmatarioDi(s) {
+  let f = s.firmatario;
+  if (!f) { const vb = verbaleDiSopralluogo(s.codice); f = vb && vb.tecnicoId ? vb.tecnicoId : ''; }
+  if (f && f !== 'nessuno' && !tecniciDi(s).some(function (t) { return t.id === f; })) f = '';
+  return f;
+}
+function cardFirmaSopralluogo(x) {
+  const tecnici = tecniciDi(x);
+  const scelto = firmatarioDi(x);
+  const pill = function (val, etichetta) {
+    return '<button class="pill cod' + (scelto === val ? ' on' : '') + '" data-az="sopralluogo-firma" data-id="' + h(x.id) + '" data-firma="' + h(val) + '" aria-pressed="' + (scelto === val) + '">' + etichetta + '</button>';
+  };
+  return '<div class="card" id="firma-sop"><div class="card-capo">Chi firma questo sopralluogo' + (tecnici.length && !scelto ? '<span class="dx">da scegliere</span>' : '') + '</div>' +
+    (tecnici.length
+      ? '<div class="card-in"><div class="periodi">' + tecnici.map(function (t) { return pill(t.id, h(t.nome) + (t.ruolo ? ' · ' + h(t.ruolo) : '')); }).join('') + pill('nessuno', 'Nessuna firma') + '</div></div>'
+      : '<div class="card-corpo">Nessun tecnico nella scheda azienda.</div>') + '</div>';
+}
+// L'azienda senza tecnici: alla chiusura si sceglie fra aggiungerne uno e chiudere senza firma.
+let attesaSenzaTecnici = null;
+function chiediSenzaTecnici(az) {
+  return new Promise(function (ok) {
+    apriFoglio('<h2>Nessun tecnico nella scheda azienda</h2>' +
+      '<p>Il verbale di questo sopralluogo può uscire senza firma, oppure aggiungi prima un tecnico con la sua firma.</p>' +
+      (az ? '<button class="btn btn-ok" data-az="senza-tecnici" data-scelta="aggiungi">Aggiungi un tecnico</button>' : '') +
+      '<button class="btn" data-az="senza-tecnici" data-scelta="senza">Chiudi senza firma</button>' +
+      '<button class="btn" data-az="chiudi-foglio">Annulla</button>');
+    attesaSenzaTecnici = ok;
+  });
+}
+
+/* Il contenuto del sopralluogo aperto, sempre in vista dentro .sez-sop (24/09/2026: prima
+   stava nella tendina "Sezioni del sopralluogo"), in ordine:
    1. foto del sopralluogo, prima sezione, card piatta — 2. rilevamento d'ordine (se c'è) —
    3. le scritte (dettatura originale), piene poi vuote in coda. Materiali necessari
    non è più qui: è di tutta la giornata, vedi materialiGiornataHtml (17/09/2026). */
 function contenutoSopralluogoEspanso(x) {
-  let html = '';
+  // Per primo, sopra le foto: chi firma (D22).
+  let html = cardFirmaSopralluogo(x);
   if (String(x.sezioni.da_smistare || '').trim()) {
     html += '<div class="card gialla"><div class="card-capo gialla">Da smistare</div>' +
       '<textarea class="corpo" data-campo="sezione" data-id="' + h(x.id) + '" data-sezione="da_smistare">' + h(x.sezioni.da_smistare) + '</textarea>' +
@@ -876,10 +898,8 @@ function contenutoSopralluogoEspanso(x) {
   if (pezziVivi.length) interno += '<div class="card"><div class="card-capo">Audio<span class="dx">' + pezziVivi.length + ' · tocca per sentire</span></div>' + listaAudio(x, pezziVivi.slice().reverse()) + '</div>';
   const fotoPer = fotoPerSezione(x);
   const vuote = [];
-  let conta = 0;
   SEZIONI.forEach(function (z) {
     if (z.chiave === 'rilievi_ordine' || z.chiave === 'materiali_necessari') return;
-    conta++;
     const testo = x.sezioni[z.chiave] || '';
     const pezziQui = pezziVivi.filter(function (p) { return (p.sezioni || []).indexOf(z.chiave) !== -1 || p.sezione === z.chiave; });
     const fotoQui = fotoPer[z.chiave] || [];
@@ -889,8 +909,8 @@ function contenutoSopralluogoEspanso(x) {
     if (testo.trim() || fotoQui.length) interno += card; else vuote.push(card);
   });
   interno += vuote.join('');
-  html += tendinaApertaPerDefault('sez-sop-' + x.id, 'Sezioni del sopralluogo', interno, conta);
-  return html;
+  html += interno;
+  return '<div class="sez-sop">' + html + '</div>';
 }
 
 /* Il box dei sopralluoghi scorre da sé (max-height, .audio-lista.corta): se quello
@@ -905,35 +925,29 @@ function scrollASopralluogoAttivo() {
 /* Il filo azzurro che lega la riga scelta nel box (.ordine.sop.attivo) alle sue sezioni
    (dentro .zona-sop): due <path> disegnati in coordinate relative a .zona-sop (nessun
    viewBox, quindi 1 unità = 1px). Se la vista non è la giornata, o non c'è riga attiva,
-   .zona-sop/.ordine.sop.attivo/il tasto della tendina non esistono più nel DOM: i due
-   path restano vuoti da soli, senza bisogno di controllare la rotta. */
+   .zona-sop/.ordine.sop.attivo/.sez-sop non esistono più nel DOM: i due path restano
+   vuoti da soli, senza bisogno di controllare la rotta. Dal 24/09/2026 non c'è più la
+   tendina delle sezioni: il filo atterra sul primo riquadro di .sez-sop, con la stessa
+   curva di quando la tendina era aperta. */
 function misuraFiloSopralluogo() {
   const filoSop = document.getElementById('filo-sop'), filoSez = document.getElementById('filo-sez');
   if (!filoSop || !filoSez) return;
   const zona = document.querySelector('.zona-sop');
   const riga = zona && zona.querySelector('.ordine.sop.attivo');
-  const tend = zona && zona.querySelector(':scope > .tend');
-  if (!zona || !riga || !tend) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
+  const sez = zona && zona.querySelector(':scope > .sez-sop');
+  const carte = sez ? Array.prototype.filter.call(sez.querySelectorAll('.card'), function (c) { return c.offsetParent !== null; }) : [];
+  if (!riga || !carte.length) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
   const X1 = 2, X2 = 12, R = 9, GIU = 34;
-  const zr = zona.getBoundingClientRect(), rr = riga.getBoundingClientRect(), tr = tend.getBoundingClientRect();
+  const zr = zona.getBoundingClientRect(), rr = riga.getBoundingClientRect();
   const lista = riga.closest('.audio-lista') || riga.parentElement;
   const lr = lista.getBoundingClientRect();
   const xRiga = rr.left - zr.left;
   let centro = (rr.top + rr.bottom) / 2 - zr.top;
   centro = Math.min(Math.max(centro, lr.top - zr.top), lr.bottom - zr.top);
-  const yTend = (tr.top + tr.bottom) / 2 - zr.top;
-  const ySotto = (tr.bottom - zr.top) + 4;
-  if (tend.getAttribute('aria-expanded') !== 'true') {
-    filoSop.setAttribute('d', 'M ' + xRiga + ' ' + centro + ' H ' + (X1 + R) + ' Q ' + X1 + ' ' + centro + ' ' + X1 + ' ' + (centro + R) +
-      ' V ' + (yTend - R) + ' Q ' + X1 + ' ' + yTend + ' ' + (X1 + R) + ' ' + yTend + ' H ' + (X1 + X2));
-    filoSez.setAttribute('d', '');
-    return;
-  }
-  const box = tend.nextElementSibling;
-  const carte = box ? Array.prototype.filter.call(box.querySelectorAll('.card'), function (c) { return c.offsetParent !== null; }) : [];
-  if (!carte.length) { filoSop.setAttribute('d', ''); filoSez.setAttribute('d', ''); return; }
   const yCima = carte[0].getBoundingClientRect().top - zr.top;
   const yFine = carte[carte.length - 1].getBoundingClientRect().bottom - zr.top;
+  // Dove prima finiva il tasto della tendina: la curva parte all'altezza del primo riquadro.
+  const ySotto = yCima;
   const yAtterra = Math.min(yCima + GIU, yFine - 8);
   const s = (yAtterra - ySotto) * 0.55;
   filoSop.setAttribute('d', 'M ' + xRiga + ' ' + centro + ' H ' + (X1 + R) + ' Q ' + X1 + ' ' + centro + ' ' + X1 + ' ' + (centro + R) +
@@ -978,21 +992,31 @@ async function chiudiGiornata(sopId) {
   if (inCoda) testo = 'Una registrazione è ancora in coda: il suo testo non entrerà nel verbale. ' + testo;
   if (String(s.sezioni.da_smistare || '').trim()) testo = 'C\'è del testo da smistare: finirà nelle Note. ' + testo;
   testo += ' Gli audio già trascritti sono già stati cancellati dal telefono: resta il testo.';
-  // D6: se l'azienda ha tecnici in Schema, si chiede chi chiude — la sua firma va sul verbale.
-  const az = aziendaDiCantiere(cantierePerCodice(s.cantiere));
-  const tecnici = (az && az.tecnici) || [];
-  const extraTecnico = tecnici.length
-    ? '<label class="eticampo">Chi chiude questo sopralluogo</label><select class="campo" id="v-tecnico">' +
-      '<option value="">— nessuno —</option>' +
-      tecnici.map(function (t) { return '<option value="' + h(t.id) + '"' + (giaFatto && giaFatto.tecnicoId === t.id ? ' selected' : '') + '>' + h(t.nome) + '</option>'; }).join('') +
-      '</select>' : '';
+  /* D22 (24/09/2026): chi firma si sceglie nel sopralluogo, non più qui. Se l'azienda ha
+     tecnici e non è scelto nessuno, il verbale non si scrive; se non ne ha, si chiede se
+     aggiungerne uno o chiudere senza firma. La firma scelta va sul verbale (D6). */
+  let firmatario = firmatarioDi(s);
+  if (tecniciDi(s).length && !firmatario) {
+    // Il riquadro è quello del sopralluogo aperto nel box: si apre questo, poi ci si porta lì.
+    sopralluogoEspanso = s.id;
+    if (ROTTA.nome === 'giorno') aggiornaVista(); else vai('#/giorno/' + s.id);
+    avvisa('Scegli prima chi firma', 'att');
+    requestAnimationFrame(function () { const campo = document.getElementById('firma-sop'); if (campo) campo.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+    return;
+  }
+  if (!tecniciDi(s).length) {
+    const az = aziendaDiCantiere(cantierePerCodice(s.cantiere));
+    const scelta = await chiediSenzaTecnici(az);
+    if (scelta === 'aggiungi') { vai('#/modifica-azienda/' + az.id); return; }
+    if (scelta !== 'senza') return;
+    firmatario = 'nessuno';
+  }
+  const tecnicoScelto = firmatario === 'nessuno' ? null : firmatario;
   const ok = await chiedi(giaFatto ? 'Aggiornare il verbale?' : 'Scrivere il verbale?', testo, giaFatto ? 'Aggiorna il verbale' : 'Scrivi il verbale', '',
-    '<label class="eticampo">Nome del verbale</label><input class="campo" id="v-nome" maxlength="80" placeholder="facoltativo" value="' + h(giaFatto ? (giaFatto.nome || '') : '') + '">' + extraTecnico);
+    '<label class="eticampo">Nome del verbale</label><input class="campo" id="v-nome" maxlength="80" placeholder="facoltativo" value="' + h(giaFatto ? (giaFatto.nome || '') : '') + '">');
   // I campi si leggono prima di chiudere il foglio: dopo non ci sono più.
   const campoNome = document.getElementById('v-nome');
   const nomeScelto = campoNome ? campoNome.value.trim() : '';
-  const campoTecnico = document.getElementById('v-tecnico');
-  const tecnicoScelto = campoTecnico ? campoTecnico.value : (giaFatto ? giaFatto.tecnicoId : '');
   chiudiFoglio();
   if (!ok) return;
   const sezioni = {};
@@ -1127,7 +1151,7 @@ Object.assign(AZIONI, {
   },
   'menu-sopralluogo': function (el) { apriPunti(el.dataset.id); },
   // Un tocco su una riga del box apre quel sopralluogo qui sotto: non si cambia pagina (Fase 7.5).
-  'sopralluogo-espandi': function (el) { sopralluogoEspanso = el.dataset.id; chiudiSezioniSopralluogo(el.dataset.id); PUNTI_APERTI = null; aggiornaVista(); },
+  'sopralluogo-espandi': function (el) { sopralluogoEspanso = el.dataset.id; PUNTI_APERTI = null; aggiornaVista(); },
   'foto-marca-tutte-giorno': function (el) {
     const lista = [];
     sopralluoghiDelGiorno(el.dataset.cantiere, el.dataset.giorno).forEach(function (x) { fotoNormali(x).forEach(function (f) { lista.push({ sop: x, f: f }); }); });
@@ -1142,6 +1166,14 @@ Object.assign(AZIONI, {
   'menu-verbale': function (el) { apriPunti(el.dataset.id); },
   'sopralluogo-apri': function (el) { chiudiFoglio(); vai('#/giorno/' + el.dataset.id); },
   'sopralluogo-nome': function (el) { rinominaSopralluogo(el.dataset.id); },
+  'sopralluogo-firma': function (el) {
+    const s = sopralluogo(el.dataset.id);
+    if (!s) return;
+    s.firmatario = el.dataset.firma;
+    salva('sopralluogo', s);
+    aggiornaVista();
+  },
+  'senza-tecnici': function (el) { chiudiFoglio(); const f = attesaSenzaTecnici; attesaSenzaTecnici = null; if (f) f(el.dataset.scelta); },
   'sopralluogo-chiudi': function (el) { PUNTI_APERTI = null; chiudiFoglio(); chiudiGiornata(el.dataset.id); },
   'giornata-verbale': function (el) { faiVerbaleGiornata(el.dataset.cantiere, el.dataset.giorno); },
   /* "Verbale di sopralluogo" sul passaggio aperto: il suo PDF. Se il verbale non è ancora
