@@ -1320,12 +1320,11 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 .zona-sop .card + .card{margin-top:var(--s1)}
 .zona-sop .tend{width:100%;margin-bottom:var(--s1)}
 
-/* Il tasto della tendina unica rientra come le righe del box sopra (stesso --s3).
-   Le card, appena oltre X2 (12 in viste-giorno.js, il filo verticale che gli corre
-   di fianco): il minimo che le tiene a destra del filo senza che ci finisca sopra
-   (23/09/2026, su misura, il filo avvicinato al bordo sinistro su richiesta di Simone). */
-.zona-sop > .tend{margin-left:var(--s3)}
-.zona-sop > .tend + div .card{margin-left:14px}
+/* Le card del sopralluogo aperto, appena oltre X2 (12 in viste-giorno.js, il filo verticale
+   che gli corre di fianco): il minimo che le tiene a destra del filo senza che ci finisca sopra
+   (22/09/2026, su misura, il filo avvicinato al bordo sinistro su richiesta di Simone).
+   Dal 24/09/2026 non stanno più dentro una tendina ma in .sez-sop, sempre in vista. */
+.zona-sop > .sez-sop .card{margin-left:14px}
 
 /* Riga del sopralluogo non attiva: spenta, ma il tasto di chiusura resta leggibile.
    L'opacità va su desc/stato e non sull'intera riga: un genitore con opacity ridotta
@@ -1333,3 +1332,61 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
    non c'è modo di far risalire .chiudi da dentro, quindi resta fuori dalla regola. */
 .ordine.sop:not(.attivo) > .desc,
 .ordine.sop:not(.attivo) > .stato{opacity:.45}
+
+/* ============ 37. IL CALENDARIO DEI FILTRI (24/09/2026) ============
+   Il foglio di apriCalendario (ui.js), per il filtro Giorno e Settimana di Foto e Bolle.
+   È un comando di interfaccia: prende --azione, non il colore delle azioni. Le caselle
+   sono alte 44px, quanto serve al pollice. In settimana si evidenzia la riga intera. */
+.cal-capo{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s2)}
+.cal-capo b{font-size:var(--t3);font-weight:600}
+.cal-fr{width:44px;height:44px;border:1px solid var(--line);border-radius:var(--radius-p);background:var(--surface);color:var(--text);font-size:var(--t5);line-height:1}
+.cal-fr:disabled{opacity:.3}
+.cal{margin-bottom:var(--s2)}
+.cal-riga{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:2px;border-radius:var(--radius-p)}
+.cal-nomi span{text-align:center;font-size:var(--t1);color:var(--muted);padding:var(--s1) 0}
+.cal-g{position:relative;min-height:44px;padding:0;border:0;border-radius:var(--radius-p);background:transparent;color:var(--text);font-size:var(--t3);font-variant-numeric:tabular-nums}
+.cal-g.fuori{color:var(--muted)}
+.cal-g.oggi{box-shadow:inset 0 0 0 1px var(--muted)}
+.cal-g:disabled{opacity:.3}
+.cal-g.on{background:var(--azione);color:var(--bg);font-weight:700}
+.cal-g.punto::after{content:'';position:absolute;left:50%;bottom:6px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--azione)}
+.cal-g.on.punto::after{background:var(--bg)}
+.cal-g:focus-visible,.cal-fr:focus-visible{outline:2px solid var(--azione);outline-offset:-2px}
+.cal.sett .cal-riga.on{background:color-mix(in srgb, var(--azione) 22%, transparent);box-shadow:inset 0 0 0 2px var(--azione)}
+
+/* ============ 38. SCARICA I FILE (24/09/2026) ============
+   La schermata di impostazioni.js (vistaScaricaFile): una riga per file, con la casella
+   a sinistra. La foto tolta dal telefono dice "scaricata il gg/mm" al posto di "archiviata". */
+.riga.scarica{gap:var(--s3)}
+.riga.scarica .desc{min-width:0;overflow-wrap:anywhere}
+.riga.scarica .casella{
+  flex:0 0 auto;width:24px;height:24px;border:2px solid var(--line);border-radius:var(--radius-p);
+  display:flex;align-items:center;justify-content:center;font-size:var(--t2);font-weight:700;color:var(--bg);
+}
+.riga.scarica.on .casella{background:var(--azione);border-color:var(--azione)}
+.nota-scarica{margin:var(--s2) 0 0;font-size:var(--t2);color:var(--muted);line-height:1.4}
+.foto-mini .q.manca[data-quando]::after{content:'scaricata il ' attr(data-quando);padding:0 var(--s1);text-align:center;font-size:var(--t1);line-height:1.2}
+
+/* ============ 39. IL FOGLIO DEI COLORI (24/09/2026) ============
+   Aspetto: la riga del colore scelto apre un foglio come quello di Paint (impostazioni.js).
+   Righe da 8 caselle, così sul telefono restano grandi per il dito; stesse 8 per i
+   personalizzati. Quadrato e barra si trascinano: touch-action:none, se no la pagina scorre. */
+.colore-scelto{gap:var(--s3)}
+.colore-scelto .campione{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:var(--tinta);box-shadow:0 0 0 2px var(--surface) inset}
+.tav{display:grid;grid-template-columns:repeat(8,1fr);gap:var(--s2);margin-bottom:var(--s3)}
+.tav-c{aspect-ratio:1;width:100%;min-height:34px;padding:0;border:2px solid transparent;border-radius:var(--radius-p);background:var(--tinta)}
+.tav-c.scelta{border-color:var(--text);box-shadow:0 0 0 2px var(--surface) inset}
+.tav-c.vuota{display:block;background:transparent;border:1px dashed var(--line)}
+.tav-c:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.tav-eti{font-size:var(--t1);color:var(--muted);margin-bottom:var(--s1)}
+.col-ed{display:flex;gap:var(--s3);margin-bottom:var(--s3)}
+.col-qu,.col-lum{position:relative;height:160px;touch-action:none;border-radius:var(--radius-p);overflow:hidden;border:1px solid var(--line)}
+.col-qu{flex:1 1 auto}
+.col-lum{flex:0 0 32px}
+.col-qu canvas,.col-lum canvas{display:block;width:100%;height:100%}
+.col-mira{position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid var(--text);border-radius:50%;box-shadow:0 0 0 1px var(--bg);pointer-events:none}
+.col-fr{position:absolute;left:0;right:0;height:6px;margin-top:-3px;border:2px solid var(--text);box-shadow:0 0 0 1px var(--bg);pointer-events:none}
+.col-dati{display:grid;grid-template-columns:48px 1fr 1fr;gap:var(--s2);align-items:end;margin-bottom:var(--s2)}
+.col-ante{grid-row:1/3;align-self:stretch;border-radius:var(--radius-p);border:1px solid var(--line)}
+.col-campo{display:flex;flex-direction:column;gap:2px;font-size:var(--t1);color:var(--muted);min-width:0}
+.col-campo .campo{width:100%;min-width:0;font-variant-numeric:tabular-nums}

@@ -58,9 +58,6 @@ function suCampo(el, evento) {
   if (campo === 'filtro-verbali-cant') { filtroVerbaliCant = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-rilievi-cant') { filtroRilieviCant = el.value; aggiornaVista(); return; }
   if (campo === 'filtro-bolle-cant') { filtroBolleCant = el.value; aggiornaVista(); return; }
-  // I date-picker nativi arrivano già qui dall'ascoltatore generico su "input" (avvio.js sotto).
-  if (campo === 'foto-cant-giorno') { if (el.value) selFotoCant = { giorno: el.value, settimana: '' }; aggiornaVista(); return; }
-  if (campo === 'bolle-cant-giorno') { if (el.value) selBolleCant = { giorno: el.value, settimana: '' }; aggiornaVista(); return; }
   if (campo === 'filtro-doc-cant') { filtroDocCant = el.value; aggiornaVista(); return; }
   if (campo === 'sezione') {
     const s = sopralluogo(el.dataset.id);
@@ -149,15 +146,6 @@ function suCampo(el, evento) {
   }
   /* La ruota dei colori: si muove il cursore e il colore si vede subito, si
      salva quando si lascia andare. */
-  if (campo === 'colore-libero') {
-    const loc = leggiLocale();
-    if (!loc.colori) loc.colori = { primario: '', secondario: '' };
-    loc.colori[el.dataset.quale] = el.value;
-    if (evento === 'input') {
-      document.documentElement.style.setProperty(el.dataset.quale === 'primario' ? '--accent' : '--azione', el.value);
-    } else { salvaLocale(); applicaColori(); disegna(); }
-    return;
-  }
   if (campo === 'file-azienda' && evento === 'change') {
     const file = el.files && el.files[0];
     el.value = '';
@@ -259,6 +247,7 @@ function avvio() {
   ripescaDaAssegnare();
 
   leggiRotta();
+  chiudiTendine();
   disegna();
 
   // Un solo ascoltatore per tutti i tocchi
@@ -329,6 +318,7 @@ function avvio() {
     if (ROTTA.nome !== 'dev') devSbloccato = false;
     if (foglioAperto()) chiudiFoglio();
     chiudiFotocamera();
+    chiudiTendine();
     disegna();
     window.scrollTo(0, 0);
     if (ROTTA.nome === 'dev' && devSbloccato) misuraSpazio().then(aggiornaVista);
@@ -357,6 +347,9 @@ function avvio() {
   setInterval(controllaCambioGiorno, 60000);
   controllaPromemoria();
   misuraSpazio().then(function () { if (SPAZIO.avviso) aggiornaVista(); });
+  // Memoria protetta e avviso all'80% (24/09/2026): vedi impostazioni.js.
+  proteggiMemoria().then(function () { if (ROTTA.nome === 'impostazioni') aggiornaVista(); });
+  controllaMemoria();
   // Fase 5: il verbale della settimana appena chiusa si scrive da solo appena si apre l'app.
   creaVerbaliSettimanaScorsa();
   // Da mercoledì le settimane passate si chiudono da sole; poi si conta quella che aspetta "Libera memoria".
