@@ -86,6 +86,7 @@ async function apriFotocamera(sopId) {
   box.id = 'fotocamera';
   box.innerHTML = '<video autoplay playsinline muted></video>' +
     '<button class="chiudi" data-az="fotocamera-chiudi" aria-label="Chiudi">✕</button>' +
+    '<span class="conta" hidden></span>' +
     '<button class="scatta" data-az="fotocamera-scatta" aria-label="Scatta"></button>';
   document.body.appendChild(box);
   const video = box.querySelector('video');
@@ -93,7 +94,7 @@ async function apriFotocamera(sopId) {
   const track = stream.getVideoTracks()[0];
   // Il sensore lo zoom ce l'ha quasi solo su Chrome/Android; altrove (Safari, camere senza driver) si allarga il video.
   const cap = track.getCapabilities ? track.getCapabilities() : {};
-  CAMERA = { stream: stream, box: box, video: video, sop: sopId, track: track, pinch: null,
+  CAMERA = { stream: stream, box: box, video: video, sop: sopId, track: track, pinch: null, scatti: 0, coda: Promise.resolve(),
     zoomHw: !!cap.zoom, zMin: cap.zoom ? cap.zoom.min : 1, zMax: cap.zoom ? cap.zoom.max : 3,
     zoom: cap.zoom ? (track.getSettings().zoom || cap.zoom.min) : 1 };
   box.addEventListener('touchmove', pinchZoom, { passive: false });
@@ -124,24 +125,32 @@ function impostaZoom(z) {
   if (CAMERA.zoomHw) CAMERA.track.applyConstraints({ advanced: [{ zoom: CAMERA.zoom }] }).catch(function () {});
   else CAMERA.video.style.transform = 'scale(' + CAMERA.zoom + ')';
 }
-// Il fotogramma di adesso diventa un JPEG e prende la strada di ogni altra foto.
+/* Il fotogramma di adesso diventa un JPEG e prende la strada di ogni altra foto.
+   La fotocamera resta aperta (28/09/2026): in cantiere le foto si fanno in fila.
+   Un lampo e il numero in alto dicono che è presa; si esce con la ✕. */
 async function scattaFotocamera() {
   if (!CAMERA || !CAMERA.video.videoWidth) return;
-  const v = CAMERA.video, sop = CAMERA.sop;
+  const cam = CAMERA, v = cam.video, sop = cam.sop;
   const tela = document.createElement('canvas');
   tela.width = v.videoWidth; tela.height = v.videoHeight;
   const ctx = tela.getContext('2d');
   // Lo zoom vero è già nel fotogramma del sensore: si scatta com'è. Quello finto è solo sullo
   // schermo, quindi in fase di scatto si ritaglia il centro alla stessa proporzione dello schermo.
-  if (!CAMERA.zoomHw && CAMERA.zoom > 1) {
-    const z = CAMERA.zoom, sw = v.videoWidth / z, sh = v.videoHeight / z;
+  if (!cam.zoomHw && cam.zoom > 1) {
+    const z = cam.zoom, sw = v.videoWidth / z, sh = v.videoHeight / z;
     ctx.drawImage(v, (v.videoWidth - sw) / 2, (v.videoHeight - sh) / 2, sw, sh, 0, 0, tela.width, tela.height);
   } else ctx.drawImage(v, 0, 0);
+  cam.box.classList.remove('lampo'); void cam.box.offsetWidth; cam.box.classList.add('lampo');
   const blob = await new Promise(function (ok) { tela.toBlob(ok, 'image/jpeg', 0.92); });
   tela.width = 1; tela.height = 1;
-  chiudiFotocamera();
   if (!blob) { avvisa('Scatto non riuscito', 'err'); return; }
-  await aggiungiFoto(new File([blob], 'scatto.jpg', { type: 'image/jpeg' }), sop, 'scatto');
+  const conta = cam.box.querySelector('.conta');
+  conta.textContent = ++cam.scatti + ' foto';
+  conta.hidden = false;
+  // Uno dopo l'altro: si salvano in fila, così due scatti veloci non si pestano i piedi sul sopralluogo.
+  cam.coda = cam.coda.then(function () {
+    return aggiungiFoto(new File([blob], 'scatto.jpg', { type: 'image/jpeg' }), sop, 'scatto');
+  }).catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
 }
 
 // Il tasto Foto chiede prima fotocamera o galleria: un foglio con due scelte, come "Su quale cantiere?".

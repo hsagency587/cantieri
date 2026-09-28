@@ -1062,6 +1062,11 @@ textarea.corpo:focus{background:color-mix(in srgb, var(--accent) 5%, transparent
 #fotocamera .scatta{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.45);background-clip:padding-box}
 #fotocamera .scatta:active{transform:translateX(-50%) scale(.92)}
 #fotocamera .chiudi{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;font-size:22px}
+/* Dopo lo scatto la fotocamera resta aperta: un lampo bianco e il conto delle foto in alto a sinistra. */
+#fotocamera .conta{position:absolute;top:calc(20px + env(safe-area-inset-top));left:14px;padding:6px 12px;border-radius:999px;background:rgba(0,0,0,.5);color:#fff;font-size:var(--t2)}
+#fotocamera.lampo::after{content:"";position:absolute;inset:0;background:#fff;pointer-events:none;animation:lampo .25s ease-out forwards}
+@keyframes lampo{from{opacity:.7}to{opacity:0}}
+body:has(#fotocamera) .toast{z-index:1001}
 
 /* La riga in testa alla giornata: tutto su una riga sola. Il verbale di giornata è un
    tasto sottile — solo il contorno nel colore principale, stretto sulle parole. */
