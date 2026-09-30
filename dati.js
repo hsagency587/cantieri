@@ -51,6 +51,7 @@ function localeVuoto() {
     notificheChieste: false,
     promemoriaGiorno: null,
     github: { daMandare: false, ultimoInvio: null, errore: null, sha: null },
+    fileOnline: {},     // id → true: i file dell'azienda che sono già su GitHub
     scaricati: {},
     pdf: [],
     mail: '',
@@ -103,6 +104,7 @@ function leggiLocale() {
   } else LOCALE = base;
   if (!LOCALE.chiavi) LOCALE.chiavi = base.chiavi;
   if (!LOCALE.github) LOCALE.github = base.github;
+  if (!LOCALE.fileOnline) LOCALE.fileOnline = {};
   if (!Array.isArray(LOCALE.coda)) LOCALE.coda = [];
   if (!Array.isArray(LOCALE.proposte)) LOCALE.proposte = [];
   if (!Array.isArray(LOCALE.rilieviNuovi)) LOCALE.rilieviNuovi = [];
@@ -206,9 +208,17 @@ function salvaMedia(id, blob) {
     });
   });
 }
+/* Un file dell'azienda che non è in questo telefono è stato messo sull'altro:
+   si prende da GitHub, si tiene qui, e da lì in poi c'è anche senza rete. */
 function leggiMedia(rif) {
   const id = String(rif || '').replace(/^idb:/, '');
   if (!id) return Promise.resolve(null);
+  return leggiMediaQui(id).then(function (blob) {
+    if (blob || !fileAzienda().some(function (f) { return f.id === id; })) return blob;
+    return scaricaFileAzienda(id);
+  });
+}
+function leggiMediaQui(id) {
   return apriIDB().then(function (db) {
     return new Promise(function (ok, no) {
       const req = db.transaction(STORE_IDB, 'readonly').objectStore(STORE_IDB).get(id);
@@ -624,12 +634,25 @@ function salvagenteGitHub() {
   } catch (e) { /* niente da fare: riparte alla prossima apertura */ }
 }
 
-async function inviaGitHub() {
+/* Due scritture sullo stesso ramo nello stesso momento si pestano i piedi (GitHub
+   risponde 409): quelle di questo telefono passano una alla volta, in fila. */
+let filaGitHub = Promise.resolve();
+function inFilaGitHub(lavoro) {
+  const turno = filaGitHub.then(lavoro, lavoro);
+  filaGitHub = turno.catch(function () {});
+  return turno;
+}
+
+function inviaGitHub() { return inFilaGitHub(inviaGitHubOra); }
+async function inviaGitHubOra() {
   const loc = leggiLocale();
   if (!githubPronto() || !navigator.onLine) return false;
   const repo = repoGitHub();
   const intestazioni = { 'Authorization': 'Bearer ' + loc.chiavi.github, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' };
   const urlFile = 'https://api.github.com/repos/' + repo + '/contents/dati.json';
+  // Prima i file dell'azienda, poi il testo che li nomina: così l'altro telefono,
+  // quando legge il nome di un file, lo trova già online.
+  await inviaFileAzienda();
   try {
     let sha = null, remoto = null;
     const attuale = await fetch(urlFile + '?ref=dati&t=' + Date.now(), { headers: intestazioni, cache: 'no-store' });
@@ -673,4 +696,129 @@ async function inviaGitHub() {
     aggiornaSeDev();
     return false;
   }
+}
+
+/* ============================================================
+   I FILE DELL'AZIENDA SU GITHUB
+   Intestazione, piè di pagina, logo, firma, firme dei tecnici e documenti
+   dell'azienda. Nel testo c'è solo il loro nome ("idb:…"): il file vero sta
+   in IndexedDB. Senza questo blocco il file restava nel telefono dove era
+   stato messo, e l'altro telefono riceveva un nome senza file: l'intestazione
+   spariva da una parte e dall'altra, a turno (30/09/2026).
+   Ogni file va sul ramo "dati" in file/<id>, una volta sola: un file non
+   cambia mai, se si cambia l'immagine nasce un id nuovo.
+   Le foto dei cantieri e l'audio restano fuori: sono tanti e pesano.
+   ============================================================ */
+
+const PESO_MAX_FILE = 25 * 1024 * 1024;   // oltre, GitHub rifiuta la scrittura
+const RIPROVA_FILE = 60000;               // un file non trovato si richiede dopo un minuto
+const scaricandoFile = {};
+const fileMancati = {};
+
+// I file che l'azienda porta con sé: { id, nome }.
+function fileAzienda() {
+  const elenco = [];
+  const metti = function (rif, nome) {
+    const id = String(rif || '').replace(/^idb:/, '');
+    if (id) elenco.push({ id: id, nome: nome });
+  };
+  valori(leggiTutto().aziende).forEach(function (a) {
+    ['logo', 'firma', 'banda', 'bandaPiede'].forEach(function (k) { metti(a[k], k); });
+    (a.tecnici || []).forEach(function (t) { metti(t.firma, 'firma tecnico'); });
+    (a.documenti || []).forEach(function (d) { metti(d.file, d.nome || 'documento'); });
+  });
+  return elenco;
+}
+function urlFileGitHub(id) {
+  return 'https://api.github.com/repos/' + repoGitHub() + '/contents/file/' + encodeURIComponent(id);
+}
+function blobInBase64(blob) {
+  return new Promise(function (ok, no) {
+    const r = new FileReader();
+    r.onload = function () { ok(String(r.result).split(',')[1] || ''); };
+    r.onerror = function () { no(r.error); };
+    r.readAsDataURL(blob);
+  });
+}
+// Il tipo si legge dai primi byte: online il file non ha estensione.
+function tipoDaiByte(byte) {
+  const b = new Uint8Array(byte.slice(0, 4));
+  if (b[0] === 0xFF && b[1] === 0xD8) return 'image/jpeg';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return 'application/pdf';
+  return '';
+}
+
+/* Manda i file dell'azienda che sono in questo telefono e non ancora online.
+   Un file già online (422: esiste già) si segna e basta. Un errore non ferma gli
+   altri file né il testo: il file riparte al prossimo invio. */
+async function inviaFileAzienda() {
+  const loc = leggiLocale();
+  if (!githubPronto() || !navigator.onLine) return;
+  const qui = {};
+  (await elencaMedia()).forEach(function (m) { qui[m.id] = m.peso || 0; });
+  const intestazioni = { 'Authorization': 'Bearer ' + loc.chiavi.github, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' };
+  for (const f of fileAzienda()) {
+    if (loc.fileOnline[f.id] || !(f.id in qui)) continue;
+    if (qui[f.id] > PESO_MAX_FILE) { loc.github.errore = f.nome + ': troppo grande per GitHub'; continue; }
+    try {
+      const blob = await leggiMediaQui(f.id);
+      if (!blob) continue;
+      const corpo = { message: 'CANTIERI file ' + f.nome, content: await blobInBase64(blob), branch: 'dati' };
+      const r = await fetch(urlFileGitHub(f.id), { method: 'PUT', headers: intestazioni, body: JSON.stringify(corpo) });
+      if (!r.ok && r.status !== 422) throw new Error('GitHub ' + r.status);
+      loc.fileOnline[f.id] = true;
+      salvaLocale();
+    } catch (e) {
+      loc.github.errore = f.nome + ': ' + (e.message || String(e));
+      salvaLocale();
+    }
+  }
+}
+
+// Prende un file dell'azienda da GitHub e lo tiene nel telefono. Senza rete o senza file: null.
+function scaricaFileAzienda(id) {
+  if (scaricandoFile[id]) return scaricandoFile[id];
+  const loc = leggiLocale();
+  if (!githubPronto() || !navigator.onLine) return Promise.resolve(null);
+  if (fileMancati[id] && Date.now() - fileMancati[id] < RIPROVA_FILE) return Promise.resolve(null);
+  scaricandoFile[id] = (async function () {
+    try {
+      const r = await fetch(urlFileGitHub(id) + '?ref=dati&t=' + Date.now(), {
+        headers: { 'Authorization': 'Bearer ' + loc.chiavi.github, 'Accept': 'application/vnd.github.raw+json' },
+        cache: 'no-store'
+      });
+      // 404: l'altro telefono non l'ha ancora mandato. Si riprova più tardi.
+      if (!r.ok) throw new Error('GitHub ' + r.status);
+      const byte = await r.arrayBuffer();
+      const blob = new Blob([byte], { type: tipoDaiByte(byte) });
+      await salvaMedia(id, blob);
+      loc.fileOnline[id] = true;
+      salvaLocale();
+      delete fileMancati[id];
+      return blob;
+    } catch (e) {
+      fileMancati[id] = Date.now();
+      return null;
+    } finally {
+      delete scaricandoFile[id];
+    }
+  })();
+  return scaricandoFile[id];
+}
+
+/* All'apertura: manda quello che è solo qui, prende quello che è solo di là.
+   Così i file ci sono anche quando poi in cantiere la rete non c'è.
+   Dice quanti file sono arrivati, per ridisegnare la schermata. */
+async function allineaFileAzienda() {
+  if (!githubPronto() || !navigator.onLine) return 0;
+  await inFilaGitHub(inviaFileAzienda);
+  const qui = {};
+  (await elencaMedia()).forEach(function (m) { qui[m.id] = true; });
+  let arrivati = 0;
+  for (const f of fileAzienda()) {
+    if (qui[f.id]) continue;
+    if (await scaricaFileAzienda(f.id)) arrivati++;
+  }
+  return arrivati;
 }

@@ -324,7 +324,7 @@ function avvio() {
     if (ROTTA.nome === 'dev' && devSbloccato) misuraSpazio().then(aggiornaVista);
   });
 
-  window.addEventListener('online', function () { avvisa('Rete tornata', 'ok'); elaboraCoda(); if (leggiLocale().github.daMandare) programmaInvioGitHub(); aggiornaVista(); });
+  window.addEventListener('online', function () { avvisa('Rete tornata', 'ok'); elaboraCoda(); if (leggiLocale().github.daMandare) programmaInvioGitHub(); allineaFileAzienda().then(function (n) { if (n) aggiornaVista(); }).catch(function () {}); aggiornaVista(); });
   window.addEventListener('offline', function () { avvisa('Manca la rete', 'att'); aggiornaVista(); });
   // Prima di sparire si scrive quello che è rimasto in sospeso.
   window.addEventListener('pagehide', function () { salvaSubitoTutto(); salvagenteGitHub(); });
@@ -360,7 +360,9 @@ function avvio() {
     scaricaGitHub().then(function (cambiato) {
       if (cambiato) { sistemaAziende(); migraListini(); avvisa('Aggiornato da GitHub', 'ok'); aggiornaVista(); }
       if (leggiLocale().github.daMandare) programmaInvioGitHub();
-    }).catch(function () { /* il file può non esserci ancora: non è un errore */ });
+    }).catch(function () { /* il file può non esserci ancora: non è un errore */ })
+      // Poi i file dell'azienda (intestazione, firme…): quelli messi di là arrivano qui.
+      .then(allineaFileAzienda).then(function (arrivati) { if (arrivati) aggiornaVista(); }).catch(function () {});
   }
 }
 
