@@ -1141,6 +1141,23 @@ body:has(#fotocamera) .toast{z-index:1001}
 #ritaglio .chiudi{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;font-size:22px}
 #ritaglio .barra{background:linear-gradient(to top,#000 72%,transparent)}
 
+/* Il disegno sulla foto (02/10/2026): tutto schermo come il ritaglio. In alto gli strumenti
+   e la ✕, in mezzo la foto, sopra la barra i colori e i due spessori. */
+#disegno{position:fixed;inset:0;z-index:1000;background:#000}
+#disegno .area{position:absolute;left:0;right:0;top:calc(64px + env(safe-area-inset-top));bottom:calc(152px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:center}
+#disegno canvas{display:block;touch-action:none}
+#disegno .strumenti{position:absolute;top:calc(10px + env(safe-area-inset-top));left:14px;display:flex;gap:8px}
+#disegno .opzioni{position:absolute;left:0;right:0;bottom:calc(96px + env(safe-area-inset-bottom));display:flex;justify-content:center;align-items:center;gap:12px}
+#disegno .strumenti button,#disegno .spessore{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid transparent;color:#fff;display:flex;align-items:center;justify-content:center;padding:0}
+#disegno .strumenti svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#disegno .spessore i{display:block;border-radius:50%;background:#fff}
+#disegno .colore{width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.35);padding:0}
+#disegno button.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 30%, transparent)}
+#disegno .colore.on{border:3px solid var(--accent);box-shadow:0 0 0 2px #000 inset}
+#disegno .chiudi{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0;font-size:22px}
+#disegno .barra{background:linear-gradient(to top,#000 72%,transparent)}
+body:has(#disegno) .toast{z-index:1001;bottom:calc(164px + env(safe-area-inset-bottom))}
+
 /* ============ 29. LE TENDINE DUE PER RIGA ============
    Le tendine di una schermata stanno in una griglia a due colonne. Quella
    aperta prende la riga intera, e il suo contenuto sotto; le altre scendono e

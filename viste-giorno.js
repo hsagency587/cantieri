@@ -127,9 +127,13 @@ function impostaZoom(z) {
 }
 /* Il fotogramma di adesso diventa un JPEG e prende la strada di ogni altra foto.
    La fotocamera resta aperta (28/09/2026): in cantiere le foto si fanno in fila.
-   Un lampo e il numero in alto dicono che è presa; si esce con la ✕. */
+   Un lampo e il numero in alto dicono che è presa; si esce con la ✕.
+   Dal 02/10/2026, salvata, la foto si apre subito nel disegno: OK la tiene (con o
+   senza segni) e torna alla fotocamera; la ✕, toccata due volte, la butta. Finché
+   la foto è aperta non si scatta: cam.occupata. */
 async function scattaFotocamera() {
-  if (!CAMERA || !CAMERA.video.videoWidth) return;
+  if (!CAMERA || CAMERA.occupata || !CAMERA.video.videoWidth) return;
+  CAMERA.occupata = true;
   const cam = CAMERA, v = cam.video, sop = cam.sop;
   const tela = document.createElement('canvas');
   tela.width = v.videoWidth; tela.height = v.videoHeight;
@@ -143,14 +147,160 @@ async function scattaFotocamera() {
   cam.box.classList.remove('lampo'); void cam.box.offsetWidth; cam.box.classList.add('lampo');
   const blob = await new Promise(function (ok) { tela.toBlob(ok, 'image/jpeg', 0.92); });
   tela.width = 1; tela.height = 1;
-  if (!blob) { avvisa('Scatto non riuscito', 'err'); return; }
-  const conta = cam.box.querySelector('.conta');
-  conta.textContent = ++cam.scatti + ' foto';
-  conta.hidden = false;
+  if (!blob) { cam.occupata = false; avvisa('Scatto non riuscito', 'err'); return; }
+  contaScatti(cam, 1);
   // Uno dopo l'altro: si salvano in fila, così due scatti veloci non si pestano i piedi sul sopralluogo.
   cam.coda = cam.coda.then(function () {
     return aggiungiFoto(new File([blob], 'scatto.jpg', { type: 'image/jpeg' }), sop, 'scatto');
-  }).catch(function (e) { avvisa('Errore: ' + e.message, 'err'); });
+  }).then(function (f) {
+    if (f && CAMERA === cam) return apriDisegno(sop, f.id, true);
+  }).catch(function (e) { avvisa('Errore: ' + e.message, 'err'); })
+    // Se la foto non si è aperta (non salvata, illeggibile) si torna subito a scattare.
+    .then(function () { if (!DISEGNO) cam.occupata = false; });
+}
+function contaScatti(cam, piu) {
+  const conta = cam.box.querySelector('.conta');
+  cam.scatti += piu;
+  conta.textContent = cam.scatti + ' foto';
+  conta.hidden = !cam.scatti;
+}
+
+/* ---- il disegno sulla foto (02/10/2026) ----
+   Dalla schermata grande della foto: pennello, quadrato, cerchio e X, in tre colori e due
+   spessori. Le forme si tirano col dito da un angolo all'altro. I segni restano a parte
+   finché non si salva; salvati, entrano nella foto (e nei PDF). L'originale resta in
+   f.originale, così "Togli i disegni" la rimette com'era. */
+let DISEGNO = null;
+const COLORI_DISEGNO = ['#e53935', '#fdd835', '#ffffff'];
+const SPESSORI_DISEGNO = [1 / 160, 1 / 70];   // del lato lungo della foto
+const ICONE_DISEGNO = {
+  penna: '<path d="M4 20l4-1L19 8l-3-3L5 16z"/>',
+  quadrato: '<rect x="4" y="4" width="16" height="16"/>',
+  cerchio: '<circle cx="12" cy="12" r="8"/>',
+  x: '<path d="M5 5l14 14M19 5L5 19"/>'
+};
+// scatto: la foto è appena uscita dalla fotocamera dell'app — il tasto dice OK, e la ✕ la butta.
+async function apriDisegno(sopId, fotoId, scatto) {
+  const s = sopralluogo(sopId), f = s && trovaFoto(s, fotoId);
+  if (DISEGNO || !f || !f.file) return;
+  const blob = await leggiMedia(f.file);
+  if (!blob) { avvisa('Foto non leggibile', 'err'); return; }
+  let im;
+  try { im = await apriImmagine(blob); } catch (e) { avvisa(e.message, 'err'); return; }
+  const box = document.createElement('div');
+  box.id = 'disegno';
+  box.innerHTML = '<div class="strumenti">' + Object.keys(ICONE_DISEGNO).map(function (k) {
+      return '<button data-az="disegno-strumento" data-s="' + k + '" aria-label="' + { penna: 'Pennello', quadrato: 'Quadrato', cerchio: 'Cerchio', x: 'X' }[k] + '">' +
+        '<svg viewBox="0 0 24 24">' + ICONE_DISEGNO[k] + '</svg></button>';
+    }).join('') + '</div>' +
+    '<button class="chiudi" data-az="disegno-esci" aria-label="Esci">✕</button>' +
+    '<div class="area"><canvas></canvas></div>' +
+    '<div class="opzioni">' + COLORI_DISEGNO.map(function (c, i) {
+      return '<button class="colore" data-az="disegno-colore" data-i="' + i + '" style="background:' + c + '" aria-label="Colore ' + (i + 1) + '"></button>';
+    }).join('') + SPESSORI_DISEGNO.map(function (x, i) {
+      return '<button class="spessore" data-az="disegno-spessore" data-i="' + i + '" aria-label="' + (i ? 'Grosso' : 'Sottile') + '"><i style="width:' + (i ? 16 : 7) + 'px;height:' + (i ? 16 : 7) + 'px"></i></button>';
+    }).join('') + '</div>' +
+    '<div class="barra"><button class="az verde" data-az="disegno-salva">' + (scatto ? 'OK' : 'Salva') + '</button><button class="az stretta" data-az="disegno-annulla">↶ Annulla</button></div>';
+  document.body.appendChild(box);
+  const W = im.naturalWidth || im.width, A = im.naturalHeight || im.height;
+  const area = box.querySelector('.area'), tela = box.querySelector('canvas');
+  tela.width = W; tela.height = A;
+  // La tela piena come la foto, mostrata adattata all'area libera, come il ritaglio della bolla.
+  const scala = Math.min(area.clientWidth / W, area.clientHeight / A);
+  tela.style.width = Math.round(W * scala) + 'px'; tela.style.height = Math.round(A * scala) + 'px';
+  DISEGNO = { box: box, tela: tela, ctx: tela.getContext('2d'), im: im, sop: sopId, foto: fotoId, lato: Math.max(W, A),
+    segni: [], segno: null, strumento: 'penna', colore: 0, spessore: 0, esci: false, salvando: false, scatto: !!scatto };
+  tela.addEventListener('pointerdown', inizioSegno);
+  tela.addEventListener('pointermove', muoviSegno);
+  tela.addEventListener('pointerup', fineSegno);
+  tela.addEventListener('pointercancel', fineSegno);
+  segnaSceltiDisegno();
+  ridisegna();
+}
+function chiudiDisegno() {
+  if (!DISEGNO) return;
+  if (DISEGNO.im.close) DISEGNO.im.close();
+  DISEGNO.tela.width = 1; DISEGNO.tela.height = 1;
+  DISEGNO.box.remove();
+  DISEGNO = null;
+  // Chiusa la foto appena scattata, sotto c'è la fotocamera: si torna a scattare.
+  if (CAMERA) CAMERA.occupata = false;
+}
+function segnaSceltiDisegno() {
+  const d = DISEGNO;
+  d.box.querySelectorAll('[data-az^="disegno-"]').forEach(function (b) {
+    const az = b.dataset.az;
+    b.classList.toggle('on', (az === 'disegno-strumento' && b.dataset.s === d.strumento) ||
+      (az === 'disegno-colore' && +b.dataset.i === d.colore) || (az === 'disegno-spessore' && +b.dataset.i === d.spessore));
+  });
+}
+function tracciaSegno(ctx, s) {
+  const a = s.punti[0], b = s.punti[s.punti.length - 1];
+  ctx.strokeStyle = s.colore; ctx.lineWidth = s.spessore; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (s.tipo === 'penna') { ctx.moveTo(a[0], a[1]); s.punti.forEach(function (p) { ctx.lineTo(p[0], p[1]); }); }
+  else if (s.tipo === 'quadrato') ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  else if (s.tipo === 'cerchio') ctx.ellipse((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2, Math.abs(b[1] - a[1]) / 2, 0, 0, 2 * Math.PI);
+  else { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(b[0], a[1]); ctx.lineTo(a[0], b[1]); }
+  ctx.stroke();
+}
+function ridisegna() {
+  const d = DISEGNO;
+  d.ctx.drawImage(d.im, 0, 0, d.tela.width, d.tela.height);
+  d.segni.forEach(function (s) { tracciaSegno(d.ctx, s); });
+  if (d.segno) tracciaSegno(d.ctx, d.segno);
+}
+function puntoDisegno(ev) {
+  const r = DISEGNO.tela.getBoundingClientRect();
+  return [(ev.clientX - r.left) * DISEGNO.tela.width / r.width, (ev.clientY - r.top) * DISEGNO.tela.height / r.height];
+}
+function inizioSegno(ev) {
+  const d = DISEGNO;
+  if (!d || d.segno) return;
+  ev.preventDefault();
+  d.tela.setPointerCapture(ev.pointerId);
+  const p = puntoDisegno(ev);
+  d.esci = false;
+  d.segno = { tipo: d.strumento, colore: COLORI_DISEGNO[d.colore], spessore: Math.max(2, d.lato * SPESSORI_DISEGNO[d.spessore]), punti: [p, p] };
+  if (d.segno.tipo === 'penna') tracciaSegno(d.ctx, d.segno);
+}
+function muoviSegno(ev) {
+  const d = DISEGNO;
+  if (!d || !d.segno) return;
+  const p = puntoDisegno(ev), s = d.segno;
+  // Il pennello aggiunge solo il pezzetto nuovo; una forma cambia tutta, quindi si ridisegna.
+  if (s.tipo === 'penna') { tracciaSegno(d.ctx, { tipo: 'penna', colore: s.colore, spessore: s.spessore, punti: [s.punti[s.punti.length - 1], p] }); s.punti.push(p); }
+  else { s.punti[1] = p; ridisegna(); }
+}
+function fineSegno() {
+  const d = DISEGNO;
+  if (!d || !d.segno) return;
+  const s = d.segno, a = s.punti[0], b = s.punti[s.punti.length - 1];
+  d.segno = null;
+  // Un tocco solo con una forma non disegna niente: non diventa un segno da annullare.
+  if (s.tipo === 'penna' || Math.hypot(b[0] - a[0], b[1] - a[1]) > s.spessore) d.segni.push(s);
+  ridisegna();
+}
+async function salvaDisegno() {
+  const d = DISEGNO;
+  if (!d || d.salvando) return;
+  if (!d.segni.length) { chiudiDisegno(); return; }
+  const s = sopralluogo(d.sop), f = s && trovaFoto(s, d.foto);
+  if (!f || !f.file) { chiudiDisegno(); return; }
+  d.salvando = true;
+  ridisegna();
+  const ridotta = await blobDaTela(d.tela, QUALITA_FOTO);
+  chiudiDisegno();
+  let rif;
+  try { rif = await salvaMedia(nuovoId(), ridotta.blob); }
+  catch (e) { avvisa('Disegno non salvato', 'err'); return; }
+  // La prima volta l'originale si mette da parte; le volte dopo si butta solo la versione disegnata di prima.
+  if (f.originale) { scordaFoto(f.file); await cancellaMedia(f.file); }
+  else f.originale = f.file;
+  f.file = rif; f.peso = ridotta.blob.size;
+  salva('sopralluogo', s);
+  avvisa('Disegno salvato', 'ok');
+  aggiornaVista();
 }
 
 // Il tasto Foto chiede prima fotocamera o galleria: un foglio con due scelte, come "Su quale cantiere?".
@@ -215,6 +365,7 @@ async function aggiungiFoto(file, sopId, origine, genere) {
   if (doc) { avvisa(GENERI[genere] + ' salvata', 'ok'); aggiornaVista(); return; }
   avvisa('Foto salvata · ' + fotoNormali(s).length + ' oggi', 'ok');
   aggiornaVista();
+  return f;
 }
 
 /* Tolta una registrazione, si toglie l'audio dal telefono e i suoi lavori dalla coda.
@@ -235,6 +386,7 @@ async function eliminaFoto(s, f) {
   loc.coda = loc.coda.filter(function (l) { return l.foto !== f.id; });
   salvaLocale();
   if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+  if (f.originale) await cancellaMedia(f.originale);
   if (f.lettura) await cancellaMedia(f.lettura);
   if (f.audio) await cancellaMedia(f.audio);
   s.media = (s.media || []).filter(function (m) { return m !== f; });
@@ -244,6 +396,7 @@ async function eliminaFoto(s, f) {
 async function cancellaFileFoto(s) {
   for (const f of fotoDi(s)) {
     if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+    if (f.originale) await cancellaMedia(f.originale);
     if (f.lettura) await cancellaMedia(f.lettura);
     if (f.audio) await cancellaMedia(f.audio);
   }
@@ -573,10 +726,12 @@ async function faiVerbaleGiornata(codiceCantiere, giorno) {
 /* L'impronta di quello che entra in un verbale: le sezioni, le foto spuntate con il
    loro referto e la loro sezione, i documenti nel PDF. Si salva sul verbale quando lo
    si scrive; finché non cambia nemmeno una virgola, "Aggiorna" non ha niente da fare. */
+// Una foto disegnata porta anche il suo file: le altre restano com'erano, e i verbali già scritti restano allineati.
+function improntaFoto(f) { const r = [f.id, f.referto || '', sezioneFoto(f)]; if (f.originale) r.push(f.file); return r; }
 function improntaSopralluogo(s) {
   return JSON.stringify([
     CHIAVI_SEZIONI.map(function (k) { return s.sezioni[k] || ''; }), s.sezioni.da_smistare || '',
-    fotoNormali(s).filter(function (f) { return f.nelPdf; }).map(function (f) { return [f.id, f.referto || '', sezioneFoto(f)]; }),
+    fotoNormali(s).filter(function (f) { return f.nelPdf; }).map(improntaFoto),
     documentiDi(s).filter(function (f) { return f.nelPdf; }).map(function (f) { return [f.id, f.referto || '']; })
   ]);
 }
@@ -586,7 +741,7 @@ function improntaSopralluogo(s) {
 function improntaGiornata(sops) {
   return JSON.stringify(sops.map(function (x) {
     const vb = verbaleDiSopralluogo(x.codice);
-    const fotoGiorno = fotoNormali(x).filter(function (f) { return marcataGiorno(f); }).map(function (f) { return [f.id, f.referto || '', sezioneFoto(f)]; });
+    const fotoGiorno = fotoNormali(x).filter(function (f) { return marcataGiorno(f); }).map(improntaFoto);
     return [x.codice, x.ora, x.nome || '', vb ? CHIAVI_SEZIONI.map(function (k) { return vb.sezioni[k] || ''; }) : null, improntaSopralluogo(x), fotoGiorno];
   }));
 }
@@ -1103,6 +1258,9 @@ function vistaFoto(sopId, fotoId) {
     SEZIONI.map(function (z) { return '<button class="btn' + (z.chiave === sezione ? ' btn-ok' : '') + '" data-az="foto-sezione" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '" data-sezione="' + z.chiave + '">' + h(z.nome) + '</button>'; }).join('') +
     '</div></div>';
   html += '<div class="modulo">' +
+    // Si disegna solo su una foto vera che è ancora nel telefono; un documento resta com'è.
+    (!doc && f.file ? '<button class="btn" style="margin-bottom:8px" data-az="foto-disegna" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">Disegna sulla foto</button>' +
+      (f.originale ? '<button class="btn" style="margin-bottom:8px" data-az="foto-togli-disegni" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">Togli i disegni</button>' : '') : '') +
     (f.genere ? '<button class="btn' + (f.cantiere ? ' btn-ok' : '') + '" style="margin-bottom:8px" data-az="foto-cantiere" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.cantiere ? '✓ Vale per tutto il cantiere' : 'Vale per tutto il cantiere') + '</button>' : '') +
     (doc
       ? '<button class="btn' + (f.nelPdf ? ' btn-ok' : '') + '" data-az="foto-marca" data-campo="nelPdf" data-sop="' + h(s.id) + '" data-id="' + h(f.id) + '">' + (f.nelPdf ? '✓ Nel PDF' : 'Metti nel PDF') + '</button>'
@@ -1319,6 +1477,45 @@ Object.assign(AZIONI, {
   'foto-fotocamera': function (el) { chiudiFoglio(); apriFotocamera(el.dataset.id); },
   'fotocamera-scatta': function () { return scattaFotocamera(); },
   'fotocamera-chiudi': function () { chiudiFotocamera(); },
+  'foto-disegna': function (el) { return apriDisegno(el.dataset.sop, el.dataset.id); },
+  'disegno-strumento': function (el) { DISEGNO.strumento = el.dataset.s; segnaSceltiDisegno(); },
+  'disegno-colore': function (el) { DISEGNO.colore = +el.dataset.i; segnaSceltiDisegno(); },
+  'disegno-spessore': function (el) { DISEGNO.spessore = +el.dataset.i; segnaSceltiDisegno(); },
+  'disegno-annulla': function () { if (DISEGNO.segni.pop()) ridisegna(); },
+  'disegno-salva': function () { return salvaDisegno(); },
+  // Con dei segni non salvati, la ✕ chiede un secondo tocco: un dito storto non butta via il lavoro.
+  // Sulla foto appena scattata la ✕ butta la foto, sempre col secondo tocco; poi si torna a scattare.
+  'disegno-esci': async function () {
+    const d = DISEGNO;
+    if (d.scatto) {
+      if (!d.esci) { d.esci = true; avvisa('Tocca ancora ✕ per buttare questa foto', 'att'); return; }
+      const s = sopralluogo(d.sop), f = s && trovaFoto(s, d.foto);
+      chiudiDisegno();
+      if (!f) return;
+      await eliminaFoto(s, f);
+      if (CAMERA) contaScatti(CAMERA, -1);
+      avvisa('Foto buttata', 'ok');
+      aggiornaVista();
+      return;
+    }
+    if (DISEGNO.segni.length && !DISEGNO.esci) { DISEGNO.esci = true; avvisa('Tocca ancora ✕ per uscire senza salvare', 'att'); return; }
+    chiudiDisegno();
+  },
+  'foto-togli-disegni': async function (el) {
+    const s = sopralluogo(el.dataset.sop);
+    const f = s ? trovaFoto(s, el.dataset.id) : null;
+    if (!f || !f.originale) return;
+    const ok = await chiedi('Togliere i disegni?', 'La foto torna com\'era prima di disegnarci sopra.', 'Togli i disegni', 'rosso');
+    chiudiFoglio();
+    if (!ok) return;
+    const orig = await leggiMedia(f.originale);
+    if (!orig) { avvisa('La foto originale non c\'è più', 'err'); return; }
+    if (f.file) { scordaFoto(f.file); await cancellaMedia(f.file); }
+    f.file = f.originale; f.originale = null; f.peso = orig.size;
+    salva('sopralluogo', s);
+    avvisa('Disegni tolti', 'ok');
+    aggiornaVista();
+  },
   'foto-rullino': function () { chiudiFoglio(); const f = document.getElementById('file-foto-rullino'); if (f) f.click(); },
   'foto-sezione': function (el) {
     const s = sopralluogo(el.dataset.sop);

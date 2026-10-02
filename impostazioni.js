@@ -520,6 +520,7 @@ async function liberaSpazioMese(mese) {
       if (!f.file || !f.scaricato) continue;
       scordaFoto(f.file);
       await cancellaMedia(f.file);
+      if (f.originale) { await cancellaMedia(f.originale); f.originale = null; }
       f.file = null; f.archiviato = oggi; toccato = true;
     }
     if (toccato) salva('sopralluogo', s);
@@ -613,6 +614,7 @@ async function scaricaSegnati(c) {
       if (x.pdf) { await eliminaPdf(x.pdf.id); continue; }
       scordaFoto(x.f.file);
       await cancellaMedia(x.f.file);
+      if (x.f.originale) { await cancellaMedia(x.f.originale); x.f.originale = null; }
       x.f.file = null; x.f.archiviato = oggi;
     }
     toccati.forEach(function (s) { salva('sopralluogo', s); });
