@@ -295,7 +295,7 @@ function apriEsportaPdf(sopId, idVerbale) {
     '<button class="pill cod" data-az="pdf-quando" data-quando="mese-scorso">mese scorso</button>' +
     '</div>' +
     '<div style="display:flex;gap:8px"><div style="flex:1"><label class="eticampo">Dal</label><input class="campo" type="date" id="pdf-dal" value="' + h(primo) + '"></div><div style="flex:1"><label class="eticampo">Al</label><input class="campo" type="date" id="pdf-al" value="' + h(v.giorno) + '"></div></div></div>' +
-    '<div id="pdf-sezione" hidden><label class="eticampo">Sezione</label><select class="campo" id="pdf-quale">' + SEZIONI.map(function (z) { return '<option value="' + z.chiave + '">' + h(z.nome) + '</option>'; }).join('') + '</select>' +
+    '<div id="pdf-sezione" hidden><label class="eticampo">Sezione</label><select class="campo" id="pdf-quale">' + SEZIONI.filter(function (z) { return z.chiave !== 'rilievi_ordine'; }).map(function (z) { return '<option value="' + z.chiave + '">' + h(z.nome) + '</option>'; }).join('') + '</select>' +
     '<label class="eticampo">Di quali verbali</label><select class="campo" id="pdf-ambito" data-campo="pdf-ambito"><option value="questo">Solo questo verbale</option><option value="periodo">Tutti quelli di un periodo</option></select></div>' +
     '<button class="btn btn-ok" data-az="pdf-crea" data-id="' + h(v.id) + '">Crea il PDF</button>' +
     '<button class="btn" data-az="chiudi-foglio">Annulla</button>'
@@ -416,6 +416,30 @@ function spezzaRighe(font, testo, corpo, larghezza) {
     if (riga) righe.push(riga);
   });
   return righe;
+}
+
+/* Nei PDF dei verbali la voce "Rilievi per l'ordine" non ha un titolo suo:
+   i rilievi si stampano sotto "Materiali necessari", dopo il testo dei
+   materiali. Nel sopralluogo restano due campi separati. Restituisce i pezzi
+   da scrivere sotto il titolo della sezione k, ognuno con il suo modo
+   (elenco puntato o testo di seguito); vuoto se la sezione non si stampa. */
+function pezziSezionePdf(sezioni, k) {
+  if (k === 'rilievi_ordine') return [];
+  const def = SEZIONI.find(function (z) { return z.chiave === k; });
+  const pezzi = [];
+  const testo = String(sezioni[k] || '').trim();
+  if (testo) pezzi.push({ testo: testo, elenco: def.elenco });
+  if (k === 'materiali_necessari') {
+    const ril = String(sezioni.rilievi_ordine || '').trim();
+    if (ril) pezzi.push({ testo: ril, elenco: true });
+  }
+  return pezzi;
+}
+// Le foto seguono la stessa regola: quelle dei rilievi vanno sotto Materiali necessari.
+function fotoSezionePdf(per, k) {
+  if (k === 'rilievi_ordine') return [];
+  const foto = (per || {})[k] || [];
+  return k === 'materiali_necessari' ? foto.concat((per || {}).rilievi_ordine || []) : foto;
 }
 
 async function costruisciPdf(verbali, soloSezione, riassunto, info) {
@@ -682,16 +706,18 @@ async function costruisciPdf(verbali, soloSezione, riassunto, info) {
     const fotoQui = fotoPerVerbale[v.id] || {};
     let stampate = 0;
     chiavi.forEach(function (k) {
-      const testo = String(v.sezioni[k] || '').trim();
-      const foto = fotoQui[k] || [];
-      if (!testo && !foto.length) return;
+      const pezzi = pezziSezionePdf(v.sezioni, k);
+      const foto = fotoSezionePdf(fotoQui, k);
+      if (!pezzi.length && !foto.length) return;
       const def = SEZIONI.find(function (z) { return z.chiave === k; });
       // Una sezione di sole foto: il titolo deve stare nella stessa pagina della prima foto, non orfano in fondo.
-      spazio(40 + (testo ? 0 : altezzaFoto(foto[0], c) + 40));
+      spazio(40 + (pezzi.length ? 0 : altezzaFoto(foto[0], c) + 40));
       scrivi(def.nome.toUpperCase(), 11, grassetto);
-      if (!testo) { /* sezione con sole foto: il titolo fa da intestazione e basta */ }
-      else if (def.elenco) righeElenco(testo).forEach(function (r) { scrivi('• ' + r, 11, normale, null, 6); });
-      else scrivi(testo, 11, normale);
+      // Sezione con sole foto: il titolo fa da intestazione e basta.
+      pezzi.forEach(function (p) {
+        if (p.elenco) righeElenco(p.testo).forEach(function (r) { scrivi('• ' + r, 11, normale, null, 6); });
+        else scrivi(p.testo, 11, normale);
+      });
       disegnaFotoGriglia(foto, c);
       y -= 8;
       stampate++;
@@ -732,7 +758,8 @@ async function preparaFotoPdf(doc, verbali, soloSezione) {
       // Il verbale di giornata legge la selezione di giornata (marcataGiorno), quello del sopralluogo la sua (nelPdf): sono due scelte indipendenti.
       if (!(v.giornata ? marcataGiorno(f) : f.nelPdf)) continue;
       const k = sezioneFoto(f);
-      if (soloSezione && k !== soloSezione) continue;
+      // I rilievi d'ordine si stampano sotto Materiali necessari: chi chiede quella sezione ha anche le loro foto.
+      if (soloSezione && k !== soloSezione && !(soloSezione === 'materiali_necessari' && k === 'rilievi_ordine')) continue;
       let img = null;
       if (f.file) {
         const blob = await leggiMedia(f.file);
@@ -918,14 +945,16 @@ function disegnaGiornataPdf(v, a) {
   a.giu(4);
   let riassunte = 0;
   CHIAVI_SEZIONI.forEach(function (k) {
-    const testo = String(v.sezioni[k] || '').trim();
-    if (!testo) return;
+    const pezzi = pezziSezionePdf(v.sezioni, k);
+    if (!pezzi.length) return;
     riassunte++;
     const def = SEZIONI.find(function (z) { return z.chiave === k; });
     a.spazio(30);
     a.scrivi(def.nome.toUpperCase(), 10, a.grassetto, grigio);
-    if (def.elenco) righeElenco(testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); });
-    else a.scrivi(testo, 11, a.normale);
+    pezzi.forEach(function (p) {
+      if (p.elenco) righeElenco(p.testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); });
+      else a.scrivi(p.testo, 11, a.normale);
+    });
     a.giu(4);
   });
   if (!riassunte) a.scrivi('(nessuna sezione compilata)', 11, a.normale, grigio);
@@ -942,13 +971,16 @@ function disegnaGiornataPdf(v, a) {
     a.giu(4);
     let stampate = 0;
     CHIAVI_SEZIONI.forEach(function (k) {
-      const testo = String(sezioni[k] || '').trim();
-      const foto = (a.fotoPerSop[s.id] || {})[k] || [];
-      if (!testo && !foto.length) return;
+      const pezzi = pezziSezionePdf(sezioni, k);
+      const foto = fotoSezionePdf(a.fotoPerSop[s.id], k);
+      if (!pezzi.length && !foto.length) return;
       const def = SEZIONI.find(function (z) { return z.chiave === k; });
-      a.spazio(30 + (testo ? 0 : a.altezzaFoto(foto[0], c) + 30));
+      a.spazio(30 + (pezzi.length ? 0 : a.altezzaFoto(foto[0], c) + 30));
       a.scrivi(def.nome.toUpperCase(), 10, a.grassetto, grigio);
-      if (testo) { if (def.elenco) righeElenco(testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); }); else a.scrivi(testo, 11, a.normale); }
+      pezzi.forEach(function (p) {
+        if (p.elenco) righeElenco(p.testo).forEach(function (r) { a.scrivi('• ' + r, 11, a.normale, null, 6); });
+        else a.scrivi(p.testo, 11, a.normale);
+      });
       a.disegnaFotoGriglia(foto, c);
       a.giu(4);
       stampate++;
